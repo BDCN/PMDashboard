@@ -1,0 +1,202 @@
+<UserControl x:Class="PMDashboard.Views.PmMaintenancePage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="#F1F5F9">
+
+    <Grid Margin="32,28,32,28">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Grid Grid.Row="0" Margin="0,0,0,20">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel>
+                <TextBlock Text="PM Maintenance" FontSize="22" FontWeight="Bold"
+                           Foreground="#0F172A" FontFamily="Segoe UI Semibold"/>
+                <TextBlock Text="Click any cell to edit inline — changes save automatically when you move to the next row"
+                           FontSize="13" Foreground="#64748B" Margin="0,4,0,0"/>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                <Button Content="Download Template" x:Name="BtnDownloadTemplate"
+                        Style="{StaticResource SecondaryButtonStyle}"
+                        Click="BtnDownloadTemplate_Click" Margin="0,0,10,0"/>
+                <Button Content="Import Excel" x:Name="BtnImport"
+                        Style="{StaticResource SecondaryButtonStyle}"
+                        Click="BtnImport_Click" Margin="0,0,10,0"/>
+                <Button Content="+ Add PM" x:Name="BtnAdd"
+                        Style="{StaticResource PrimaryButtonStyle}"
+                        Click="BtnAdd_Click"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- Search bar -->
+        <Border Grid.Row="1" Background="White" CornerRadius="8"
+                BorderBrush="#E2E8F0" BorderThickness="1"
+                Padding="12,0" Margin="0,0,0,16" Height="42">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="🔍" FontSize="14" VerticalAlignment="Center"
+                           Foreground="#94A3B8" Margin="0,0,8,0"/>
+                <TextBox Grid.Column="1" x:Name="TxtSearch"
+                         BorderThickness="0" Background="Transparent"
+                         FontSize="13" VerticalAlignment="Center"
+                         Foreground="#374151"
+                         TextChanged="TxtSearch_TextChanged">
+                    <TextBox.Style>
+                        <Style TargetType="TextBox">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="TextBox">
+                                        <Grid>
+                                            <TextBlock x:Name="placeholder"
+                                                       Text="Search by name, location, data name..."
+                                                       Foreground="#94A3B8" FontSize="13"
+                                                       VerticalAlignment="Center"
+                                                       IsHitTestVisible="False"
+                                                       Visibility="Collapsed"/>
+                                            <ScrollViewer x:Name="PART_ContentHost" VerticalAlignment="Center"/>
+                                        </Grid>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="Text" Value="">
+                                                <Setter TargetName="placeholder" Property="Visibility" Value="Visible"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </TextBox.Style>
+                </TextBox>
+            </Grid>
+        </Border>
+
+        <!-- Live-edit Data Grid -->
+        <Border Grid.Row="2" CornerRadius="10" BorderBrush="#E2E8F0" BorderThickness="1"
+                Background="White" ClipToBounds="True">
+            <DataGrid x:Name="PmGrid"
+                      Style="{StaticResource AppDataGridStyle}"
+                      CellStyle="{StaticResource DataGridCellStyle}"
+                      ColumnHeaderStyle="{StaticResource DataGridColumnHeaderStyle}"
+                      ItemsSource="{Binding Pms}"
+                      SelectedItem="{Binding SelectedPm}"
+                      BorderThickness="0"
+                      RowEditEnding="PmGrid_RowEditEnding">
+                <DataGrid.Columns>
+
+                    <!-- Active toggle — single-click checkbox -->
+                    <DataGridCheckBoxColumn Header="Active"
+                                            Binding="{Binding IsActive, UpdateSourceTrigger=PropertyChanged}"
+                                            Width="55"/>
+
+                    <!-- Text fields — double-click or F2 to edit -->
+                    <DataGridTextColumn Header="First Name"
+                                        Binding="{Binding FirstName, UpdateSourceTrigger=LostFocus}"
+                                        Width="115"/>
+                    <DataGridTextColumn Header="Last Name"
+                                        Binding="{Binding LastName, UpdateSourceTrigger=LostFocus}"
+                                        Width="115"/>
+
+                    <!-- Home Office — dropdown in edit mode -->
+                    <DataGridTemplateColumn Header="Home Office" Width="110" SortMemberPath="HomeOffice">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding HomeOffice}" Margin="12,0"
+                                           VerticalAlignment="Center" FontFamily="Segoe UI" FontSize="13"/>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                        <DataGridTemplateColumn.CellEditingTemplate>
+                            <DataTemplate>
+                                <ComboBox SelectedValue="{Binding HomeOffice, UpdateSourceTrigger=PropertyChanged}"
+                                          SelectedValuePath="Content"
+                                          BorderThickness="0" Background="White"
+                                          FontFamily="Segoe UI" FontSize="13">
+                                    <ComboBoxItem Content="FRE"/>
+                                    <ComboBoxItem Content="VAN"/>
+                                    <ComboBoxItem Content="JAX"/>
+                                    <ComboBoxItem Content="Remote"/>
+                                </ComboBox>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellEditingTemplate>
+                    </DataGridTemplateColumn>
+
+                    <!-- Region — dropdown in edit mode -->
+                    <DataGridTemplateColumn Header="Region" Width="90" SortMemberPath="GeographicalLocation">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding GeographicalLocation}" Margin="12,0"
+                                           VerticalAlignment="Center" FontFamily="Segoe UI" FontSize="13"/>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                        <DataGridTemplateColumn.CellEditingTemplate>
+                            <DataTemplate>
+                                <ComboBox SelectedValue="{Binding GeographicalLocation, UpdateSourceTrigger=PropertyChanged}"
+                                          SelectedValuePath="Content"
+                                          BorderThickness="0" Background="White"
+                                          FontFamily="Segoe UI" FontSize="13">
+                                    <ComboBoxItem Content="East"/>
+                                    <ComboBoxItem Content="West"/>
+                                </ComboBox>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellEditingTemplate>
+                    </DataGridTemplateColumn>
+
+                    <!-- More text fields -->
+                    <DataGridTextColumn Header="Data Name"
+                                        Binding="{Binding DataName, UpdateSourceTrigger=LostFocus}"
+                                        Width="135"/>
+                    <DataGridTextColumn Header="Site Cap"
+                                        Binding="{Binding Capacity, UpdateSourceTrigger=LostFocus, StringFormat={}{0:N1}}"
+                                        Width="80"
+                                        HeaderStyle="{StaticResource DataGridColumnHeaderStyle}">
+                        <DataGridTextColumn.HeaderTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="Site Cap" ToolTipService.ToolTip="Max sites = 100% utilization (Sites mode)"/>
+                            </DataTemplate>
+                        </DataGridTextColumn.HeaderTemplate>
+                    </DataGridTextColumn>
+                    <DataGridTextColumn Header="Score Cap"
+                                        Binding="{Binding ScoreCapacity, UpdateSourceTrigger=LostFocus, StringFormat={}{0:N0}}"
+                                        Width="90">
+                        <DataGridTextColumn.HeaderTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="Score Cap" ToolTipService.ToolTip="Max total difficulty score = 100% utilization (Score mode)"/>
+                            </DataTemplate>
+                        </DataGridTextColumn.HeaderTemplate>
+                    </DataGridTextColumn>
+                    <DataGridTextColumn Binding="{Binding PmMultiplier, UpdateSourceTrigger=LostFocus}"
+                                        Width="90">
+                        <DataGridTextColumn.HeaderTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="Multiplier" ToolTipService.ToolTip="PM experience multiplier 1–10. Scales effective capacity in Score mode (null = 1.0 factor, same as 10)."/>
+                            </DataTemplate>
+                        </DataGridTextColumn.HeaderTemplate>
+                    </DataGridTextColumn>
+                    <DataGridTextColumn Header="Ideal Util (%)"
+                                        Binding="{Binding IdealUtilization, UpdateSourceTrigger=LostFocus, StringFormat={}{0:N1}}"
+                                        Width="110"/>
+
+                    <!-- Actions — Delete only (Edit replaced by inline editing) -->
+                    <DataGridTemplateColumn Header="" Width="80">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Button Content="Delete" Style="{StaticResource DangerButtonStyle}"
+                                        Tag="{Binding}" Click="BtnDelete_Click"/>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+
+                </DataGrid.Columns>
+            </DataGrid>
+        </Border>
+
+    </Grid>
+</UserControl>

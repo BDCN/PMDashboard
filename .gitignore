@@ -1,0 +1,17 @@
+bin/
+obj/
+.vs/
+*.user
+
+# Local Claude Code settings - machine-specific, not shared project config
+.claude/
+
+# Secrets found in this folder that were never meant to be committed -
+# see chat history 2026-08-27. Excluded, not deleted, in case anything
+# else in here still needs it - but the password/token inside should be
+# rotated and moved to a real secrets manager, not tracked here.
+stuff.txt
+
+# Real business data, not app code - kept out of git by explicit choice
+Details.xlsx
+Open Lines Report.xlsx

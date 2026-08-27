@@ -1,0 +1,58 @@
+<Window x:Class="PMDashboard.Dialogs.AddEquipmentWeightDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Add Equipment Score Weight"
+        Width="420" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="#F8FAFC"
+        FontFamily="Segoe UI">
+
+    <Border Padding="28">
+        <StackPanel>
+            <TextBlock Text="Add Equipment Score Weight" FontSize="18"
+                       FontWeight="SemiBold" Foreground="#0F172A" Margin="0,0,0,24"/>
+
+            <!-- Name -->
+            <TextBlock Text="Display Name" FontSize="12" FontWeight="SemiBold"
+                       Foreground="#374151" Margin="0,0,0,6"/>
+            <TextBox x:Name="TxtName" Style="{StaticResource FormTextBoxStyle}" Margin="0,0,0,16"/>
+
+            <!-- Keywords -->
+            <TextBlock Text="Keywords (comma-separated, matched case-insensitively in ItemDescription)"
+                       FontSize="12" FontWeight="SemiBold" Foreground="#374151" Margin="0,0,0,4"/>
+            <TextBlock Text="e.g. PIU, PIE, CDP, ATS  or  LVSW, CEELV, LV"
+                       FontSize="11" Foreground="#94A3B8" Margin="0,0,0,6"/>
+            <TextBox x:Name="TxtKeyword" Style="{StaticResource FormTextBoxStyle}" Margin="0,0,0,16"/>
+
+            <!-- Weight -->
+            <TextBlock Text="Score Weight (0 = excluded)" FontSize="12" FontWeight="SemiBold"
+                       Foreground="#374151" Margin="0,0,0,6"/>
+            <TextBox x:Name="TxtWeight" Style="{StaticResource FormTextBoxStyle}"
+                     Text="0" Margin="0,0,0,16"/>
+
+            <!-- Is Excluded -->
+            <Border Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1"
+                    CornerRadius="6" Padding="14,12" Margin="0,0,0,20">
+                <StackPanel>
+                    <CheckBox x:Name="ChkIsExcluded" Content="Exclusion rule (skip matching order lines entirely)"
+                              FontSize="12" Foreground="#374151" Margin="0,0,0,4"/>
+                    <TextBlock Text="Use this for patterns like FSPS, FSWTY, or FS Field Service that should be ignored."
+                               FontSize="11" Foreground="#94A3B8" Margin="20,0,0,0" TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Error -->
+            <TextBlock x:Name="TxtError" Foreground="#EF4444" FontSize="12"
+                       Visibility="Collapsed" Margin="0,0,0,12" TextWrapping="Wrap"/>
+
+            <!-- Buttons -->
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="Cancel" Style="{StaticResource SecondaryButtonStyle}"
+                        Click="BtnCancel_Click" Margin="0,0,10,0"/>
+                <Button Content="Add" Style="{StaticResource PrimaryButtonStyle}"
+                        Click="BtnSave_Click"/>
+            </StackPanel>
+        </StackPanel>
+    </Border>
+</Window>

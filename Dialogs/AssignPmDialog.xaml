@@ -1,0 +1,105 @@
+<Window x:Class="PMDashboard.Dialogs.AssignPmDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Assign Project Manager"
+        Width="600" Height="480"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="#F8FAFC"
+        FontFamily="Segoe UI">
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Title -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,16">
+            <TextBlock Text="Assign Project Manager" FontSize="18" FontWeight="SemiBold" Foreground="#0F172A"/>
+            <TextBlock x:Name="TxtSiteName" FontSize="13" Foreground="#64748B" Margin="0,4,0,0"/>
+        </StackPanel>
+
+        <!-- Search hint -->
+        <TextBlock Grid.Row="1" Text="Select a PM then click Assign, or click Unassign to clear."
+                   FontSize="12" Foreground="#94A3B8" Margin="0,0,0,10"/>
+
+        <!-- PM list -->
+        <Border Grid.Row="2" CornerRadius="8" BorderBrush="#E2E8F0" BorderThickness="1"
+                Background="White" ClipToBounds="True">
+            <DataGrid x:Name="PmGrid"
+                      AutoGenerateColumns="False"
+                      CanUserAddRows="False" CanUserDeleteRows="False"
+                      SelectionMode="Single" SelectionUnit="FullRow"
+                      CanUserResizeRows="False" RowHeight="38"
+                      ColumnHeaderHeight="36"
+                      FontFamily="Segoe UI" FontSize="13"
+                      Foreground="#1E293B"
+                      RowBackground="White" AlternatingRowBackground="#F8FAFC"
+                      HorizontalGridLinesBrush="#F1F5F9" VerticalGridLinesBrush="#F1F5F9"
+                      BorderThickness="0"
+                      MouseDoubleClick="PmGrid_MouseDoubleClick">
+                <DataGrid.ColumnHeaderStyle>
+                    <Style TargetType="DataGridColumnHeader">
+                        <Setter Property="Background" Value="#F8FAFC"/>
+                        <Setter Property="Foreground" Value="#475569"/>
+                        <Setter Property="FontWeight" Value="SemiBold"/>
+                        <Setter Property="FontSize" Value="12"/>
+                        <Setter Property="Padding" Value="12,0"/>
+                        <Setter Property="BorderBrush" Value="#E2E8F0"/>
+                        <Setter Property="BorderThickness" Value="0,0,0,1"/>
+                    </Style>
+                </DataGrid.ColumnHeaderStyle>
+                <DataGrid.CellStyle>
+                    <Style TargetType="DataGridCell">
+                        <Setter Property="Padding" Value="12,0"/>
+                        <Setter Property="BorderThickness" Value="0"/>
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="DataGridCell">
+                                    <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+                                        <ContentPresenter VerticalAlignment="Center"/>
+                                    </Border>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                        <Style.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter Property="Background" Value="#EFF6FF"/>
+                                <Setter Property="Foreground" Value="#1E293B"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </DataGrid.CellStyle>
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Name"     Binding="{Binding FullName}"             Width="*"/>
+                    <DataGridTextColumn Header="Region"   Binding="{Binding GeographicalLocation}"  Width="80"/>
+                    <DataGridTextColumn Header="Home Office" Binding="{Binding HomeOffice}"         Width="100"/>
+                    <DataGridTextColumn Header="Data Name"  Binding="{Binding DataName}"            Width="110"/>
+                    <DataGridTextColumn Header="Capacity"   Width="80">
+                        <DataGridTextColumn.Binding>
+                            <Binding Path="Capacity" StringFormat="{}{0:N1}"/>
+                        </DataGridTextColumn.Binding>
+                    </DataGridTextColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+        </Border>
+
+        <!-- Buttons -->
+        <Grid Grid.Row="3" Margin="0,16,0,0">
+            <Button Content="Unassign" HorizontalAlignment="Left"
+                    Style="{StaticResource DangerButtonStyle}"
+                    Click="BtnUnassign_Click"/>
+            <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
+                <Button Content="Cancel" Style="{StaticResource SecondaryButtonStyle}"
+                        Click="BtnCancel_Click" Margin="0,0,10,0"/>
+                <Button x:Name="BtnAssign" Content="Assign"
+                        Style="{StaticResource PrimaryButtonStyle}"
+                        IsEnabled="False"
+                        Click="BtnAssign_Click"/>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>

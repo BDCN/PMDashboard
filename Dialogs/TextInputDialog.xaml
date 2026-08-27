@@ -1,0 +1,35 @@
+<Window x:Class="PMDashboard.Dialogs.TextInputDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Input" Width="380" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="#F8FAFC"
+        FontFamily="Segoe UI">
+
+    <Border Padding="28">
+        <StackPanel>
+            <TextBlock x:Name="TxtHeading" Text="Report Name" FontSize="16" FontWeight="SemiBold"
+                       Foreground="#0F172A" Margin="0,0,0,6"/>
+            <TextBlock x:Name="TxtPrompt" Text="Enter a name for this report."
+                       FontSize="13" Foreground="#64748B" TextWrapping="Wrap" Margin="0,0,0,16"/>
+
+            <TextBox x:Name="TxtValue"
+                     BorderBrush="#D1D5DB" BorderThickness="1"
+                     Padding="10,8" FontSize="13" FontFamily="Segoe UI"
+                     Background="White" Foreground="#111827"
+                     Margin="0,0,0,8" KeyDown="TxtValue_KeyDown"/>
+
+            <TextBlock x:Name="TxtError" Text="Please enter a name."
+                       Foreground="#EF4444" FontSize="12"
+                       Visibility="Collapsed" Margin="0,0,0,12"/>
+
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
+                <Button Content="Cancel" Style="{StaticResource SecondaryButtonStyle}"
+                        Click="BtnCancel_Click" Margin="0,0,10,0"/>
+                <Button Content="OK" Style="{StaticResource PrimaryButtonStyle}"
+                        Click="BtnOk_Click"/>
+            </StackPanel>
+        </StackPanel>
+    </Border>
+</Window>

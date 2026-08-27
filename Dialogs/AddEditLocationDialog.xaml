@@ -1,0 +1,45 @@
+<Window x:Class="PMDashboard.Dialogs.AddEditLocationDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Location Details"
+        Width="380" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="#F8FAFC"
+        FontFamily="Segoe UI">
+
+    <Border Padding="28">
+        <StackPanel>
+            <TextBlock x:Name="TxtTitle" Text="Add Location" FontSize="18"
+                       FontWeight="SemiBold" Foreground="#0F172A" Margin="0,0,0,24"/>
+
+            <TextBlock Text="Location Code" FontSize="12" FontWeight="SemiBold"
+                       Foreground="#374151" Margin="0,0,0,6"/>
+            <TextBox x:Name="TxtName" Style="{StaticResource FormTextBoxStyle}"
+                     CharacterCasing="Upper" Margin="0,0,0,6"
+                     LostFocus="TxtName_LostFocus"/>
+            <!-- Airport lookup hint -->
+            <TextBlock x:Name="TxtAirportHint" FontSize="11" Margin="0,0,0,10"
+                       TextWrapping="Wrap" Foreground="#64748B"
+                       Text="3-letter airport code (e.g. IAD, ATL, LAX, GRU) — region is auto-detected"/>
+
+            <TextBlock Text="Geographical Location" FontSize="12" FontWeight="SemiBold"
+                       Foreground="#374151" Margin="0,0,0,6"/>
+            <ComboBox x:Name="CboRegion" Style="{StaticResource FormComboBoxStyle}"
+                      Margin="0,0,0,24">
+                <ComboBoxItem Content="East"/>
+                <ComboBoxItem Content="West"/>
+            </ComboBox>
+
+            <TextBlock x:Name="TxtError" Foreground="#EF4444" FontSize="12"
+                       Visibility="Collapsed" Margin="0,0,0,12" TextWrapping="Wrap"/>
+
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="Cancel" Style="{StaticResource SecondaryButtonStyle}"
+                        Click="BtnCancel_Click" Margin="0,0,10,0"/>
+                <Button Content="Save" Style="{StaticResource PrimaryButtonStyle}"
+                        Click="BtnSave_Click"/>
+            </StackPanel>
+        </StackPanel>
+    </Border>
+</Window>

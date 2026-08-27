@@ -1,0 +1,393 @@
+<UserControl x:Class="PMDashboard.Views.WorkloadPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="#F1F5F9">
+
+    <Grid Margin="32,28,32,28">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>  <!-- Title + stats -->
+            <RowDefinition Height="Auto"/>  <!-- KPI panel -->
+            <RowDefinition Height="*"/>     <!-- Chart body -->
+            <RowDefinition Height="Auto"/>  <!-- Bottom axis -->
+        </Grid.RowDefinitions>
+
+        <!-- ── Title + Stats ── -->
+        <Grid Grid.Row="0" Margin="0,0,0,16">
+            <StackPanel>
+                <TextBlock Text="Project Managers — Workload"
+                           FontSize="22" FontWeight="Bold"
+                           Foreground="#0F172A" FontFamily="Segoe UI Semibold"/>
+                <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                    <TextBlock Text="{Binding PmCount, StringFormat={}{0} PMs}"
+                               FontSize="13" Foreground="#2563EB"/>
+                    <TextBlock Text="  •  " FontSize="13" Foreground="#64748B"/>
+                    <TextBlock Text="{Binding TotalSites, StringFormat={}{0} assigned sites}"
+                               FontSize="13" Foreground="#64748B"/>
+                    <TextBlock Text="  •  " FontSize="13" Foreground="#64748B"/>
+                    <TextBlock Text="{Binding TotalRomps, StringFormat={}{0} total ROMPs}"
+                               FontSize="13" Foreground="#64748B"/>
+                </StackPanel>
+            </StackPanel>
+        </Grid>
+
+        <!-- ── KPI Panel ── -->
+        <Border Grid.Row="1" Background="White" CornerRadius="8"
+                BorderBrush="#E2E8F0" BorderThickness="1"
+                Padding="20,16" Margin="0,0,0,20">
+            <WrapPanel Orientation="Horizontal">
+
+                <!-- ── Score-mode KPI cards (Overloaded / Near Full / Has Capacity) ── -->
+
+                <!-- Overloaded -->
+                <Border CornerRadius="6" Padding="16,10" Margin="0,0,12,8">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Background" Value="#FEF2F2"/>
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsScoreMode}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                            <Ellipse Width="8" Height="8" Fill="#DC2626" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBlock Text="OVERLOADED" FontSize="10" FontWeight="SemiBold" Foreground="#991B1B"/>
+                        </StackPanel>
+                        <TextBlock Text="{Binding OverloadedCount, StringFormat={}{0} PMs}"
+                                   FontSize="22" FontWeight="Bold" Foreground="#DC2626"/>
+                        <TextBlock Text="util &gt; overload threshold" FontSize="10" Foreground="#B91C1C" Margin="0,2,0,0"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Near Full -->
+                <Border CornerRadius="6" Padding="16,10" Margin="0,0,12,8">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Background" Value="#FFF7ED"/>
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsScoreMode}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                            <Ellipse Width="8" Height="8" Fill="#EA580C" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBlock Text="NEAR FULL" FontSize="10" FontWeight="SemiBold" Foreground="#9A3412"/>
+                        </StackPanel>
+                        <TextBlock Text="{Binding NearFullCount, StringFormat={}{0} PMs}"
+                                   FontSize="22" FontWeight="Bold" Foreground="#EA580C"/>
+                        <TextBlock Text="nearfull ≤ util ≤ overload" FontSize="10" Foreground="#C2410C" Margin="0,2,0,0"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Has Capacity -->
+                <Border CornerRadius="6" Padding="16,10" Margin="0,0,12,8">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Background" Value="#F0FDF4"/>
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsScoreMode}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                            <Ellipse Width="8" Height="8" Fill="#16A34A" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBlock Text="HAS CAPACITY" FontSize="10" FontWeight="SemiBold" Foreground="#166534"/>
+                        </StackPanel>
+                        <TextBlock Text="{Binding HasCapacityCount, StringFormat={}{0} PMs}"
+                                   FontSize="22" FontWeight="Bold" Foreground="#16A34A"/>
+                        <TextBlock Text="util &lt; nearfull threshold" FontSize="10" Foreground="#15803D" Margin="0,2,0,0"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- ── Sites-mode KPI cards (Over Capacity / On Target / Under Target) ── -->
+
+                <!-- Over capacity -->
+                <Border CornerRadius="6" Padding="16,10" Margin="0,0,12,8">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Background" Value="#FEF2F2"/>
+                            <Setter Property="Visibility" Value="Visible"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsScoreMode}" Value="True">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                            <Ellipse Width="8" Height="8" Fill="#DC2626" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBlock Text="OVER CAPACITY" FontSize="10" FontWeight="SemiBold" Foreground="#991B1B"/>
+                        </StackPanel>
+                        <TextBlock Text="{Binding OverCapacityCount, StringFormat={}{0} PMs}"
+                                   FontSize="22" FontWeight="Bold" Foreground="#DC2626"/>
+                        <TextBlock Text="&gt; 100% utilization" FontSize="10" Foreground="#B91C1C" Margin="0,2,0,0"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- On target -->
+                <Border CornerRadius="6" Padding="16,10" Margin="0,0,12,8">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Background" Value="#F0FDF4"/>
+                            <Setter Property="Visibility" Value="Visible"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsScoreMode}" Value="True">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                            <Ellipse Width="8" Height="8" Fill="#16A34A" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBlock Text="ON TARGET" FontSize="10" FontWeight="SemiBold" Foreground="#166534"/>
+                        </StackPanel>
+                        <TextBlock Text="{Binding OnTargetCount, StringFormat={}{0} PMs}"
+                                   FontSize="22" FontWeight="Bold" Foreground="#16A34A"/>
+                        <TextBlock Text="Ideal → 100%" FontSize="10" Foreground="#15803D" Margin="0,2,0,0"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Under target -->
+                <Border CornerRadius="6" Padding="16,10" Margin="0,0,12,8">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Background" Value="#EFF6FF"/>
+                            <Setter Property="Visibility" Value="Visible"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsScoreMode}" Value="True">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                            <Ellipse Width="8" Height="8" Fill="#2563EB" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBlock Text="UNDER TARGET" FontSize="10" FontWeight="SemiBold" Foreground="#1D4ED8"/>
+                        </StackPanel>
+                        <TextBlock Text="{Binding UnderTargetCount, StringFormat={}{0} PMs}"
+                                   FontSize="22" FontWeight="Bold" Foreground="#2563EB"/>
+                        <TextBlock Text="Below ideal utilization" FontSize="10" Foreground="#1E40AF" Margin="0,2,0,0"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- No capacity set (both modes) -->
+                <Border Background="#F8FAFC" CornerRadius="6" Padding="16,10" Margin="0,0,12,8">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                            <Ellipse Width="8" Height="8" Fill="#94A3B8" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBlock Text="NO CAPACITY SET" FontSize="10" FontWeight="SemiBold" Foreground="#64748B"/>
+                        </StackPanel>
+                        <TextBlock Text="{Binding NoCapacityCount, StringFormat={}{0} PMs}"
+                                   FontSize="22" FontWeight="Bold" Foreground="#94A3B8"/>
+                        <TextBlock Text="Capacity not configured" FontSize="10" Foreground="#94A3B8" Margin="0,2,0,0"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Average utilization (both modes) -->
+                <Border Background="#F0F9FF" CornerRadius="6" Padding="16,10" Margin="0,0,0,8">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                            <Ellipse Width="8" Height="8" Fill="#0284C7" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBlock Text="AVG UTILIZATION" FontSize="10" FontWeight="SemiBold" Foreground="#0369A1"/>
+                        </StackPanel>
+                        <TextBlock Text="{Binding AvgUtilizationText}"
+                                   FontSize="22" FontWeight="Bold" Foreground="#0284C7"/>
+                        <TextBlock Text="PMs with capacity set" FontSize="10" Foreground="#0369A1" Margin="0,2,0,0"/>
+                    </StackPanel>
+                </Border>
+
+            </WrapPanel>
+        </Border>
+
+        <!-- ── Chart Body ── -->
+        <Border Grid.Row="2" CornerRadius="10,10,0,0" BorderBrush="#E2E8F0" BorderThickness="1,1,1,0"
+                Background="White" ClipToBounds="True">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <Grid x:Name="ChartGrid" ClipToBounds="True"
+                      SizeChanged="ChartGrid_SizeChanged">
+
+                    <!-- Background: faint grid lines + 100% reference line -->
+                    <Canvas x:Name="BackgroundCanvas"
+                            IsHitTestVisible="False"
+                            Margin="150,0,0,0"
+                            VerticalAlignment="Stretch"
+                            HorizontalAlignment="Left"/>
+
+                    <!-- Bar rows -->
+                    <ItemsControl x:Name="ChartRows" ItemsSource="{Binding Rows}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Height="42" Cursor="Hand"
+                                      MouseLeftButtonUp="RowGrid_MouseLeftButtonUp">
+                                    <Grid.ToolTip>
+                                        <ToolTip>
+                                            <TextBlock Text="{Binding TooltipText}"
+                                                       FontFamily="Segoe UI" FontSize="12"
+                                                       LineHeight="18"/>
+                                        </ToolTip>
+                                    </Grid.ToolTip>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="150"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <!-- Row separator -->
+                                    <Border Grid.ColumnSpan="2" BorderBrush="#F1F5F9"
+                                            BorderThickness="0,0,0,1" VerticalAlignment="Bottom"/>
+
+                                    <!-- PM Name (clickable link style) -->
+                                    <TextBlock Grid.Column="0" Text="{Binding PmName}"
+                                               HorizontalAlignment="Right" VerticalAlignment="Center"
+                                               Margin="0,0,12,0" FontSize="12" Foreground="#2563EB"
+                                               FontFamily="Segoe UI" FontWeight="SemiBold"
+                                               TextDecorations="Underline"/>
+
+                                    <!-- Bars column: overlay grid so label can go inside or outside -->
+                                    <Grid Grid.Column="1" VerticalAlignment="Center">
+
+                                        <!-- Colored bar rectangles -->
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Rectangle Width="{Binding BlueWidth}"  Height="28"
+                                                       Fill="#2563EB" SnapsToDevicePixels="True"/>
+                                            <Rectangle Width="{Binding GreenWidth}" Height="28"
+                                                       Fill="#16A34A" SnapsToDevicePixels="True"/>
+                                            <Rectangle Width="{Binding RedWidth}"   Height="28"
+                                                       Fill="#DC2626" SnapsToDevicePixels="True"/>
+
+                                            <!-- Outside label — shown when utilization ≤ 80% -->
+                                            <TextBlock Text="{Binding Label}"
+                                                       VerticalAlignment="Center"
+                                                       Margin="8,0,0,0" FontSize="11"
+                                                       FontWeight="SemiBold" Foreground="#374151"
+                                                       FontFamily="Segoe UI">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsHighUtilization}" Value="True">
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </StackPanel>
+
+                                        <!-- Inside label — shown when utilization > 80%, white text over bar -->
+                                        <TextBlock Text="{Binding Label}"
+                                                   VerticalAlignment="Center"
+                                                   HorizontalAlignment="Left"
+                                                   Margin="10,0,0,0" FontSize="11"
+                                                   FontWeight="SemiBold" Foreground="White"
+                                                   FontFamily="Segoe UI">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsHighUtilization}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+
+                                    </Grid>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                </Grid>
+            </ScrollViewer>
+        </Border>
+
+        <!-- ── Bottom Axis ── -->
+        <Border Grid.Row="3" BorderBrush="#E2E8F0" BorderThickness="1,0,1,1"
+                CornerRadius="0,0,10,10" Background="White" Padding="0,0,0,6">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="150"/>  <!-- name column spacer -->
+                    <ColumnDefinition Width="*"/>    <!-- axis tick area -->
+                </Grid.ColumnDefinitions>
+
+                <!-- "% Utilization" label aligned with axis -->
+                <TextBlock Grid.Column="0" Text="% Utilization"
+                           FontSize="10" FontWeight="SemiBold" Foreground="#64748B"
+                           HorizontalAlignment="Right" VerticalAlignment="Top"
+                           Margin="0,6,12,0"/>
+
+                <!-- Tick marks + numbers -->
+                <Canvas Grid.Column="1" Height="32" ClipToBounds="False">
+                    <!-- Baseline -->
+                    <Rectangle Canvas.Left="0" Canvas.Top="0"
+                               Width="10000" Height="1" Fill="#E2E8F0"/>
+                    <!-- Dynamic ticks from ViewModel -->
+                    <ItemsControl ItemsSource="{Binding Ticks}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate><Canvas/></ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemContainerStyle>
+                            <Style TargetType="ContentPresenter">
+                                <Setter Property="Canvas.Left" Value="{Binding X}"/>
+                                <Setter Property="Canvas.Top"  Value="0"/>
+                            </Style>
+                        </ItemsControl.ItemContainerStyle>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel>
+                                    <!-- Tick mark: taller + darker for major, short + lighter for minor -->
+                                    <Rectangle Fill="#94A3B8">
+                                        <Rectangle.Style>
+                                            <Style TargetType="Rectangle">
+                                                <Setter Property="Width"  Value="1"/>
+                                                <Setter Property="Height" Value="4"/>
+                                                <Setter Property="Fill"   Value="#CBD5E1"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsMajor}" Value="True">
+                                                        <Setter Property="Height" Value="8"/>
+                                                        <Setter Property="Fill"   Value="#6B7280"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Rectangle.Style>
+                                    </Rectangle>
+                                    <!-- Label only on major ticks (multiples of 50) -->
+                                    <TextBlock Text="{Binding Label}"
+                                               FontSize="10" Foreground="#64748B"
+                                               FontFamily="Segoe UI"
+                                               Margin="-5,2,0,0">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Label}" Value="">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </Canvas>
+            </Grid>
+        </Border>
+
+    </Grid>
+</UserControl>

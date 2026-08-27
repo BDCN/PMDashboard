@@ -1,0 +1,1393 @@
+<UserControl x:Class="PMDashboard.Views.ConfigPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="#F1F5F9">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <Grid Margin="32,28,32,28">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>  <!-- Title -->
+            <RowDefinition Height="Auto"/>  <!-- Upload Method card -->
+            <RowDefinition Height="Auto"/>  <!-- Semi-Auto settings card -->
+            <RowDefinition Height="Auto"/>  <!-- Assignment Rules card -->
+            <RowDefinition Height="Auto"/>  <!-- Percentage Calculation card -->
+            <RowDefinition Height="Auto"/>  <!-- Workload Scoring Parameters card -->
+            <RowDefinition Height="Auto"/>  <!-- Site/ROMP Statuses card -->
+            <RowDefinition Height="Auto"/>  <!-- Equipment Score Categories card -->
+            <RowDefinition Height="Auto"/>  <!-- Source Data card (password-locked) -->
+            <RowDefinition Height="Auto"/>  <!-- Database card (password-locked) -->
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- ── Title ── -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,24">
+            <TextBlock Text="Configuration" FontSize="22" FontWeight="Bold"
+                       Foreground="#0F172A" FontFamily="Segoe UI Semibold"/>
+            <TextBlock Text="Application settings and automatic import configuration"
+                       FontSize="13" Foreground="#64748B" Margin="0,4,0,0"/>
+        </StackPanel>
+
+        <!-- ── Percentage Calculation card ── -->
+        <Border Grid.Row="4" Background="White" CornerRadius="10"
+                BorderBrush="#E2E8F0" BorderThickness="1" Padding="24,20" Margin="0,0,0,16">
+            <StackPanel>
+                <TextBlock Text="Percentage Calculation" FontSize="16" FontWeight="SemiBold"
+                           Foreground="#0F172A" Margin="0,0,0,4"/>
+                <TextBlock Text="Choose how PM utilization percentage is calculated in the Workload chart."
+                           FontSize="13" Foreground="#64748B" Margin="0,0,0,20"/>
+
+                <!-- Sites option -->
+                <Border CornerRadius="8" Padding="16,14" Margin="0,0,0,10">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Background" Value="White"/>
+                            <Setter Property="BorderThickness" Value="1"/>
+                            <Setter Property="BorderBrush" Value="#E2E8F0"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsSitesMode}" Value="True">
+                                    <Setter Property="Background" Value="#EFF6FF"/>
+                                    <Setter Property="BorderThickness" Value="2"/>
+                                    <Setter Property="BorderBrush" Value="#2563EB"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <StackPanel Orientation="Horizontal">
+                        <RadioButton GroupName="PctCalc" VerticalAlignment="Top"
+                                     IsChecked="{Binding IsSitesMode, Mode=OneWay}"
+                                     Click="BtnPctSites_Click" Margin="0,2,12,0"/>
+                        <StackPanel>
+                            <TextBlock Text="Sites  (default)" FontSize="13" FontWeight="SemiBold" Foreground="#0F172A"/>
+                            <TextBlock Text="Utilization = non-complete sites ÷ Site Capacity × 100%.  Set each PM's Site Cap in PM Maintenance."
+                                       FontSize="12" Foreground="#64748B" Margin="0,3,0,0" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Score option -->
+                <Border CornerRadius="8" Padding="16,14">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Background" Value="White"/>
+                            <Setter Property="BorderThickness" Value="1"/>
+                            <Setter Property="BorderBrush" Value="#E2E8F0"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsScoreMode}" Value="True">
+                                    <Setter Property="Background" Value="#EFF6FF"/>
+                                    <Setter Property="BorderThickness" Value="2"/>
+                                    <Setter Property="BorderBrush" Value="#2563EB"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <StackPanel Orientation="Horizontal">
+                        <RadioButton GroupName="PctCalc" VerticalAlignment="Top"
+                                     IsChecked="{Binding IsScoreMode, Mode=OneWay}"
+                                     Click="BtnPctScore_Click" Margin="0,2,12,0"/>
+                        <StackPanel>
+                            <TextBlock Text="Score" FontSize="13" FontWeight="SemiBold" Foreground="#0F172A"/>
+                            <TextBlock Text="Utilization = total difficulty score ÷ Score Capacity × 100%.  Set each PM's Score Cap in PM Maintenance."
+                                       FontSize="12" Foreground="#64748B" Margin="0,3,0,0" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </Border>
+
+        <!-- ── Workload Scoring Parameters card ── -->
+        <Border Grid.Row="5" Background="White" CornerRadius="10"
+                BorderBrush="#E2E8F0" BorderThickness="1" Padding="24,20" Margin="0,0,0,16">
+            <StackPanel>
+                <TextBlock Text="Workload Scoring Parameters" FontSize="16" FontWeight="SemiBold"
+                           Foreground="#0F172A" Margin="0,0,0,4"/>
+                <TextBlock FontSize="13" Foreground="#64748B" TextWrapping="Wrap" Margin="0,0,0,20">
+                    <Run Text="Formula (Score mode): "/>
+                    <Run Text="romp_score = activity_weight × equip_weight_sum" FontStyle="Italic"/>
+                    <Run Text=";  pm_load = site_factor × Σromp_scores"/>
+                    <Run Text=";  skill_factor = SkillBase + SkillPerPoint × PM Multiplier" FontStyle="Italic"/>
+                    <Run Text=";  eff_capacity = Target Capacity × skill_factor"/>
+                    <Run Text=";  utilization = pm_load ÷ eff_capacity." FontWeight="SemiBold"/>
+                </TextBlock>
+
+                <!-- 4-col: label | slider (fixed width, default at 50%) | value textbox | hint -->
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="160"/>  <!-- label -->
+                        <ColumnDefinition Width="220"/>  <!-- slider — fixed so textbox & hint stay visible -->
+                        <ColumnDefinition Width="90"/>   <!-- value textbox -->
+                        <ColumnDefinition Width="*"/>    <!-- hint — takes all remaining space -->
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Site Overhead — default 0.05 = 50% of max 0.10 -->
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Site Overhead:"
+                               FontSize="12" FontWeight="SemiBold" Foreground="#374151"
+                               VerticalAlignment="Center" Margin="0,0,12,12"/>
+                    <Slider    Grid.Row="0" Grid.Column="1"
+                               Minimum="0" Maximum="0.10" TickFrequency="0.005"
+                               SmallChange="0.005" LargeChange="0.01"
+                               Value="{Binding SiteOverhead, Mode=TwoWay}"
+                               VerticalAlignment="Center" Margin="0,0,10,12"/>
+                    <TextBox   Grid.Row="0" Grid.Column="2"
+                               Text="{Binding SiteOverhead, StringFormat={}{0:F4}, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                               Style="{StaticResource FormTextBoxStyle}" Margin="0,0,10,12"/>
+                    <TextBlock Grid.Row="0" Grid.Column="3"
+                               Text="Site overhead in site_factor = 1 + n×overhead  (default 0.05)"
+                               FontSize="11" Foreground="#94A3B8" VerticalAlignment="Center" Margin="0,0,0,12" TextWrapping="Wrap"/>
+
+                    <!-- Target Capacity — default 259.2 = 50% of max 518.4 -->
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Target Capacity:"
+                               FontSize="12" FontWeight="SemiBold" Foreground="#374151"
+                               VerticalAlignment="Center" Margin="0,0,12,12"/>
+                    <Slider    Grid.Row="1" Grid.Column="1"
+                               Minimum="0" Maximum="518.4" TickFrequency="5"
+                               SmallChange="5" LargeChange="25"
+                               Value="{Binding TargetCapacity, Mode=TwoWay}"
+                               VerticalAlignment="Center" Margin="0,0,10,12"/>
+                    <TextBox   Grid.Row="1" Grid.Column="2"
+                               Text="{Binding TargetCapacity, StringFormat={}{0:F1}, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                               Style="{StaticResource FormTextBoxStyle}" Margin="0,0,10,12"/>
+                    <TextBlock Grid.Row="1" Grid.Column="3"
+                               Text="PM load denominator — utilization = pm_load ÷ target  (default 259.2)"
+                               FontSize="11" Foreground="#94A3B8" VerticalAlignment="Center" Margin="0,0,0,12" TextWrapping="Wrap"/>
+
+                    <!-- Near Full Threshold — default 0.80 = 50% of max 1.60 -->
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Near Full Threshold:"
+                               FontSize="12" FontWeight="SemiBold" Foreground="#374151"
+                               VerticalAlignment="Center" Margin="0,0,12,12"/>
+                    <Slider    Grid.Row="2" Grid.Column="1"
+                               Minimum="0" Maximum="1.60" TickFrequency="0.05"
+                               SmallChange="0.05" LargeChange="0.10"
+                               Value="{Binding NearFullThreshold, Mode=TwoWay}"
+                               VerticalAlignment="Center" Margin="0,0,10,12"/>
+                    <TextBox   Grid.Row="2" Grid.Column="2"
+                               Text="{Binding NearFullThreshold, StringFormat={}{0:F2}, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                               Style="{StaticResource FormTextBoxStyle}" Margin="0,0,10,12"/>
+                    <TextBlock Grid.Row="2" Grid.Column="3"
+                               Text="Utilization ratio (0–1) → 'Near Full' status  (default 0.80)"
+                               FontSize="11" Foreground="#94A3B8" VerticalAlignment="Center" Margin="0,0,0,12" TextWrapping="Wrap"/>
+
+                    <!-- Overload Threshold — default 1.00 = 50% of max 2.00 -->
+                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Overload Threshold:"
+                               FontSize="12" FontWeight="SemiBold" Foreground="#374151"
+                               VerticalAlignment="Center" Margin="0,0,12,12"/>
+                    <Slider    Grid.Row="3" Grid.Column="1"
+                               Minimum="0" Maximum="2.00" TickFrequency="0.05"
+                               SmallChange="0.05" LargeChange="0.10"
+                               Value="{Binding OverloadThreshold, Mode=TwoWay}"
+                               VerticalAlignment="Center" Margin="0,0,10,12"/>
+                    <TextBox   Grid.Row="3" Grid.Column="2"
+                               Text="{Binding OverloadThreshold, StringFormat={}{0:F2}, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                               Style="{StaticResource FormTextBoxStyle}" Margin="0,0,10,12"/>
+                    <TextBlock Grid.Row="3" Grid.Column="3"
+                               Text="Utilization ratio → 'Overloaded' status  (default 1.00)"
+                               FontSize="11" Foreground="#94A3B8" VerticalAlignment="Center" Margin="0,0,0,12" TextWrapping="Wrap"/>
+
+                    <!-- Skill Base — default 0.40 = 50% of max 0.80 -->
+                    <TextBlock Grid.Row="4" Grid.Column="0" Text="Skill Base:"
+                               FontSize="12" FontWeight="SemiBold" Foreground="#374151"
+                               VerticalAlignment="Center" Margin="0,0,12,12"
+                               ToolTipService.ToolTip="Floor factor — capacity never drops below this fraction of target (default 0.40, i.e. 40% of target)"/>
+                    <Slider    Grid.Row="4" Grid.Column="1"
+                               Minimum="0" Maximum="0.80" TickFrequency="0.01"
+                               SmallChange="0.01" LargeChange="0.05"
+                               Value="{Binding SkillBase, Mode=TwoWay}"
+                               VerticalAlignment="Center" Margin="0,0,10,12"/>
+                    <TextBox   Grid.Row="4" Grid.Column="2"
+                               Text="{Binding SkillBase, StringFormat={}{0:F3}, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                               Style="{StaticResource FormTextBoxStyle}" Margin="0,0,10,12"/>
+                    <TextBlock Grid.Row="4" Grid.Column="3"
+                               Text="Floor factor in skill_factor = base + per_point × multiplier  (default 0.40; mult 10 → factor 1.00)"
+                               FontSize="11" Foreground="#94A3B8" VerticalAlignment="Center" Margin="0,0,0,12" TextWrapping="Wrap"/>
+
+                    <!-- Skill Per Point — default 0.06 = 50% of max 0.12 -->
+                    <TextBlock Grid.Row="5" Grid.Column="0" Text="Skill Per Point:"
+                               FontSize="12" FontWeight="SemiBold" Foreground="#374151"
+                               VerticalAlignment="Center" Margin="0,0,12,0"
+                               ToolTipService.ToolTip="Factor increment per multiplier point (default 0.06 → mult 10 gives 0.40 + 0.60 = 1.00)"/>
+                    <Slider    Grid.Row="5" Grid.Column="1"
+                               Minimum="0" Maximum="0.12" TickFrequency="0.002"
+                               SmallChange="0.002" LargeChange="0.01"
+                               Value="{Binding SkillPerPoint, Mode=TwoWay}"
+                               VerticalAlignment="Center" Margin="0,0,10,0"/>
+                    <TextBox   Grid.Row="5" Grid.Column="2"
+                               Text="{Binding SkillPerPoint, StringFormat={}{0:F4}, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                               Style="{StaticResource FormTextBoxStyle}" Margin="0,0,10,0"/>
+                    <TextBlock Grid.Row="5" Grid.Column="3"
+                               Text="Increment per multiplier point  (default 0.06; mult 2 → 0.52, mult 4 → 0.64, mult 6 → 0.76)"
+                               FontSize="11" Foreground="#94A3B8" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                </Grid>
+
+                <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
+                    <Button Content="Save Parameters" Style="{StaticResource PrimaryButtonStyle}"
+                            Click="BtnSaveWorkloadParams_Click" Margin="0,0,12,0"/>
+                    <Button Content="Sync Equipment from Orders" Style="{StaticResource SecondaryButtonStyle}"
+                            Click="BtnSyncEquipment_Click"
+                            ToolTipService.ToolTip="Re-derives equipment types on all ROMPs from imported order keywords. Run this after importing new orders."/>
+                </StackPanel>
+                <TextBlock x:Name="TxtSyncStatus" Text="" FontSize="12" Foreground="#2563EB"
+                           Margin="0,8,0,0" TextWrapping="Wrap"/>
+            </StackPanel>
+        </Border>
+
+        <!-- ── Shared admin lock bar — unlocks BOTH Source Data and Database ── -->
+        <Border Grid.Row="8" CornerRadius="8" Margin="0,0,0,8"
+                Padding="16,10">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="Background"   Value="#FEF9C3"/>
+                    <Setter Property="BorderBrush"  Value="#FDE68A"/>
+                    <Setter Property="BorderThickness" Value="1"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsAdminUnlocked}" Value="True">
+                            <Setter Property="Background"   Value="#D1FAE5"/>
+                            <Setter Property="BorderBrush"  Value="#6EE7B7"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <!-- Locked state text -->
+                    <TextBlock FontSize="12" FontWeight="SemiBold">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Text"       Value="🔒  Admin settings are locked — Source Data and Database require a password to modify."/>
+                                <Setter Property="Foreground" Value="#92400E"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsAdminUnlocked}" Value="True">
+                                        <Setter Property="Text"       Value="🔓  Admin settings unlocked — Source Data and Database are editable for this session."/>
+                                        <Setter Property="Foreground" Value="#065F46"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </StackPanel>
+                <!-- Single Unlock button — solid blue for contrast on amber background -->
+                <Button Grid.Column="1" Content="🔒 Unlock" Click="BtnUnlockAdmin_Click">
+                    <Button.Style>
+                        <Style TargetType="Button" BasedOn="{StaticResource PrimaryButtonStyle}">
+                            <Setter Property="Padding" Value="14,6"/>
+                            <Setter Property="FontSize" Value="12"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsAdminUnlocked}" Value="True">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+            </Grid>
+        </Border>
+
+        <!-- ── Source Data card ── -->
+        <Border Grid.Row="8" Background="White" CornerRadius="10"
+                BorderBrush="#E2E8F0" BorderThickness="1" Padding="24,20" Margin="0,46,0,16">
+            <StackPanel>
+                <TextBlock Text="Source Data" FontSize="16" FontWeight="SemiBold"
+                           Foreground="#0F172A" Margin="0,0,0,4"/>
+
+                <!-- Content — greyed and disabled when locked -->
+                <StackPanel>
+                    <StackPanel.Style>
+                        <Style TargetType="StackPanel">
+                            <Setter Property="Opacity"    Value="0.40"/>
+                            <Setter Property="IsEnabled"  Value="False"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsAdminUnlocked}" Value="True">
+                                    <Setter Property="Opacity"   Value="1.0"/>
+                                    <Setter Property="IsEnabled" Value="True"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </StackPanel.Style>
+                <TextBlock Text="Select the Excel format being imported. Changing this setting requires the admin password."
+                           FontSize="13" Foreground="#64748B" TextWrapping="Wrap" Margin="0,0,0,20"/>
+
+                <!-- VADATA -->
+                <Border CornerRadius="8" Padding="16,14" Margin="0,0,0,10">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Background"       Value="White"/>
+                            <Setter Property="BorderThickness"  Value="1"/>
+                            <Setter Property="BorderBrush"      Value="#E2E8F0"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsVadata}" Value="True">
+                                    <Setter Property="Background"      Value="#EFF6FF"/>
+                                    <Setter Property="BorderThickness" Value="2"/>
+                                    <Setter Property="BorderBrush"     Value="#2563EB"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <StackPanel Orientation="Horizontal">
+                        <RadioButton GroupName="SourceData" VerticalAlignment="Top"
+                                     IsChecked="{Binding IsVadata, Mode=OneWay}"
+                                     Click="BtnVadata_Click" Margin="0,2,12,0"/>
+                        <StackPanel>
+                            <TextBlock Text="VADATA  (default)" FontSize="13" FontWeight="SemiBold" Foreground="#0F172A"/>
+                            <TextBlock Text="Standard 33-column VADATA export (A–AG)."
+                                       FontSize="12" Foreground="#64748B" Margin="0,3,0,0"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Tableau -->
+                <Border CornerRadius="8" Padding="16,14" Margin="0,0,0,10">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Background"       Value="White"/>
+                            <Setter Property="BorderThickness"  Value="1"/>
+                            <Setter Property="BorderBrush"      Value="#E2E8F0"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsTableau}" Value="True">
+                                    <Setter Property="Background"      Value="#EFF6FF"/>
+                                    <Setter Property="BorderThickness" Value="2"/>
+                                    <Setter Property="BorderBrush"     Value="#2563EB"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <StackPanel Orientation="Horizontal">
+                        <RadioButton GroupName="SourceData" VerticalAlignment="Top"
+                                     IsChecked="{Binding IsTableau, Mode=OneWay}"
+                                     Click="BtnTableau_Click" Margin="0,2,12,0"/>
+                        <StackPanel>
+                            <TextBlock Text="Tableau  (Details.xlsx)" FontSize="13" FontWeight="SemiBold" Foreground="#0F172A"/>
+                            <TextBlock Text="42-column Tableau export. Includes Price, Credit Hold, Product Code, and more."
+                                       FontSize="12" Foreground="#64748B" Margin="0,3,0,0" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Open Lines Report -->
+                <Border CornerRadius="8" Padding="16,14">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Background"       Value="White"/>
+                            <Setter Property="BorderThickness"  Value="1"/>
+                            <Setter Property="BorderBrush"      Value="#E2E8F0"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsOpenLines}" Value="True">
+                                    <Setter Property="Background"      Value="#EFF6FF"/>
+                                    <Setter Property="BorderThickness" Value="2"/>
+                                    <Setter Property="BorderBrush"     Value="#2563EB"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <StackPanel Orientation="Horizontal">
+                        <RadioButton GroupName="SourceData" VerticalAlignment="Top"
+                                     IsChecked="{Binding IsOpenLines, Mode=OneWay}"
+                                     Click="BtnOpenLines_Click" Margin="0,2,12,0"/>
+                        <StackPanel>
+                            <TextBlock Text="Open Lines Report  (Open Lines Report.xlsx)" FontSize="13" FontWeight="SemiBold" Foreground="#0F172A"/>
+                            <TextBlock Text="25-column Open Lines Report. Includes Promise Date, Sales Tax, Qty Invoiced, and more."
+                                       FontSize="12" Foreground="#64748B" Margin="0,3,0,0" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+                </StackPanel><!-- end locked content -->
+            </StackPanel>
+        </Border>
+
+        <!-- ── Upload Method card ── -->
+        <Border Grid.Row="1" Background="White" CornerRadius="10"
+                BorderBrush="#E2E8F0" BorderThickness="1" Padding="24,20" Margin="0,0,0,16">
+            <StackPanel>
+                <TextBlock Text="Upload Method" FontSize="16" FontWeight="SemiBold"
+                           Foreground="#0F172A" Margin="0,0,0,4"/>
+                <TextBlock Text="Choose how order files are imported into the system."
+                           FontSize="13" Foreground="#64748B" Margin="0,0,0,20"/>
+
+                <!-- Manual option -->
+                <Border CornerRadius="8" BorderBrush="#E2E8F0" Padding="16,14" Margin="0,0,0,10">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Background" Value="White"/>
+                            <Setter Property="BorderThickness" Value="1"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsManual}" Value="True">
+                                    <Setter Property="Background" Value="#EFF6FF"/>
+                                    <Setter Property="BorderThickness" Value="2"/>
+                                    <Setter Property="BorderBrush" Value="#2563EB"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <StackPanel Orientation="Horizontal">
+                        <RadioButton GroupName="UploadMethod" VerticalAlignment="Top"
+                                     IsChecked="{Binding IsManual, Mode=OneWay}"
+                                     Click="BtnManual_Click" Margin="0,2,12,0"/>
+                        <StackPanel>
+                            <TextBlock Text="Manual" FontSize="13" FontWeight="SemiBold" Foreground="#0F172A"/>
+                            <TextBlock Text="Import files manually via the Import Excel button on the Orders page."
+                                       FontSize="12" Foreground="#64748B" Margin="0,3,0,0" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Semi Automatic option -->
+                <Border CornerRadius="8" BorderBrush="#E2E8F0" Padding="16,14" Margin="0,0,0,20">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Background" Value="White"/>
+                            <Setter Property="BorderThickness" Value="1"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsSemiAutomatic}" Value="True">
+                                    <Setter Property="Background" Value="#EFF6FF"/>
+                                    <Setter Property="BorderThickness" Value="2"/>
+                                    <Setter Property="BorderBrush" Value="#2563EB"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <StackPanel Orientation="Horizontal">
+                        <RadioButton GroupName="UploadMethod" VerticalAlignment="Top"
+                                     IsChecked="{Binding IsSemiAutomatic, Mode=OneWay}"
+                                     Click="BtnSemiAuto_Click" Margin="0,2,12,0"/>
+                        <StackPanel>
+                            <TextBlock Text="Semi Automatic" FontSize="13" FontWeight="SemiBold" Foreground="#0F172A"/>
+                            <TextBlock Text="Automatically detect and import new files from a watched folder."
+                                       FontSize="12" Foreground="#64748B" Margin="0,3,0,0" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <Button Content="Save Upload Method" Style="{StaticResource PrimaryButtonStyle}"
+                        HorizontalAlignment="Left" Click="BtnSaveMethod_Click"/>
+            </StackPanel>
+        </Border>
+
+        <!-- ── Semi-Auto import settings card (hidden when Manual) ── -->
+        <Border Grid.Row="2" Background="White" CornerRadius="10"
+                BorderBrush="#E2E8F0" BorderThickness="1" Padding="24,20">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsSemiAutomatic}" Value="True">
+                            <Setter Property="Visibility" Value="Visible"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+            <StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                    <TextBlock Text="Import Settings" FontSize="16" FontWeight="SemiBold" Foreground="#0F172A"/>
+                    <Border Background="#FEF9C3" BorderBrush="#FDE68A" BorderThickness="1"
+                            CornerRadius="4" Padding="8,2" Margin="10,0,0,0" VerticalAlignment="Center">
+                        <TextBlock Text="Semi Automatic" FontSize="11" Foreground="#92400E" FontWeight="SemiBold"/>
+                    </Border>
+                </StackPanel>
+                <TextBlock Text="The system will poll the folder below at the configured interval. Valid Excel files will be imported automatically and moved to a 'processed' subfolder."
+                           FontSize="13" Foreground="#64748B" TextWrapping="Wrap" Margin="0,0,0,24"/>
+
+                <!-- Import Folder -->
+                <TextBlock Text="Import Folder" FontSize="12" FontWeight="SemiBold"
+                           Foreground="#374151" Margin="0,0,0,6"/>
+                <Grid Margin="0,0,0,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="TxtImportFolder"
+                             Text="{Binding ImportFolder, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             Style="{StaticResource FormTextBoxStyle}" IsReadOnly="True"/>
+                    <Button Grid.Column="1" Content="Browse"
+                            Style="{StaticResource SecondaryButtonStyle}"
+                            Click="BtnBrowse_Click" Margin="8,0,8,0" Padding="14,8"/>
+                    <Button Grid.Column="2" Content="New Folder"
+                            Style="{StaticResource SecondaryButtonStyle}"
+                            Click="BtnNewFolder_Click" Padding="14,8"/>
+                </Grid>
+
+                <!-- Inline new folder input (hidden by default) -->
+                <Border x:Name="NewFolderPanel" Visibility="Collapsed"
+                        Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1"
+                        CornerRadius="6" Padding="12,10" Margin="0,0,0,12">
+                    <StackPanel>
+                        <TextBlock Text="New folder name" FontSize="11" FontWeight="SemiBold"
+                                   Foreground="#374151" Margin="0,0,0,6"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="TxtNewFolderName" Style="{StaticResource FormTextBoxStyle}"/>
+                            <Button Grid.Column="1" Content="Create" Style="{StaticResource PrimaryButtonStyle}"
+                                    Click="BtnCreateFolder_Click" Margin="8,0,8,0" Padding="14,8"/>
+                            <Button Grid.Column="2" Content="Cancel" Style="{StaticResource SecondaryButtonStyle}"
+                                    Click="BtnCancelNewFolder_Click" Padding="14,8"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- Poll Time -->
+                <TextBlock Text="Poll Time (seconds)" FontSize="12" FontWeight="SemiBold"
+                           Foreground="#374151" Margin="0,16,0,6"/>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                    <TextBox x:Name="TxtPollTime"
+                             Text="{Binding PollTimeSeconds, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             Style="{StaticResource FormTextBoxStyle}" Width="120"/>
+                    <TextBlock Text="seconds  (minimum: 60)" FontSize="12" Foreground="#94A3B8"
+                               VerticalAlignment="Center" Margin="12,0,0,0"/>
+                </StackPanel>
+
+                <!-- Validation hint -->
+                <TextBlock FontSize="11" Foreground="#EF4444" Margin="0,6,0,0">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding CanSaveImportSettings}" Value="False">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                    <Run Text="Please select a valid import folder and set poll time ≥ 60 seconds."/>
+                </TextBlock>
+
+                <!-- Status message -->
+                <TextBlock Text="{Binding StatusMessage}" FontSize="12" Foreground="#2563EB"
+                           Margin="0,10,0,0" TextWrapping="Wrap"/>
+
+                <!-- Save button -->
+                <Button Content="Save Import Settings" Style="{StaticResource PrimaryButtonStyle}"
+                        IsEnabled="{Binding CanSaveImportSettings}"
+                        HorizontalAlignment="Left" Margin="0,20,0,0"
+                        Click="BtnSaveImportSettings_Click"/>
+            </StackPanel>
+        </Border>
+
+        <!-- ── Assignment Rules card ── -->
+        <Border Grid.Row="3" Background="White" CornerRadius="10"
+                BorderBrush="#E2E8F0" BorderThickness="1" Padding="24,20" Margin="0,0,0,16">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                    <TextBlock Text="Assignment Rules" FontSize="16" FontWeight="SemiBold" Foreground="#0F172A"/>
+                    <Border Background="#EFF6FF" BorderBrush="#BFDBFE" BorderThickness="1"
+                            CornerRadius="4" Padding="8,2" Margin="10,0,0,0" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding AssignmentRules.Count, StringFormat='{}{0} rules'}"
+                                   FontSize="10" Foreground="#1D4ED8" FontWeight="SemiBold"/>
+                    </Border>
+                </StackPanel>
+                <TextBlock Text="Rules are evaluated in order. Use ↑↓ to reorder. Higher weight = stronger influence on PM score."
+                           FontSize="13" Foreground="#64748B" TextWrapping="Wrap" Margin="0,0,0,20"/>
+
+                <!-- Rules DataGrid -->
+                <Border CornerRadius="8" BorderBrush="#E2E8F0" BorderThickness="1" ClipToBounds="True" Margin="0,0,0,14">
+                    <DataGrid x:Name="RulesGrid"
+                              Style="{StaticResource AppDataGridStyle}"
+                              CellStyle="{StaticResource DataGridCellStyle}"
+                              ColumnHeaderStyle="{StaticResource DataGridColumnHeaderStyle}"
+                              ItemsSource="{Binding AssignmentRules}"
+                              BorderThickness="0" RowHeight="48"
+                              RowEditEnding="RulesGrid_RowEditEnding">
+                        <DataGrid.Columns>
+
+                            <!-- Active toggle -->
+                            <DataGridCheckBoxColumn Header="On"
+                                                    Binding="{Binding IsActive, UpdateSourceTrigger=PropertyChanged}"
+                                                    Width="45"/>
+
+                            <!-- Rule name (read-only for built-in) -->
+                            <DataGridTemplateColumn Header="Rule" Width="160" SortMemberPath="Name">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel VerticalAlignment="Center" Margin="4,0">
+                                            <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold" Foreground="#0F172A"/>
+                                            <TextBlock FontSize="10" Foreground="#94A3B8">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Text" Value="Custom"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsBuiltIn}" Value="True">
+                                                                <Setter Property="Text" Value="Built-in"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                                <DataGridTemplateColumn.CellEditingTemplate>
+                                    <DataTemplate>
+                                        <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
+                                                 BorderThickness="0" FontSize="12" Padding="4,0"
+                                                 IsReadOnly="{Binding IsBuiltIn}"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellEditingTemplate>
+                            </DataGridTemplateColumn>
+
+                            <!-- Description -->
+                            <DataGridTextColumn Header="Description"
+                                                Binding="{Binding Description}"
+                                                Width="*"/>
+
+                            <!-- Weight -->
+                            <DataGridTextColumn Header="Wt"
+                                                Binding="{Binding Weight}"
+                                                Width="50"/>
+
+                            <!-- Reorder buttons -->
+                            <DataGridTemplateColumn Header="Order" Width="80">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Button Content="↑" Tag="{Binding}"
+                                                    Click="BtnRuleUp_Click"
+                                                    Width="30" FontSize="14"
+                                                    Style="{StaticResource IconButtonStyle}"
+                                                    Margin="0,0,4,0"/>
+                                            <Button Content="↓" Tag="{Binding}"
+                                                    Click="BtnRuleDown_Click"
+                                                    Width="30" FontSize="14"
+                                                    Style="{StaticResource IconButtonStyle}"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <!-- Delete (custom rules only) -->
+                            <DataGridTemplateColumn Header="" Width="75">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Button Content="Delete" Tag="{Binding}"
+                                                Click="BtnDeleteRule_Click">
+                                            <Button.Style>
+                                                <Style TargetType="Button" BasedOn="{StaticResource DangerButtonStyle}">
+                                                    <Setter Property="Padding" Value="8,4"/>
+                                                    <Setter Property="FontSize" Value="11"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsBuiltIn}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                        </Button>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Border>
+
+                <Button Content="+ Add Custom Rule" Style="{StaticResource SecondaryButtonStyle}"
+                        HorizontalAlignment="Left" Click="BtnAddRule_Click"/>
+            </StackPanel>
+        </Border>
+
+        <!-- ── Site/ROMP Statuses card ── -->
+        <Border Grid.Row="6" Background="White" CornerRadius="10"
+                BorderBrush="#E2E8F0" BorderThickness="1" Padding="24,20" Margin="0,0,0,16">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                    <TextBlock Text="Site / ROMP Statuses" FontSize="16" FontWeight="SemiBold" Foreground="#0F172A"/>
+                    <Border Background="#EFF6FF" BorderBrush="#BFDBFE" BorderThickness="1"
+                            CornerRadius="4" Padding="8,2" Margin="10,0,0,0" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding RompStatuses.Count, StringFormat='{}{0} statuses'}"
+                                   FontSize="10" Foreground="#1D4ED8" FontWeight="SemiBold"/>
+                    </Border>
+                </StackPanel>
+                <TextBlock FontSize="13" Foreground="#64748B" TextWrapping="Wrap" Margin="0,0,0,20">
+                    <Run Text="Define which statuses are available for ROMPs. "/>
+                    <Run Text="&quot;Excluded from workload&quot;" FontWeight="SemiBold"/>
+                    <Run Text=" statuses (e.g. Complete) are ignored when calculating a PM's site count and utilization. "/>
+                    <Run Text="&quot;Counts as Active&quot;" FontWeight="SemiBold"/>
+                    <Run Text=" statuses turn a site's indicator yellow."/>
+                </TextBlock>
+
+                <!-- Statuses DataGrid -->
+                <Border CornerRadius="8" BorderBrush="#E2E8F0" BorderThickness="1" ClipToBounds="True" Margin="0,0,0,14">
+                    <DataGrid x:Name="StatusGrid"
+                              Style="{StaticResource AppDataGridStyle}"
+                              CellStyle="{StaticResource DataGridCellStyle}"
+                              ColumnHeaderStyle="{StaticResource DataGridColumnHeaderStyle}"
+                              ItemsSource="{Binding RompStatuses}"
+                              BorderThickness="0" RowHeight="48"
+                              RowEditEnding="StatusGrid_RowEditEnding">
+                        <DataGrid.Columns>
+
+                            <!-- Name (read-only for built-in) -->
+                            <DataGridTemplateColumn Header="Status Name" Width="140" SortMemberPath="Name">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel VerticalAlignment="Center" Margin="4,0">
+                                            <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold" Foreground="#0F172A"/>
+                                            <TextBlock FontSize="10" Foreground="#94A3B8">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Text" Value="Custom"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsBuiltIn}" Value="True">
+                                                                <Setter Property="Text" Value="Built-in"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                                <DataGridTemplateColumn.CellEditingTemplate>
+                                    <DataTemplate>
+                                        <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
+                                                 BorderThickness="0" FontSize="12" Padding="4,0"
+                                                 IsReadOnly="{Binding IsBuiltIn}"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellEditingTemplate>
+                            </DataGridTemplateColumn>
+
+                            <!-- Excluded from workload (IsComplete) -->
+                            <DataGridTemplateColumn Header="Excluded from Workload" Width="160">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <CheckBox IsChecked="{Binding IsComplete, UpdateSourceTrigger=PropertyChanged}"
+                                                  HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                  Click="ChkStatusComplete_Click"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <!-- Counts as Active (CountsAsActive) -->
+                            <DataGridTemplateColumn Header="Counts as Active" Width="130">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <CheckBox IsChecked="{Binding CountsAsActive, UpdateSourceTrigger=PropertyChanged}"
+                                                  HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                  Click="ChkStatusActive_Click"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <!-- Score Wt — slider (0→2.4; CX default 1.2 = 50%) + value display -->
+                            <DataGridTemplateColumn Header="Score Wt" Width="180" CanUserSort="False">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="4,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="42"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0"
+                                                       Text="{Binding ScoreWeight, StringFormat={}{0:F2}}"
+                                                       FontSize="12" Foreground="#0F172A"
+                                                       VerticalAlignment="Center"/>
+                                            <Slider Grid.Column="1"
+                                                    Minimum="0" Maximum="2.4"
+                                                    TickFrequency="0.1" SmallChange="0.05"
+                                                    Value="{Binding ScoreWeight, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                    VerticalAlignment="Center"
+                                                    Thumb.DragCompleted="StatusScoreSlider_DragCompleted"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <!-- Reorder buttons -->
+                            <DataGridTemplateColumn Header="Order" Width="80">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Button Content="↑" Tag="{Binding}"
+                                                    Click="BtnStatusUp_Click"
+                                                    Width="30" FontSize="14"
+                                                    Style="{StaticResource IconButtonStyle}"
+                                                    Margin="0,0,4,0"/>
+                                            <Button Content="↓" Tag="{Binding}"
+                                                    Click="BtnStatusDown_Click"
+                                                    Width="30" FontSize="14"
+                                                    Style="{StaticResource IconButtonStyle}"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <!-- Delete (custom statuses only) -->
+                            <DataGridTemplateColumn Header="" Width="75">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Button Content="Delete" Tag="{Binding}"
+                                                Click="BtnDeleteStatus_Click">
+                                            <Button.Style>
+                                                <Style TargetType="Button" BasedOn="{StaticResource DangerButtonStyle}">
+                                                    <Setter Property="Padding" Value="8,4"/>
+                                                    <Setter Property="FontSize" Value="11"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsBuiltIn}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                        </Button>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Border>
+
+                <Button Content="+ Add Custom Status" Style="{StaticResource SecondaryButtonStyle}"
+                        HorizontalAlignment="Left" Click="BtnAddStatus_Click"/>
+            </StackPanel>
+        </Border>
+
+        <!-- ── Equipment Score Categories card ── -->
+        <Border Grid.Row="7" Background="White" CornerRadius="10"
+                BorderBrush="#E2E8F0" BorderThickness="1" Padding="24,20" Margin="0,0,0,16">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                    <TextBlock Text="Equipment Score Categories" FontSize="16" FontWeight="SemiBold" Foreground="#0F172A"/>
+                    <Border Background="#FDF4FF" BorderBrush="#E9D5FF" BorderThickness="1"
+                            CornerRadius="4" Padding="8,2" Margin="10,0,0,0" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding EquipmentCategories.Count, StringFormat='{}{0} categories'}"
+                                   FontSize="10" Foreground="#7E22CE" FontWeight="SemiBold"/>
+                    </Border>
+                </StackPanel>
+                <TextBlock FontSize="13" Foreground="#64748B" TextWrapping="Wrap" Margin="0,0,0,16">
+                    <Run Text="Each category groups one or more keywords (comma-separated) matched case-insensitively in "/>
+                    <Run Text="ItemDescription" FontStyle="Italic"/>
+                    <Run Text=" for orders where "/>
+                    <Run Text="Item" FontStyle="Italic"/>
+                    <Run Text=" starts with the prefix below. Exclusion categories are checked first; first scoring match wins."/>
+                </TextBlock>
+
+                <!-- Item filter prefix -->
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,20">
+                    <TextBlock Text="Item Filter Prefix:" FontSize="12" FontWeight="SemiBold"
+                               Foreground="#374151" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                    <TextBox x:Name="TxtItemPrefix"
+                             Text="{Binding ItemFilterPrefix, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             Style="{StaticResource FormTextBoxStyle}" Width="120"/>
+                    <Button Content="Save" Style="{StaticResource SecondaryButtonStyle}"
+                            Margin="8,0,0,0" Padding="12,6" FontSize="12"
+                            Click="BtnSaveItemPrefix_Click"/>
+                    <TextBlock Text="Only orders whose Item column starts with this value are scored (default: SOLI)"
+                               FontSize="11" Foreground="#94A3B8" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                </StackPanel>
+
+                <!-- Categories DataGrid -->
+                <Border CornerRadius="8" BorderBrush="#E2E8F0" BorderThickness="1" ClipToBounds="True" Margin="0,0,0,14">
+                    <DataGrid x:Name="EquipGrid"
+                              Style="{StaticResource AppDataGridStyle}"
+                              CellStyle="{StaticResource DataGridCellStyle}"
+                              ColumnHeaderStyle="{StaticResource DataGridColumnHeaderStyle}"
+                              ItemsSource="{Binding EquipmentCategories}"
+                              BorderThickness="0" RowHeight="52"
+                              RowEditEnding="EquipGrid_RowEditEnding">
+                        <DataGrid.Columns>
+
+                            <!-- Category name -->
+                            <DataGridTemplateColumn Header="Category" Width="110" SortMemberPath="Name">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel VerticalAlignment="Center" Margin="4,0">
+                                            <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="Bold" Foreground="#0F172A"/>
+                                            <TextBlock FontSize="10" Foreground="#94A3B8">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Text" Value="Custom"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsBuiltIn}" Value="True">
+                                                                <Setter Property="Text" Value="Built-in"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                                <DataGridTemplateColumn.CellEditingTemplate>
+                                    <DataTemplate>
+                                        <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
+                                                 BorderThickness="0" FontSize="13" FontWeight="Bold" Padding="4,0"
+                                                 IsReadOnly="{Binding IsBuiltIn}"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellEditingTemplate>
+                            </DataGridTemplateColumn>
+
+                            <!-- Keywords (comma-separated, always editable) -->
+                            <DataGridTemplateColumn Header="Keywords  (comma-separated, matched in ItemDescription)" Width="*">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding KeywordsText}"
+                                                   FontSize="12" FontFamily="Consolas"
+                                                   Foreground="#374151" VerticalAlignment="Center" Margin="4,0"
+                                                   TextWrapping="Wrap"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                                <DataGridTemplateColumn.CellEditingTemplate>
+                                    <DataTemplate>
+                                        <TextBox Text="{Binding KeywordsText, UpdateSourceTrigger=PropertyChanged}"
+                                                 BorderThickness="0" FontSize="12" FontFamily="Consolas"
+                                                 Padding="4,0" TextWrapping="Wrap"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellEditingTemplate>
+                            </DataGridTemplateColumn>
+
+                            <!-- Score Wt — slider (0→3.2; PAX default 1.6 = 50%) + value display -->
+                            <DataGridTemplateColumn Header="Score Wt" Width="180" CanUserSort="False">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="4,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="42"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0"
+                                                       Text="{Binding Weight, StringFormat={}{0:F2}}"
+                                                       FontSize="12" Foreground="#0F172A"
+                                                       VerticalAlignment="Center"/>
+                                            <Slider Grid.Column="1"
+                                                    Minimum="0" Maximum="3.2"
+                                                    TickFrequency="0.1" SmallChange="0.05"
+                                                    Value="{Binding Weight, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                    VerticalAlignment="Center"
+                                                    Thumb.DragCompleted="EquipScoreSlider_DragCompleted"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <!-- Exclusion flag -->
+                            <DataGridTemplateColumn Header="Exclude" Width="72">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <CheckBox IsChecked="{Binding IsExcluded, UpdateSourceTrigger=PropertyChanged}"
+                                                  HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                  ToolTipService.ToolTip="Matching lines are skipped — not scored"
+                                                  Click="ChkEquipExcluded_Click"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <!-- Reorder -->
+                            <DataGridTemplateColumn Header="Order" Width="80">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Button Content="↑" Tag="{Binding}" Click="BtnEquipUp_Click"
+                                                    Width="30" FontSize="14" Style="{StaticResource IconButtonStyle}" Margin="0,0,4,0"/>
+                                            <Button Content="↓" Tag="{Binding}" Click="BtnEquipDown_Click"
+                                                    Width="30" FontSize="14" Style="{StaticResource IconButtonStyle}"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <!-- Delete (custom only) -->
+                            <DataGridTemplateColumn Header="" Width="75">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Button Content="Delete" Tag="{Binding}" Click="BtnDeleteEquip_Click">
+                                            <Button.Style>
+                                                <Style TargetType="Button" BasedOn="{StaticResource DangerButtonStyle}">
+                                                    <Setter Property="Padding" Value="8,4"/>
+                                                    <Setter Property="FontSize" Value="11"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsBuiltIn}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                        </Button>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Border>
+
+                <Button Content="+ Add Category" Style="{StaticResource SecondaryButtonStyle}"
+                        HorizontalAlignment="Left" Click="BtnAddEquip_Click"/>
+            </StackPanel>
+        </Border>
+
+        <!-- ── Database card ── -->
+        <Border Grid.Row="9" Background="White" CornerRadius="10"
+                BorderBrush="#E2E8F0" BorderThickness="1" Padding="24,20" Margin="0,0,0,16">
+            <StackPanel>
+                <!-- Title + travel mode badge (no unlock button here — shared bar above Source Data handles it) -->
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                    <TextBlock Text="Database" FontSize="16" FontWeight="SemiBold" Foreground="#0F172A"/>
+                    <Border Background="#FEF9C3" BorderBrush="#FDE68A"
+                            BorderThickness="1" CornerRadius="4" Padding="8,2"
+                            Margin="10,0,0,0" VerticalAlignment="Center">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsTravelMode}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <TextBlock Text="✈ TRAVEL MODE" FontSize="10" Foreground="#92400E" FontWeight="SemiBold"/>
+                    </Border>
+                </StackPanel>
+
+                <!-- Content — greyed and disabled when locked (same IsAdminUnlocked) -->
+                <StackPanel>
+                    <StackPanel.Style>
+                        <Style TargetType="StackPanel">
+                            <Setter Property="Opacity"   Value="0.40"/>
+                            <Setter Property="IsEnabled" Value="False"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsAdminUnlocked}" Value="True">
+                                    <Setter Property="Opacity"   Value="1.0"/>
+                                    <Setter Property="IsEnabled" Value="True"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </StackPanel.Style>
+                <TextBlock FontSize="13" Foreground="#64748B" TextWrapping="Wrap" Margin="0,0,0,20">
+                    <Run Text="Choose where the application stores its data. "/>
+                    <Run Text="Local" FontWeight="SemiBold"/>
+                    <Run Text=" is the default (one database per machine). "/>
+                    <Run Text="Network" FontWeight="SemiBold"/>
+                    <Run Text=" shares a single SQLite file across machines. "/>
+                    <Run Text="Cloud" FontWeight="SemiBold"/>
+                    <Run Text=" connects to a MariaDB server for always-synced multi-user access."/>
+                </TextBlock>
+
+                <!-- ── Option 1: Local ── -->
+                <Border CornerRadius="8" Padding="16,14" Margin="0,0,0,10">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Background" Value="White"/>
+                            <Setter Property="BorderThickness" Value="1"/>
+                            <Setter Property="BorderBrush" Value="#E2E8F0"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsDbLocal}" Value="True">
+                                    <Setter Property="Background" Value="#EFF6FF"/>
+                                    <Setter Property="BorderThickness" Value="2"/>
+                                    <Setter Property="BorderBrush" Value="#2563EB"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <StackPanel Orientation="Horizontal">
+                        <RadioButton GroupName="DbMode" VerticalAlignment="Top"
+                                     IsChecked="{Binding IsDbLocal, Mode=OneWay}"
+                                     Click="BtnDbLocal_Click" Margin="0,2,12,0"/>
+                        <StackPanel>
+                            <TextBlock Text="Local  (default)" FontSize="13" FontWeight="SemiBold" Foreground="#0F172A"/>
+                            <TextBlock FontSize="12" Foreground="#64748B" Margin="0,3,0,0" TextWrapping="Wrap"
+                                       Text="Each machine stores data in %LOCALAPPDATA%\PMDashboard\data.db. Simple, no setup required. Data is not shared between users."/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- ── Option 2: Network ── -->
+                <Border CornerRadius="8" Padding="16,14" Margin="0,0,0,10">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Background" Value="White"/>
+                            <Setter Property="BorderThickness" Value="1"/>
+                            <Setter Property="BorderBrush" Value="#E2E8F0"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsDbNetwork}" Value="True">
+                                    <Setter Property="Background" Value="#EFF6FF"/>
+                                    <Setter Property="BorderThickness" Value="2"/>
+                                    <Setter Property="BorderBrush" Value="#2563EB"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <RadioButton GroupName="DbMode" VerticalAlignment="Top"
+                                         IsChecked="{Binding IsDbNetwork, Mode=OneWay}"
+                                         Click="BtnDbNetwork_Click" Margin="0,2,12,0"/>
+                            <StackPanel>
+                                <TextBlock Text="Network" FontSize="13" FontWeight="SemiBold" Foreground="#0F172A"/>
+                                <TextBlock FontSize="12" Foreground="#64748B" Margin="0,3,0,0" TextWrapping="Wrap"
+                                           Text="All machines read/write a shared SQLite file on a network drive. Best for teams in the same office. Use Travel Sync when working offline."/>
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- Network path + buttons (visible when Network selected) -->
+                        <StackPanel Margin="24,14,0,0">
+                            <StackPanel.Style>
+                                <Style TargetType="StackPanel">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsDbNetwork}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </StackPanel.Style>
+
+                            <TextBlock Text="Network database path  (e.g. \\server\share\PMDashboard\data.db)"
+                                       FontSize="11" FontWeight="SemiBold" Foreground="#374151" Margin="0,0,0,6"/>
+                            <Grid Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBox x:Name="TxtNetworkPath"
+                                         Text="{Binding NetworkDbPath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         Style="{StaticResource FormTextBoxStyle}"/>
+                                <Button Grid.Column="1" Content="Browse" Style="{StaticResource SecondaryButtonStyle}"
+                                        Click="BtnBrowseNetworkDb_Click" Margin="8,0,8,0" Padding="12,8"/>
+                                <Button Grid.Column="2" Content="Apply" Style="{StaticResource PrimaryButtonStyle}"
+                                        Click="BtnApplyNetwork_Click" Padding="12,8"/>
+                            </Grid>
+
+                            <!-- First-time setup -->
+                            <TextBlock Text="First time setup:" FontSize="12" FontWeight="SemiBold"
+                                       Foreground="#374151" Margin="0,0,0,6"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                                <Button Content="Create Network DB from Local" Style="{StaticResource SecondaryButtonStyle}"
+                                        Click="BtnCreateNetworkDb_Click" Padding="12,8" Margin="0,0,10,0"/>
+                                <TextBlock Text="Copies your current local database to the network path as the initial shared database."
+                                           FontSize="11" Foreground="#94A3B8" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="320"/>
+                            </StackPanel>
+
+                            <!-- Travel sync -->
+                            <Border Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1"
+                                    CornerRadius="8" Padding="16,12">
+                                <StackPanel>
+                                    <TextBlock Text="✈  Travel Sync" FontSize="13" FontWeight="SemiBold"
+                                               Foreground="#0F172A" Margin="0,0,0,6"/>
+                                    <TextBlock FontSize="12" Foreground="#64748B" TextWrapping="Wrap" Margin="0,0,0,14">
+                                        <Run Text="Before traveling:"/>
+                                        <Run Text=" sync copies the network database to your local machine so you can work offline. "/>
+                                        <Run Text="After traveling:"/>
+                                        <Run Text=" sync merges both databases using LastModified timestamps — the most recently changed version of each record wins. New records from either side are added to both. Note: record "/>
+                                        <Run Text="deletions" FontWeight="SemiBold"/>
+                                        <Run Text=" made while offline are not propagated (a tombstone table would be required for that)."/>
+                                    </TextBlock>
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button Content="Sync Before Travel  (Download)"
+                                                Click="BtnSyncBefore_Click" Padding="12,8" Margin="0,0,10,0">
+                                            <Button.Style>
+                                                <Style TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsTravelMode}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                        </Button>
+                                        <Button Content="Sync After Travel  (Upload + Pull)"
+                                                Click="BtnSyncAfter_Click" Padding="12,8">
+                                            <Button.Style>
+                                                <Style TargetType="Button" BasedOn="{StaticResource PrimaryButtonStyle}">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsTravelMode}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                        </Button>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- ── Option 3: Cloud (MariaDB) ── -->
+                <Border CornerRadius="8" Padding="16,14" Margin="0,0,0,10">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Background" Value="White"/>
+                            <Setter Property="BorderThickness" Value="1"/>
+                            <Setter Property="BorderBrush" Value="#E2E8F0"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsDbCloud}" Value="True">
+                                    <Setter Property="Background" Value="#EFF6FF"/>
+                                    <Setter Property="BorderThickness" Value="2"/>
+                                    <Setter Property="BorderBrush" Value="#2563EB"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <RadioButton GroupName="DbMode" VerticalAlignment="Top"
+                                         IsChecked="{Binding IsDbCloud, Mode=OneWay}"
+                                         Click="BtnDbCloud_Click" Margin="0,2,12,0"/>
+                            <StackPanel>
+                                <TextBlock Text="Cloud  (MariaDB)" FontSize="13" FontWeight="SemiBold" Foreground="#0F172A"/>
+                                <TextBlock FontSize="12" Foreground="#64748B" Margin="0,3,0,0" TextWrapping="Wrap"
+                                           Text="Connects to a MariaDB server. All users share the same data in real time. Requires network access at all times."/>
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- Cloud fields (visible when Cloud selected) -->
+                        <StackPanel Margin="24,14,0,0">
+                            <StackPanel.Style>
+                                <Style TargetType="StackPanel">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsDbCloud}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </StackPanel.Style>
+
+                            <!-- Connection fields grid -->
+                            <Grid Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="220"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="100"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Host:" FontSize="12" FontWeight="SemiBold"
+                                           Foreground="#374151" VerticalAlignment="Center" Margin="0,0,10,10"/>
+                                <TextBox   Grid.Row="0" Grid.Column="1"
+                                           Text="{Binding CloudHost, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                           Style="{StaticResource FormTextBoxStyle}" Margin="0,0,0,10"/>
+                                <TextBlock Grid.Row="0" Grid.Column="2" Text="Port:" FontSize="12" FontWeight="SemiBold"
+                                           Foreground="#374151" VerticalAlignment="Center" Margin="16,0,10,10"/>
+                                <TextBox   Grid.Row="0" Grid.Column="3"
+                                           Text="{Binding CloudPort, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                           Style="{StaticResource FormTextBoxStyle}" Margin="0,0,0,10"/>
+
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Database:" FontSize="12" FontWeight="SemiBold"
+                                           Foreground="#374151" VerticalAlignment="Center" Margin="0,0,10,10"/>
+                                <TextBox   Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="3"
+                                           Text="{Binding CloudDatabase, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                           Style="{StaticResource FormTextBoxStyle}" Margin="0,0,0,10"/>
+
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="Username:" FontSize="12" FontWeight="SemiBold"
+                                           Foreground="#374151" VerticalAlignment="Center" Margin="0,0,10,10"/>
+                                <TextBox   Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="3"
+                                           Text="{Binding CloudUser, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                           Style="{StaticResource FormTextBoxStyle}" Margin="0,0,0,10"/>
+
+                                <TextBlock Grid.Row="3" Grid.Column="0" Text="Password:" FontSize="12" FontWeight="SemiBold"
+                                           Foreground="#374151" VerticalAlignment="Center" Margin="0,0,10,10"/>
+                                <PasswordBox x:Name="TxtCloudPassword" Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="3"
+                                             Style="{StaticResource FormPasswordBoxStyle}"
+                                             PasswordChanged="CloudPassword_Changed" Margin="0,0,0,10"/>
+                            </Grid>
+
+                            <!-- Sync interval -->
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                                <TextBlock Text="Sync interval:" FontSize="12" FontWeight="SemiBold"
+                                           Foreground="#374151" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                <TextBox Text="{Binding CloudSyncInterval, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         Style="{StaticResource FormTextBoxStyle}" Width="70"/>
+                                <TextBlock Text="seconds  (how often background sync runs, default 30)"
+                                           FontSize="11" Foreground="#94A3B8" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                            </StackPanel>
+
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                                <Button Content="Test Connection" Style="{StaticResource SecondaryButtonStyle}"
+                                        Click="BtnTestCloud_Click" Padding="12,8" Margin="0,0,10,0"/>
+                                <Button Content="Apply Cloud Settings" Style="{StaticResource PrimaryButtonStyle}"
+                                        Click="BtnApplyCloud_Click" Padding="12,8"/>
+                            </StackPanel>
+
+                            <!-- Live sync status (visible when cloud sync is running) -->
+                            <Border Background="#F0FDF4" BorderBrush="#BBF7D0" BorderThickness="1"
+                                    CornerRadius="6" Padding="12,8" Margin="0,0,0,12">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsDbCloud}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal">
+                                        <Ellipse Width="8" Height="8" Fill="#16A34A"
+                                                 VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <TextBlock Text="{Binding CloudSyncStatus}"
+                                                   FontSize="12" Foreground="#166534"
+                                                   VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                        <Button Content="Refresh" Style="{StaticResource SecondaryButtonStyle}"
+                                                Click="BtnRefreshSyncStatus_Click"
+                                                Padding="8,3" FontSize="11" Margin="12,0,0,0"/>
+                                    </StackPanel>
+                                    <Button Content="Force Push All Data to Cloud"
+                                            Style="{StaticResource SecondaryButtonStyle}"
+                                            Click="BtnForcePush_Click"
+                                            Padding="8,4" FontSize="11" Margin="0,8,0,0"
+                                            HorizontalAlignment="Left"
+                                            ToolTipService.ToolTip="Overwrites every cloud record with local data, regardless of timestamps. Use after a schema change (new column) or when sync is stuck."/>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- DDL Script -->
+                            <Border BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="0">
+                                <StackPanel>
+                                    <DockPanel Margin="14,12,14,8">
+                                        <Button DockPanel.Dock="Right" Content="Copy Script"
+                                                Style="{StaticResource SecondaryButtonStyle}"
+                                                Click="BtnCopyDdl_Click" Padding="10,4" FontSize="11"/>
+                                        <TextBlock Text="phpMyAdmin Setup Script" FontSize="13" FontWeight="SemiBold"
+                                                   Foreground="#0F172A" VerticalAlignment="Center"/>
+                                        <TextBlock Text="  —  Run this SQL in phpMyAdmin to create all tables on your server."
+                                                   FontSize="11" Foreground="#64748B" VerticalAlignment="Center"/>
+                                    </DockPanel>
+                                    <TextBox x:Name="TxtDdl"
+                                             IsReadOnly="True" TextWrapping="NoWrap"
+                                             HorizontalScrollBarVisibility="Auto"
+                                             VerticalScrollBarVisibility="Auto"
+                                             FontFamily="Consolas" FontSize="11"
+                                             Foreground="#1E293B" Background="#F8FAFC"
+                                             BorderThickness="0,1,0,0" BorderBrush="#E2E8F0"
+                                             Height="200" Padding="12,10"/>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Status message (always visible — outside locked zone) -->
+                <TextBlock Text="{Binding DbStatusMessage}" FontSize="12" Foreground="#2563EB"
+                           Margin="0,10,0,0" TextWrapping="Wrap"/>
+                </StackPanel><!-- end locked content -->
+            </StackPanel>
+        </Border>
+
+    </Grid>
+    </ScrollViewer>
+</UserControl>
