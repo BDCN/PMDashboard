@@ -275,20 +275,37 @@
                         </TextBlock.Style>
                     </TextBlock>
                 </StackPanel>
-                <!-- Single Unlock button — solid blue for contrast on amber background -->
-                <Button Grid.Column="1" Content="🔒 Unlock" Click="BtnUnlockAdmin_Click">
-                    <Button.Style>
-                        <Style TargetType="Button" BasedOn="{StaticResource PrimaryButtonStyle}">
-                            <Setter Property="Padding" Value="14,6"/>
-                            <Setter Property="FontSize" Value="12"/>
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding IsAdminUnlocked}" Value="True">
-                                    <Setter Property="Visibility" Value="Collapsed"/>
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </Button.Style>
-                </Button>
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <!-- Single Unlock button — solid blue for contrast on amber background -->
+                    <Button Content="🔒 Unlock" Click="BtnUnlockAdmin_Click">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource PrimaryButtonStyle}">
+                                <Setter Property="Padding" Value="14,6"/>
+                                <Setter Property="FontSize" Value="12"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsAdminUnlocked}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                    <!-- Change password — only offered once unlocked for this session -->
+                    <Button Content="🔑 Change Password" Click="BtnChangeAdminPassword_Click">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
+                                <Setter Property="Padding" Value="14,6"/>
+                                <Setter Property="FontSize" Value="12"/>
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsAdminUnlocked}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                </StackPanel>
             </Grid>
         </Border>
 
@@ -1375,6 +1392,26 @@
                                              Foreground="#1E293B" Background="#F8FAFC"
                                              BorderThickness="0,1,0,0" BorderBrush="#E2E8F0"
                                              Height="200" Padding="12,10"/>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Danger zone — destructive, admin-gated with the rest of this card -->
+                            <Border BorderBrush="#FECACA" BorderThickness="1" CornerRadius="8"
+                                    Background="#FEF2F2" Padding="14,12" Margin="0,12,0,0">
+                                <StackPanel>
+                                    <TextBlock Text="Danger Zone" FontSize="13" FontWeight="SemiBold"
+                                               Foreground="#991B1B" Margin="0,0,0,4"/>
+                                    <TextBlock FontSize="11" Foreground="#7F1D1D" TextWrapping="Wrap"
+                                               Margin="0,0,0,10"
+                                               Text="Deletes every Order, Location, Site, ROMP, saved report and custom column from THIS computer's local database. Your PM roster is kept, along with settings, statuses, equipment categories and the admin password. In Cloud mode the next sync pulls the cloud's copy back down — nothing is deleted from the cloud."/>
+                                    <Button Content="Delete Local Database Data"
+                                            Click="BtnDeleteLocalData_Click"
+                                            Padding="12,6" FontSize="12"
+                                            HorizontalAlignment="Left"
+                                            Style="{StaticResource DangerButtonStyle}"
+                                            ToolTipService.ToolTip="Empties this machine's local data so the cloud copy becomes authoritative. Cannot be undone."/>
+                                    <TextBlock x:Name="TxtDeleteLocalStatus" FontSize="11" Foreground="#7F1D1D"
+                                               TextWrapping="Wrap" Margin="0,8,0,0" Visibility="Collapsed"/>
                                 </StackPanel>
                             </Border>
                         </StackPanel>

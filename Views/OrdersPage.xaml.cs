@@ -51,6 +51,9 @@ public partial class OrdersPage : UserControl
             MessageBox.Show(
                 $"Import complete.\n\n" +
                 $"Orders:  {result.Added} added,  {result.Updated} updated,  {result.Skipped} unchanged\n" +
+                (result.DuplicatesSkipped > 0
+                    ? $"Duplicate rows skipped:  {result.DuplicatesSkipped}\n"
+                    : "") +
                 $"Locations created:  {result.LocationsCreated}\n" +
                 $"Sites created:  {result.SitesCreated}\n" +
                 $"ROMPs created:  {result.RompsCreated}",

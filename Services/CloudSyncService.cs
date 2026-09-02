@@ -51,6 +51,8 @@ public sealed class CloudSyncService : IDisposable
 
         // Hook immediate push on every local save
         AppDbContext.LocalSaved += OnLocalSaved;
+        // ...and an immediate mirror refresh after every cloud write
+        AppDbContext.CloudSaved += OnCloudSaved;
 
         // Initial full pull on background thread; start timer after it finishes
         Task.Run(async () =>
@@ -68,6 +70,7 @@ public sealed class CloudSyncService : IDisposable
         _timer    = null;
         IsRunning = false;
         AppDbContext.LocalSaved -= OnLocalSaved;
+        AppDbContext.CloudSaved -= OnCloudSaved;
         Report("Cloud sync stopped");
     }
 
@@ -75,9 +78,30 @@ public sealed class CloudSyncService : IDisposable
 
     // ── Event-driven push after local save ────────────────────────────────────
 
+    /// <summary>Pulls just-written rows down so mirror-backed grids reflect the edit at once.</summary>
+    private void OnCloudSaved()
+    {
+        if (!_initialDone || !CloudRuntime.IsCloudActive) return;
+        Task.Run(async () =>
+        {
+            if (!await _lock.WaitAsync(0)) return;   // a sync is already running; its pull covers this
+            try
+            {
+                int mirrored = DoPull(_lastSyncUtc);
+                _lastSyncUtc = DateTime.UtcNow;
+                if (mirrored > 0) Report($"Mirrored {mirrored} record(s)  {DateTime.Now:HH:mm:ss}");
+            }
+            catch (Exception ex) { Report($"Mirror error: {InnerMessage(ex)}"); }
+            finally { _lock.Release(); }
+        });
+    }
+
     private void OnLocalSaved()
     {
         if (!_initialDone) return;
+        // Only raised for writes that landed in the local mirror (offline fallback); a
+        // cloud-direct write has already reached the server.
+        if (CloudRuntime.IsCloudActive) return;
         Task.Run(async () =>
         {
             if (!await _lock.WaitAsync(0)) return;   // already syncing — skip
@@ -99,6 +123,20 @@ public sealed class CloudSyncService : IDisposable
         try
         {
             if (!_initialDone) return;
+
+            // Cloud-direct: the app already wrote straight to the server, so the local file
+            // is a mirror and has nothing the cloud needs. Pushing it would be worse than
+            // pointless — the first push sends EVERY local row, which would upload this
+            // machine's stale mirror over data another machine owns. Pull only.
+            if (CloudRuntime.IsCloudActive)
+            {
+                int mirrored = DoPull(_lastSyncUtc);
+                _lastSyncUtc = DateTime.UtcNow;
+                LastSyncTime = DateTime.Now;
+                Report($"Mirrored  {LastSyncTime:HH:mm:ss}  (↓{mirrored})");
+                return;
+            }
+
             var since = _lastSyncUtc;
             // First push after startup sends ALL local records so that records with the
             // migration-default LastModified ('2000-01-01') are not filtered out.
@@ -126,27 +164,29 @@ public sealed class CloudSyncService : IDisposable
 
             // Pull each table independently so a failure in one table doesn't block others.
             // FK-safe order: parents before children.
-            InitialPullTable("PMs",                 cloud.PMs.AsNoTracking().ToList(),                db => db.PMs,                e => e.Id, e => e.LastModified);
-            InitialPullTable("Locations",            cloud.Locations.AsNoTracking().ToList(),           db => db.Locations,          e => e.Id, e => e.LastModified);
-            InitialPullTable("RompStatuses",         cloud.RompStatuses.AsNoTracking().ToList(),        db => db.RompStatuses,       e => e.Id, e => e.LastModified);
-            InitialPullTable("AssignmentRules",      cloud.AssignmentRules.AsNoTracking().ToList(),     db => db.AssignmentRules,    e => e.Id, e => e.LastModified);
-            InitialPullTable("EquipmentCategories",  cloud.EquipmentCategories.AsNoTracking().ToList(), db => db.EquipmentCategories,e => e.Id, e => e.LastModified);
-            InitialPullTable("EquipmentKeywords",    cloud.EquipmentKeywords.AsNoTracking().ToList(),   db => db.EquipmentKeywords,  e => e.Id, e => e.LastModified);
-            InitialPullTable("Sites",                cloud.Sites.AsNoTracking().ToList(),               db => db.Sites,              e => e.Id, e => e.LastModified);
-            InitialPullTable("Romps",                cloud.Romps.AsNoTracking().ToList(),               db => db.Romps,              e => e.Id, e => e.LastModified);
+            InitialPullTable("PMs",                 CloudDelta(cloud, c => c.PMs, e => e.LastModified),                db => db.PMs,                e => e.Id, e => e.LastModified);
+            InitialPullTable("Locations",            CloudDelta(cloud, c => c.Locations, e => e.LastModified),           db => db.Locations,          e => e.Id, e => e.LastModified);
+            InitialPullTable("RompStatuses",         CloudDelta(cloud, c => c.RompStatuses, e => e.LastModified),        db => db.RompStatuses,       e => e.Id, e => e.LastModified);
+            InitialPullTable("AssignmentRules",      CloudDelta(cloud, c => c.AssignmentRules, e => e.LastModified),     db => db.AssignmentRules,    e => e.Id, e => e.LastModified);
+            InitialPullTable("EquipmentCategories",  CloudDelta(cloud, c => c.EquipmentCategories, e => e.LastModified), db => db.EquipmentCategories,e => e.Id, e => e.LastModified);
+            InitialPullTable("EquipmentKeywords",    CloudDelta(cloud, c => c.EquipmentKeywords, e => e.LastModified),   db => db.EquipmentKeywords,  e => e.Id, e => e.LastModified);
+            InitialPullTable("Sites",                CloudDelta(cloud, c => c.Sites, e => e.LastModified),               db => db.Sites,              e => e.Id, e => e.LastModified);
+            InitialPullTable("Romps",                CloudDelta(cloud, c => c.Romps, e => e.LastModified),               db => db.Romps,              e => e.Id, e => e.LastModified);
             // RompEquipmentTypes uses natural key (RompId, EquipmentCategoryId) — not Id — to avoid
             // unique constraint violations when both sides have the same pair under different auto-increment Ids.
-            InitialPullRompEquipmentTypes(cloud.RompEquipmentTypes.AsNoTracking().ToList());
-            InitialPullTable("Orders",               cloud.Orders.AsNoTracking().ToList(),              db => db.Orders,             e => e.Id, e => e.LastModified);
-            InitialPullTable("SavedReports",         cloud.SavedReports.AsNoTracking().ToList(),        db => db.SavedReports,       e => e.Id, e => e.LastModified);
-            InitialPullTable("CustomColumns",        cloud.CustomColumns.AsNoTracking().ToList(),       db => db.CustomColumns,      e => e.Id, e => e.LastModified);
-            InitialPullTable("CustomRows",           cloud.CustomRows.AsNoTracking().ToList(),          db => db.CustomRows,         e => e.Id, e => e.LastModified);
+            InitialPullRompEquipmentTypes(CloudDelta(cloud, c => c.RompEquipmentTypes, e => e.LastModified));
+            InitialPullTable("Orders",               CloudDelta(cloud, c => c.Orders, e => e.LastModified),              db => db.Orders,             e => e.Id, e => e.LastModified);
+            InitialPullTable("SavedReports",         CloudDelta(cloud, c => c.SavedReports, e => e.LastModified),        db => db.SavedReports,       e => e.Id, e => e.LastModified);
+            InitialPullTable("CustomColumns",        CloudDelta(cloud, c => c.CustomColumns, e => e.LastModified),       db => db.CustomColumns,      e => e.Id, e => e.LastModified);
+            InitialPullTable("Users",                CloudDelta(cloud, c => c.Users,        e => e.LastModified), db => db.Users,        e => e.Id, e => e.LastModified);
+            InitialPullTable("AuditEntries",         CloudDelta(cloud, c => c.AuditEntries, e => e.LastModified), db => db.AuditEntries, e => e.Id, e => e.LastModified);
+            InitialPullTable("CustomRows",           CloudDelta(cloud, c => c.CustomRows, e => e.LastModified),          db => db.CustomRows,         e => e.Id, e => e.LastModified);
 
             // AppConfigs (string PK)
             try
             {
-                using var local = new AppDbContext { SkipLastModifiedStamp = true };
-                BatchPushConfigs(cloud.AppConfigs.AsNoTracking().ToList(), local);
+                using var local = new AppDbContext { ForceLocal = true, SkipLastModifiedStamp = true };
+                BatchPushConfigs(CloudDelta(cloud, c => c.AppConfigs, e => e.LastModified), local);
                 local.SaveChanges();
             }
             catch (Exception ex)
@@ -167,6 +207,25 @@ public sealed class CloudSyncService : IDisposable
         finally { _lock.Release(); }
     }
 
+    /// <summary>
+    /// Cloud rows newer than anything the mirror already holds for that table.
+    ///
+    /// The initial pull used to fetch every row of every table on each launch, which at
+    /// 131k orders means re-downloading the whole table to discover nothing changed. The
+    /// mirror's own max LastModified is the watermark, so a warm mirror transfers almost
+    /// nothing and a cold one still pulls everything.
+    /// </summary>
+    private static List<T> CloudDelta<T>(
+        AppDbContext cloud,
+        Func<AppDbContext, DbSet<T>> set,
+        System.Linq.Expressions.Expression<Func<T, DateTime>> getMod) where T : class
+    {
+        using var local = new AppDbContext { ForceLocal = true };
+        var localSet    = set(local).AsNoTracking();
+        var watermark   = localSet.Any() ? localSet.Max(getMod) : DateTime.MinValue;
+        return Since(set(cloud), watermark, getMod);
+    }
+
     private void InitialPullTable<T>(
         string tableName,
         IReadOnlyList<T> cloudRows,
@@ -176,7 +235,7 @@ public sealed class CloudSyncService : IDisposable
     {
         try
         {
-            using var local = new AppDbContext { SkipLastModifiedStamp = true };
+            using var local = new AppDbContext { ForceLocal = true, SkipLastModifiedStamp = true };
             BatchPush(cloudRows, getSet(local), local, getId, getLastMod);
             local.SaveChanges();
         }
@@ -190,7 +249,7 @@ public sealed class CloudSyncService : IDisposable
     {
         try
         {
-            using var local = new AppDbContext { SkipLastModifiedStamp = true };
+            using var local = new AppDbContext { ForceLocal = true, SkipLastModifiedStamp = true };
             foreach (var record in cloudRows)
             {
                 bool exists = local.RompEquipmentTypes.Any(
@@ -217,7 +276,7 @@ public sealed class CloudSyncService : IDisposable
 
     private int DoPush(DateTime since)
     {
-        using var local = new AppDbContext();
+        using var local = new AppDbContext { ForceLocal = true };
         using var cloud = new AppDbContext { ForceCloud = true, SkipLastModifiedStamp = true };
         int total = 0;
 
@@ -234,6 +293,8 @@ public sealed class CloudSyncService : IDisposable
         total += BatchPush(Since(local.SavedReports,        since, e => e.LastModified), cloud.SavedReports,       cloud, e => e.Id, e => e.LastModified);
         total += BatchPush(Since(local.CustomColumns,       since, e => e.LastModified), cloud.CustomColumns,      cloud, e => e.Id, e => e.LastModified);
         total += BatchPush(Since(local.CustomRows,          since, e => e.LastModified), cloud.CustomRows,         cloud, e => e.Id, e => e.LastModified);
+        total += BatchPush(Since(local.Users,               since, e => e.LastModified), cloud.Users,              cloud, e => e.Id, e => e.LastModified);
+        total += BatchPush(Since(local.AuditEntries,        since, e => e.LastModified), cloud.AuditEntries,       cloud, e => e.Id, e => e.LastModified);
         total += BatchPushConfigs(Since(local.AppConfigs, since, c => c.LastModified), cloud);
 
         if (total > 0) cloud.SaveChanges();
@@ -245,7 +306,7 @@ public sealed class CloudSyncService : IDisposable
     private int DoPull(DateTime since)
     {
         using var cloud = new AppDbContext { ForceCloud = true };
-        using var local = new AppDbContext { SkipLastModifiedStamp = true };
+        using var local = new AppDbContext { ForceLocal = true, SkipLastModifiedStamp = true };
         int total = 0;
 
         total += BatchPush(Since(cloud.PMs,                since, e => e.LastModified), local.PMs,                local, e => e.Id, e => e.LastModified);
@@ -261,6 +322,8 @@ public sealed class CloudSyncService : IDisposable
         total += BatchPush(Since(cloud.SavedReports,        since, e => e.LastModified), local.SavedReports,       local, e => e.Id, e => e.LastModified);
         total += BatchPush(Since(cloud.CustomColumns,       since, e => e.LastModified), local.CustomColumns,      local, e => e.Id, e => e.LastModified);
         total += BatchPush(Since(cloud.CustomRows,          since, e => e.LastModified), local.CustomRows,         local, e => e.Id, e => e.LastModified);
+        total += BatchPush(Since(cloud.Users,               since, e => e.LastModified), local.Users,              local, e => e.Id, e => e.LastModified);
+        total += BatchPush(Since(cloud.AuditEntries,        since, e => e.LastModified), local.AuditEntries,       local, e => e.Id, e => e.LastModified);
         total += BatchPushConfigs(Since(cloud.AppConfigs, since, c => c.LastModified), local);
 
         if (total > 0) local.SaveChanges();
@@ -379,7 +442,7 @@ public sealed class CloudSyncService : IDisposable
 
     private void DoForcePush()
     {
-        using var local = new AppDbContext();
+        using var local = new AppDbContext { ForceLocal = true };
         using var cloud = new AppDbContext { ForceCloud = true, SkipLastModifiedStamp = true };
 
         ForceMergeTable(local.PMs.AsNoTracking().ToList(),                cloud.PMs,                cloud, e => e.Id);
@@ -391,9 +454,12 @@ public sealed class CloudSyncService : IDisposable
         ForceMergeTable(local.Sites.AsNoTracking().ToList(),               cloud.Sites,              cloud, e => e.Id);
         ForceMergeTable(local.Romps.AsNoTracking().ToList(),               cloud.Romps,              cloud, e => e.Id);
         ForceMergeTable(local.RompEquipmentTypes.AsNoTracking().ToList(),  cloud.RompEquipmentTypes, cloud, e => e.Id);
+        ForceMergeTable(local.Orders.AsNoTracking().ToList(),              cloud.Orders,             cloud, e => e.Id);
         ForceMergeTable(local.SavedReports.AsNoTracking().ToList(),        cloud.SavedReports,       cloud, e => e.Id);
         ForceMergeTable(local.CustomColumns.AsNoTracking().ToList(),       cloud.CustomColumns,      cloud, e => e.Id);
         ForceMergeTable(local.CustomRows.AsNoTracking().ToList(),          cloud.CustomRows,         cloud, e => e.Id);
+        ForceMergeTable(local.Users.AsNoTracking().ToList(),               cloud.Users,              cloud, e => e.Id);
+        ForceMergeTable(local.AuditEntries.AsNoTracking().ToList(),        cloud.AuditEntries,       cloud, e => e.Id);
         ForceMergeAppConfigs(local.AppConfigs.AsNoTracking().ToList(),     cloud);
         cloud.SaveChanges();
     }

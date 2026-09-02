@@ -8,6 +8,7 @@
             <RowDefinition Height="Auto"/>  <!-- Title -->
             <RowDefinition Height="Auto"/>  <!-- Filter bar -->
             <RowDefinition Height="*"/>     <!-- Grid -->
+            <RowDefinition Height="Auto"/>  <!-- Pager -->
         </Grid.RowDefinitions>
 
         <!-- ── Title ── -->
@@ -61,10 +62,34 @@
                             Style="{StaticResource FormDatePickerStyle}" Margin="0,0,16,0"/>
 
                 <Button Content="Apply Filter" Style="{StaticResource PrimaryButtonStyle}"
-                        Padding="14,8" Click="BtnApplyFilter_Click" Margin="0,0,16,0"/>
+                        Padding="14,8" Click="BtnApplyFilter_Click" Margin="0,0,8,0"/>
+
+                <Button Content="Clear Column Filters" Click="BtnClearColumnFilters_Click"
+                        Margin="0,0,16,0">
+                    <Button.Style>
+                        <Style TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
+                            <Setter Property="Padding"    Value="14,8"/>
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding HasActiveFilters}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
 
                 <TextBlock Text="{Binding StatusMessage}" FontSize="12" Foreground="#16A34A"
-                           VerticalAlignment="Center"/>
+                           VerticalAlignment="Center" Margin="0,0,20,0"/>
+
+                <!-- Legend mirrors the grid treatment: accent header over a bordered column -->
+                <Border BorderBrush="#B91C1C" BorderThickness="2" CornerRadius="2"
+                        Width="16" Height="16" Background="White"
+                        VerticalAlignment="Center" Margin="0,0,6,0">
+                    <Border Background="#B91C1C" Height="5" VerticalAlignment="Top"/>
+                </Border>
+                <TextBlock Text="Editable — your custom columns. All other columns are live data and read-only."
+                           FontSize="11" Foreground="#64748B" VerticalAlignment="Center"/>
             </WrapPanel>
         </Border>
 
@@ -75,10 +100,97 @@
                       Style="{StaticResource AppDataGridStyle}"
                       CellStyle="{StaticResource DataGridCellStyle}"
                       ColumnHeaderStyle="{StaticResource DataGridColumnHeaderStyle}"
-                      ItemsSource="{Binding Rows}"
+                      ItemsSource="{Binding FilteredRows}"
                       BorderThickness="0"
+                      CanUserReorderColumns="True"
+                      ColumnReordered="DataGridCustom_ColumnReordered"
                       RowEditEnding="DataGridCustom_RowEditEnding"/>
         </Border>
+
+        <!-- ── Pager ── -->
+        <Border Grid.Row="3" Background="White" CornerRadius="10" BorderBrush="#E2E8F0"
+                BorderThickness="1" Padding="12,8" Margin="0,10,0,0">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <Button Content="&#x00AB; First" Click="BtnFirstPage_Click"
+                        IsEnabled="{Binding CanPrevPage}"
+                        Style="{StaticResource SecondaryButtonStyle}"
+                        Padding="10,4" FontSize="12" Margin="0,0,6,0"/>
+                <Button Content="&#x2039; Prev" Click="BtnPrevPage_Click"
+                        IsEnabled="{Binding CanPrevPage}"
+                        Style="{StaticResource SecondaryButtonStyle}"
+                        Padding="10,4" FontSize="12" Margin="0,0,12,0"/>
+
+                <TextBlock Text="{Binding PageStatus}" FontSize="12" Foreground="#334155"
+                           VerticalAlignment="Center" MinWidth="280"/>
+
+                <Button Content="Next &#x203A;" Click="BtnNextPage_Click"
+                        IsEnabled="{Binding CanNextPage}"
+                        Style="{StaticResource SecondaryButtonStyle}"
+                        Padding="10,4" FontSize="12" Margin="12,0,6,0"/>
+                <Button Content="Last &#x00BB;" Click="BtnLastPage_Click"
+                        IsEnabled="{Binding CanNextPage}"
+                        Style="{StaticResource SecondaryButtonStyle}"
+                        Padding="10,4" FontSize="12" Margin="0,0,20,0"/>
+
+                <TextBlock Text="Rows per page:" FontSize="12" Foreground="#374151"
+                           VerticalAlignment="Center" Margin="0,0,6,0"/>
+                <ComboBox Width="80" ItemsSource="{Binding PageSizeOptions}"
+                          SelectedItem="{Binding PageSize, Mode=TwoWay}"
+                          Style="{StaticResource FormComboBoxStyle}"/>
+            </StackPanel>
+        </Border>
+
+        <!-- ── Column header filter popup — one instance, retargeted to whichever header was clicked ── -->
+        <Popup x:Name="FilterPopup" StaysOpen="False" AllowsTransparency="True"
+               Placement="Bottom" PopupAnimation="Fade" Grid.Row="2">
+            <Border Background="White" BorderBrush="#CBD5E1" BorderThickness="1"
+                    CornerRadius="8" Padding="12" Width="300">
+                <Border.Effect>
+                    <DropShadowEffect Color="#0F172A" BlurRadius="12" ShadowDepth="2" Opacity="0.18"/>
+                </Border.Effect>
+                <StackPanel>
+                    <TextBlock x:Name="TxtFilterColumn" FontSize="13" FontWeight="SemiBold"
+                               Foreground="#0F172A" Margin="0,0,0,8" TextTrimming="CharacterEllipsis"/>
+
+                    <TextBox x:Name="TxtFilterSearch" Style="{StaticResource FormTextBoxStyle}"
+                             Margin="0,0,0,8" TextChanged="TxtFilterSearch_TextChanged"/>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                        <Button Content="Select all" Click="BtnFilterSelectAll_Click"
+                                Style="{StaticResource SecondaryButtonStyle}"
+                                Padding="8,3" FontSize="11" Margin="0,0,8,0"/>
+                        <Button Content="Select none" Click="BtnFilterSelectNone_Click"
+                                Style="{StaticResource SecondaryButtonStyle}"
+                                Padding="8,3" FontSize="11"/>
+                    </StackPanel>
+
+                    <TextBlock x:Name="TxtFilterTruncated" FontSize="10" Foreground="#B45309"
+                               TextWrapping="Wrap" Visibility="Collapsed" Margin="0,0,0,6"/>
+
+                    <Border BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="6">
+                        <ListBox x:Name="LstFilterValues" MaxHeight="240" BorderThickness="0"
+                                 ScrollViewer.VerticalScrollBarVisibility="Auto">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay}"
+                                              Content="{Binding Display}" FontSize="12"
+                                              Foreground="#111827" Margin="2"/>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Border>
+
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+                        <Button Content="Remove filter" Click="BtnFilterRemove_Click"
+                                Style="{StaticResource SecondaryButtonStyle}"
+                                Padding="10,4" FontSize="12" Margin="0,0,8,0"/>
+                        <Button Content="Apply" Click="BtnFilterApply_Click"
+                                Style="{StaticResource PrimaryButtonStyle}"
+                                Padding="14,4" FontSize="12"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Popup>
 
     </Grid>
 </UserControl>

@@ -8,9 +8,34 @@ namespace PMDashboard.Services;
 /// Builds and executes the Report Builder's two mode-specific query pipelines.
 /// Kept separate from the ViewModel so filter composition is independently readable.
 /// </summary>
+/// <summary>One page of results plus the total the filter matched.</summary>
+public sealed record PagedResult<T>(List<T> Rows, int TotalCount, int PageIndex, int PageSize)
+{
+    public int TotalPages => PageSize <= 0 ? 1 : Math.Max(1, (int)Math.Ceiling(TotalCount / (double)PageSize));
+    public int FirstRowNumber => TotalCount == 0 ? 0 : PageIndex * PageSize + 1;
+    public int LastRowNumber  => Math.Min(TotalCount, (PageIndex + 1) * PageSize);
+}
+
 public static class ReportQueryService
 {
-    public static List<Order> RunOrdersQuery(AppDbContext db, ReportFilterState f)
+    public static List<Order> RunOrdersQuery(AppDbContext db, ReportFilterState f) =>
+        ComposeOrders(db, f).OrderBy(o => o.JobName).ToList();
+
+    /// <summary>
+    /// One page of orders, with the total the filter matched. Count and Skip/Take run in SQL,
+    /// so a 131k-row table costs one page of objects rather than materialising the lot.
+    /// </summary>
+    public static PagedResult<Order> RunOrdersQuery(AppDbContext db, ReportFilterState f, int pageIndex, int pageSize)
+    {
+        var q     = ComposeOrders(db, f);
+        int total = q.Count();
+        // Skip/Take needs a deterministic order or rows can repeat or vanish between pages.
+        var rows  = q.OrderBy(o => o.JobName).ThenBy(o => o.Id)
+                     .Skip(pageIndex * pageSize).Take(pageSize).ToList();
+        return new PagedResult<Order>(rows, total, pageIndex, pageSize);
+    }
+
+    private static IQueryable<Order> ComposeOrders(AppDbContext db, ReportFilterState f)
     {
         IQueryable<Order> q = db.Orders.AsNoTracking();
 
@@ -31,6 +56,14 @@ public static class ReportQueryService
             case "RequestedCompletion":
                 if (f.DateFrom.HasValue) q = q.Where(o => o.RequestedCompletion >= f.DateFrom);
                 if (f.DateTo.HasValue)   q = q.Where(o => o.RequestedCompletion <= f.DateTo);
+                break;
+            case "UploadDate":
+                if (f.DateFrom.HasValue) q = q.Where(o => o.UploadDate >= f.DateFrom);
+                if (f.DateTo.HasValue)   q = q.Where(o => o.UploadDate <= f.DateTo);
+                break;
+            case "LastModified":
+                if (f.DateFrom.HasValue) q = q.Where(o => o.LastModified >= f.DateFrom);
+                if (f.DateTo.HasValue)   q = q.Where(o => o.LastModified <= f.DateTo);
                 break;
             default: // OrderDate
                 if (f.DateFrom.HasValue) q = q.Where(o => o.OrderDate >= f.DateFrom);
@@ -59,10 +92,24 @@ public static class ReportQueryService
                 (o.CustomerOrder != null && o.CustomerOrder.ToLower().Contains(lower)));
         }
 
-        return q.OrderBy(o => o.JobName).ToList();
+        return q;
     }
 
-    public static List<SiteRompFlatRow> RunSiteRompQuery(AppDbContext db, ReportFilterState f)
+    public static List<SiteRompFlatRow> RunSiteRompQuery(AppDbContext db, ReportFilterState f) =>
+        Flatten(db, ComposeRomps(db, f).OrderBy(r => r.Site!.Name).ThenBy(r => r.Name).ToList());
+
+    /// <summary>One page of flattened ROMP rows, with the total the filter matched.</summary>
+    public static PagedResult<SiteRompFlatRow> RunSiteRompQuery(
+        AppDbContext db, ReportFilterState f, int pageIndex, int pageSize)
+    {
+        var q     = ComposeRomps(db, f);
+        int total = q.Count();
+        var romps = q.OrderBy(r => r.Site!.Name).ThenBy(r => r.Name).ThenBy(r => r.Id)
+                     .Skip(pageIndex * pageSize).Take(pageSize).ToList();
+        return new PagedResult<SiteRompFlatRow>(Flatten(db, romps), total, pageIndex, pageSize);
+    }
+
+    private static IQueryable<Romp> ComposeRomps(AppDbContext db, ReportFilterState f)
     {
         IQueryable<Romp> q = db.Romps.AsNoTracking()
             .Include(r => r.Site).ThenInclude(s => s.Location)
@@ -92,8 +139,15 @@ public static class ReportQueryService
             q = q.Where(r => r.Name.ToLower().Contains(lower) || r.Site.Name.ToLower().Contains(lower));
         }
 
-        var romps = q.ToList();
+        return q;
+    }
 
+    /// <summary>
+    /// Flattens ROMPs into report rows. Only the rows handed in are flattened, so on a paged
+    /// call the SiteStatus lookup covers just that page's sites.
+    /// </summary>
+    private static List<SiteRompFlatRow> Flatten(AppDbContext db, List<Romp> romps)
+    {
         // Site.SiteStatus depends on ALL of a site's ROMPs, not just the ones in this filtered
         // list — compute it from a separate site-rooted query rather than Include(Site.Romps)
         // on the Romp query above, which would form an EF Core include cycle (Romp → Site → Romps).
@@ -115,6 +169,7 @@ public static class ReportQueryService
             RompStatus           = r.Status,
             EquipmentTypes       = r.EquipmentTypesText,
             LastModified         = r.LastModified,
+            LastModifiedBy       = r.LastModifiedBy,
         }).ToList();
     }
 }

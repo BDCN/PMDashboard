@@ -274,7 +274,7 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>  <!-- Saved reports strip -->
                     <RowDefinition Height="2*"/>     <!-- Results grid -->
-                    <RowDefinition Height="12"/>
+                    <RowDefinition Height="Auto"/>  <!-- Pager -->
                     <RowDefinition Height="Auto"/>  <!-- Chart controls -->
                     <RowDefinition Height="1*"/>     <!-- Chart bars -->
                 </Grid.RowDefinitions>
@@ -314,6 +314,39 @@
                               ColumnHeaderStyle="{StaticResource DataGridColumnHeaderStyle}"
                               ItemsSource="{Binding Results}"
                               BorderThickness="0"/>
+                </Border>
+
+                <!-- Pager -->
+                <Border Grid.Row="2" Background="White" CornerRadius="10" BorderBrush="#E2E8F0"
+                        BorderThickness="1" Padding="12,8" Margin="0,10,0,10">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button Content="&#x00AB; First" Click="BtnFirstPage_Click"
+                                IsEnabled="{Binding CanPrevPage}"
+                                Style="{StaticResource SecondaryButtonStyle}"
+                                Padding="10,4" FontSize="12" Margin="0,0,6,0"/>
+                        <Button Content="&#x2039; Prev" Click="BtnPrevPage_Click"
+                                IsEnabled="{Binding CanPrevPage}"
+                                Style="{StaticResource SecondaryButtonStyle}"
+                                Padding="10,4" FontSize="12" Margin="0,0,12,0"/>
+
+                        <TextBlock Text="{Binding PageStatus}" FontSize="12" Foreground="#334155"
+                                   VerticalAlignment="Center" MinWidth="260"/>
+
+                        <Button Content="Next &#x203A;" Click="BtnNextPage_Click"
+                                IsEnabled="{Binding CanNextPage}"
+                                Style="{StaticResource SecondaryButtonStyle}"
+                                Padding="10,4" FontSize="12" Margin="12,0,6,0"/>
+                        <Button Content="Last &#x00BB;" Click="BtnLastPage_Click"
+                                IsEnabled="{Binding CanNextPage}"
+                                Style="{StaticResource SecondaryButtonStyle}"
+                                Padding="10,4" FontSize="12" Margin="0,0,20,0"/>
+
+                        <TextBlock Text="Rows per page:" FontSize="12" Foreground="#374151"
+                                   VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <ComboBox Width="80" ItemsSource="{Binding PageSizeOptions}"
+                                  SelectedItem="{Binding PageSize, Mode=TwoWay}"
+                                  Style="{StaticResource FormComboBoxStyle}"/>
+                    </StackPanel>
                 </Border>
 
                 <!-- Chart controls -->

@@ -98,6 +98,7 @@ public sealed class AutoImportService : IDisposable
             MoveToProcessed(filePath, "imported");
             Notify($"Auto-imported \"{Path.GetFileName(filePath)}\": " +
                    $"{result.Added} added, {result.Updated} updated, {result.Skipped} unchanged, " +
+                   (result.DuplicatesSkipped > 0 ? $"{result.DuplicatesSkipped} duplicates skipped, " : "") +
                    $"{result.LocationsCreated} locations, {result.SitesCreated} sites, {result.RompsCreated} ROMPs.");
         }
         catch (Exception ex)
@@ -114,14 +115,21 @@ public sealed class AutoImportService : IDisposable
 
         using var db = new AppDbContext();
 
+        // Duplicate keys kept (last/newest wins) rather than throwing — these tables have
+        // no unique constraint, so an existing duplicate would break every future import.
         var existingOrders = db.Orders
             .AsNoTracking()
             .Where(o => o.CustomerOrder != null && o.OrdLine != null)
             .AsEnumerable()
-            .ToDictionary(o => (o.CustomerOrder!, o.OrdLine!));
+            .ToDictionaryLastWins(o => (o.CustomerOrder!, o.OrdLine!), out int dbDuplicates);
 
-        var locationCache = db.Locations.ToDictionary(l => l.Name, StringComparer.OrdinalIgnoreCase);
-        var siteCache     = db.Sites.ToDictionary(s => s.Name,     StringComparer.OrdinalIgnoreCase);
+        var locationCache = db.Locations.ToDictionaryLastWins(l => l.Name, StringComparer.OrdinalIgnoreCase);
+        var siteCache     = db.Sites.ToDictionaryLastWins(s => s.Name,     StringComparer.OrdinalIgnoreCase);
+
+        // Keys inserted during this run, so a key repeated inside the file does not
+        // insert a second copy of the same order.
+        var batchOrderKeys = new HashSet<(string, string)>();
+        int fileDuplicates = 0;
 
         var existingRompSet = db.Romps.AsNoTracking()
             .Select(r => new { SiteName = r.Site!.Name, RompName = r.Name })
@@ -134,20 +142,36 @@ public sealed class AutoImportService : IDisposable
         {
             row.UploadDate = uploadTime;
 
-            if (row.CustomerOrder != null && row.OrdLine != null
-                && existingOrders.TryGetValue((row.CustomerOrder, row.OrdLine), out var found))
+            var orderKey = row.CustomerOrder != null && row.OrdLine != null
+                ? ((string, string)?)(row.CustomerOrder, row.OrdLine)
+                : null;
+
+            if (orderKey is { } key && existingOrders.TryGetValue(key, out var found))
             {
-                // Simplified change detection: only update if upload date differs
-                if (found.UploadDate != uploadTime)
+                // Compare field by field, the same way the manual import does.
+                //
+                // This previously marked every existing row Modified whenever the upload time
+                // differed, without copying a single value across. Two bugs in one: changed
+                // data was never actually applied, and SaveChanges restamped LastModified on
+                // every poll - which is what the report's "Last Changed" column reads, so every
+                // row looked freshly changed after any automatic import.
+                if (OrderMerge.HasChanged(found, row))
                 {
-                    db.Orders.Update(found); // mark for update (timestamp changes triggers refresh)
+                    OrderMerge.ApplyChanges(found, row);
+                    db.Orders.Update(found);   // untracked (AsNoTracking), must mark explicitly
                     updated++;
                 }
                 else skipped++;
             }
+            else if (orderKey is { } dupKey && batchOrderKeys.Contains(dupKey))
+            {
+                // Same key twice in one file — skip the repeat instead of inserting a duplicate.
+                fileDuplicates++;
+            }
             else
             {
                 db.Orders.Add(row);
+                if (orderKey is { } newKey) batchOrderKeys.Add(newKey);
                 added++;
             }
 
@@ -185,7 +209,8 @@ public sealed class AutoImportService : IDisposable
         }
 
         db.SaveChanges();
-        return new ImportResult(added, updated, skipped, locsCreated, sitesCreated, rompsCreated);
+        return new ImportResult(added, updated, skipped, locsCreated, sitesCreated, rompsCreated,
+                                dbDuplicates + fileDuplicates);
     }
 
     // Same parsing as OrdersViewModel.ParseJobName

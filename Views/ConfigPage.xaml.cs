@@ -41,8 +41,25 @@ public partial class ConfigPage : UserControl
     {
         if (Vm is not { } vm) return;
         if (vm.IsAdminUnlocked) return;
-        var dlg = new PasswordDialog { Owner = Window.GetWindow(this) };
+
+        // A system with no password set can't be unlocked by any input, so offer to
+        // set one instead of showing a gate that rejects everything.
+        var mode = AdminConfig.IsConfigured
+            ? PasswordDialogMode.Verify
+            : PasswordDialogMode.SetInitial;
+
+        var dlg = new PasswordDialog(mode) { Owner = Window.GetWindow(this) };
         if (dlg.ShowDialog() == true) vm.UnlockAdmin();
+    }
+
+    private void BtnChangeAdminPassword_Click(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm) return;
+        if (!vm.IsAdminUnlocked) return; // button is only visible while unlocked
+
+        var dlg = new PasswordDialog(PasswordDialogMode.Change) { Owner = Window.GetWindow(this) };
+        if (dlg.ShowDialog() == true)
+            vm.StatusMessage = "Admin password changed. It applies on other machines once they sync.";
     }
 
     // Keep old names as aliases so any stale XAML Click= bindings don't break at runtime
@@ -447,6 +464,60 @@ public partial class ConfigPage : UserControl
 
     private void BtnRefreshSyncStatus_Click(object sender, RoutedEventArgs e) =>
         Vm?.RefreshCloudSyncStatus();
+
+    // ── Danger zone — delete this machine's local data ───────────────────────
+
+    private void BtnDeleteLocalData_Click(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm) return;
+
+        var counts = vm.GetLocalDataCounts();
+        int total  = counts.Values.Sum();
+
+        if (total == 0)
+        {
+            ShowDeleteLocalStatus("Local database is already empty — nothing to delete.");
+            return;
+        }
+
+        var breakdown = string.Join(
+            Environment.NewLine,
+            counts.Where(c => c.Value > 0).Select(c => $"    {c.Key}: {c.Value:N0}"));
+
+        var mode = DatabaseConfig.IsCloud
+            ? "You are in Cloud mode, so the next sync will pull the cloud's copy back down. Nothing is deleted from the cloud."
+            : "You are in Local mode, so this data is NOT stored anywhere else. It cannot be recovered.";
+
+        var first = MessageBox.Show(
+            $"Delete all data from this computer's local database?\n\n{breakdown}\n\n" +
+            $"Total: {total:N0} record(s).\n\n" +
+            $"Your PM roster, settings, statuses, equipment categories and the admin password are kept.\n\n{mode}",
+            "Delete Local Data", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (first != MessageBoxResult.Yes) return;
+
+        // Second gate: irreversible, so require the word to be typed rather than a stray double-click.
+        var dlg = new TextInputDialog(
+            "Confirm Delete",
+            $"This permanently deletes {total:N0} record(s) from this computer and cannot be undone.\n\nType DELETE to confirm:")
+        { Owner = Window.GetWindow(this) };
+
+        if (dlg.ShowDialog() != true) return;
+        if (!string.Equals(dlg.Value, "DELETE", StringComparison.Ordinal))
+        {
+            ShowDeleteLocalStatus("Cancelled — confirmation text did not match.");
+            return;
+        }
+
+        var result = vm.DeleteLocalData();
+        ShowDeleteLocalStatus(result + "  Restart the app to reload from an empty state.");
+        vm.RefreshCloudSyncStatus();
+    }
+
+    private void ShowDeleteLocalStatus(string message)
+    {
+        TxtDeleteLocalStatus.Text       = message;
+        TxtDeleteLocalStatus.Visibility = Visibility.Visible;
+    }
 
     private void BtnForcePush_Click(object sender, RoutedEventArgs e)
     {

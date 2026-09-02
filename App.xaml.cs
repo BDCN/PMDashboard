@@ -8,6 +8,12 @@ namespace PMDashboard;
 
 public partial class App : Application
 {
+    /// <summary>
+    /// First-run password for the seeded super admin. A placeholder only: the account is
+    /// created with MustChangePassword set, so it cannot be used until this is replaced.
+    /// </summary>
+    private const string SeedPassword = "PleaseChangeMe!";
+
     public static AutoImportService AutoImport   { get; } = new AutoImportService();
     public static CloudSyncService  CloudSync    { get; } = new CloudSyncService();
 
@@ -18,15 +24,18 @@ public partial class App : Application
         // Must load before the first AppDbContext is constructed so OnConfiguring
         // knows which provider / path to use.
         DatabaseConfig.Load();
-        AdminConfig.Load();
 
-        using var db = new AppDbContext();
-        db.Database.EnsureCreated();
+        // ── Phase 1: local mirror schema ──────────────────────────────────────
+        // Always run against the local SQLite file: the migrations below are SQLite dialect
+        // (AUTOINCREMENT, ALTER TABLE ADD COLUMN) and would fail on MariaDB. In Cloud mode
+        // this file is the offline mirror, so its schema still has to be kept current.
+        using var schemaDb = new AppDbContext { ForceLocal = true };
+        schemaDb.Database.EnsureCreated();
 
         // ── Schema migrations for existing databases ──────────────────────────
 
         // RompStatuses table (added with the configurable status feature)
-        db.Database.ExecuteSqlRaw("""
+        schemaDb.Database.ExecuteSqlRaw("""
             CREATE TABLE IF NOT EXISTS RompStatuses (
                 Id             INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
                 Name           TEXT    NOT NULL,
@@ -39,22 +48,22 @@ public partial class App : Application
             """);
 
         // ScoreCapacity column on PMs (added with the score-based utilization feature)
-        try { db.Database.ExecuteSqlRaw(
+        try { schemaDb.Database.ExecuteSqlRaw(
             "ALTER TABLE PMs ADD COLUMN ScoreCapacity REAL NOT NULL DEFAULT 0"); }
         catch { /* column already exists */ }
 
         // PmMultiplier column on PMs — nullable integer 1–10 (null = treat as 1.0 factor)
-        try { db.Database.ExecuteSqlRaw(
+        try { schemaDb.Database.ExecuteSqlRaw(
             "ALTER TABLE PMs ADD COLUMN PmMultiplier INTEGER"); }
         catch { /* column already exists */ }
 
         // ScoreWeight column on RompStatuses — now REAL; SQLite stores the value unchanged
-        try { db.Database.ExecuteSqlRaw(
+        try { schemaDb.Database.ExecuteSqlRaw(
             "ALTER TABLE RompStatuses ADD COLUMN ScoreWeight REAL NOT NULL DEFAULT 0"); }
         catch { /* column already exists */ }
 
         // EquipmentWeights table (legacy — kept for schema compat, scoring now uses EquipmentCategories)
-        db.Database.ExecuteSqlRaw("""
+        schemaDb.Database.ExecuteSqlRaw("""
             CREATE TABLE IF NOT EXISTS EquipmentWeights (
                 Id         INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
                 Name       TEXT    NOT NULL,
@@ -67,7 +76,7 @@ public partial class App : Application
             """);
 
         // EquipmentCategories + EquipmentKeywords — the active scoring tables
-        db.Database.ExecuteSqlRaw("""
+        schemaDb.Database.ExecuteSqlRaw("""
             CREATE TABLE IF NOT EXISTS EquipmentCategories (
                 Id         INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
                 Name       TEXT    NOT NULL,
@@ -77,7 +86,7 @@ public partial class App : Application
                 SortOrder  INTEGER NOT NULL
             )
             """);
-        db.Database.ExecuteSqlRaw("""
+        schemaDb.Database.ExecuteSqlRaw("""
             CREATE TABLE IF NOT EXISTS EquipmentKeywords (
                 Id         INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
                 CategoryId INTEGER NOT NULL REFERENCES EquipmentCategories(Id) ON DELETE CASCADE,
@@ -86,7 +95,7 @@ public partial class App : Application
             """);
 
         // RompEquipmentTypes — new junction table linking ROMPs to their equipment categories
-        db.Database.ExecuteSqlRaw("""
+        schemaDb.Database.ExecuteSqlRaw("""
             CREATE TABLE IF NOT EXISTS RompEquipmentTypes (
                 Id                  INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
                 RompId              INTEGER NOT NULL REFERENCES Romps(Id) ON DELETE CASCADE,
@@ -96,7 +105,7 @@ public partial class App : Application
             """);
 
         // SavedReports — Report Builder named presets (filters/columns/chart config as JSON)
-        db.Database.ExecuteSqlRaw("""
+        schemaDb.Database.ExecuteSqlRaw("""
             CREATE TABLE IF NOT EXISTS SavedReports (
                 Id                  INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
                 Name                TEXT    NOT NULL,
@@ -111,7 +120,7 @@ public partial class App : Application
 
         // CustomColumns / CustomRows — user-defined dynamic columns attached to real Orders/ROMPs
         // rows on the Custom Data grid ("Mode" mirrors Report Builder's Orders/SitesRomps split).
-        db.Database.ExecuteSqlRaw("""
+        schemaDb.Database.ExecuteSqlRaw("""
             CREATE TABLE IF NOT EXISTS CustomColumns (
                 Id           INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
                 Mode         TEXT    NOT NULL DEFAULT 'Orders',
@@ -121,7 +130,7 @@ public partial class App : Application
                 SortOrder    INTEGER NOT NULL
             )
             """);
-        db.Database.ExecuteSqlRaw("""
+        schemaDb.Database.ExecuteSqlRaw("""
             CREATE TABLE IF NOT EXISTS CustomRows (
                 Id           INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
                 Mode         TEXT    NOT NULL DEFAULT 'Orders',
@@ -131,18 +140,59 @@ public partial class App : Application
             )
             """);
 
+        // Users / AuditEntries - accounts and the append-only interaction log
+        schemaDb.Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS Users (
+                Id                 INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                Email              TEXT    NOT NULL,
+                FirstName          TEXT    NOT NULL DEFAULT '',
+                LastName           TEXT    NOT NULL DEFAULT '',
+                PasswordHash       TEXT    NOT NULL DEFAULT '',
+                Role               TEXT    NOT NULL DEFAULT 'User',
+                IsActive           INTEGER NOT NULL DEFAULT 1,
+                MustChangePassword INTEGER NOT NULL DEFAULT 0,
+                LastLoginUtc       TEXT    NULL
+            )
+            """);
+        schemaDb.Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS AuditEntries (
+                Id           INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                TimestampUtc TEXT    NOT NULL,
+                UserEmail    TEXT    NOT NULL DEFAULT '',
+                UserName     TEXT    NOT NULL DEFAULT '',
+                Action       TEXT    NOT NULL DEFAULT '',
+                EntityType   TEXT    NOT NULL DEFAULT '',
+                EntityId     INTEGER NULL,
+                Details      TEXT    NOT NULL DEFAULT '',
+                MachineName  TEXT    NOT NULL DEFAULT ''
+            )
+            """);
+
         // Retrofit Mode/EntityId onto CustomColumns/CustomRows for installs where those tables
         // were already created by an earlier version of the app (before rows were tied to
         // real Orders/ROMPs entities).
-        try { db.Database.ExecuteSqlRaw(
+        try { schemaDb.Database.ExecuteSqlRaw(
             "ALTER TABLE CustomColumns ADD COLUMN Mode TEXT NOT NULL DEFAULT 'Orders'"); }
         catch { /* column already exists */ }
-        try { db.Database.ExecuteSqlRaw(
+        try { schemaDb.Database.ExecuteSqlRaw(
             "ALTER TABLE CustomRows ADD COLUMN Mode TEXT NOT NULL DEFAULT 'Orders'"); }
         catch { /* column already exists */ }
-        try { db.Database.ExecuteSqlRaw(
+        try { schemaDb.Database.ExecuteSqlRaw(
             "ALTER TABLE CustomRows ADD COLUMN EntityId INTEGER NOT NULL DEFAULT 0"); }
         catch { /* column already exists */ }
+
+        // LastModifiedBy - who last wrote the row. Only on the entities the reports are
+        // rooted on; EF includes it in every SELECT for those types, so it must exist before
+        // the first query, same rule as LastModified below.
+        foreach (var tbl in new[] { "Orders", "Romps", "Sites" })
+        {
+            try
+            {
+                schemaDb.Database.ExecuteSqlRaw(
+                    $"ALTER TABLE {tbl} ADD COLUMN LastModifiedBy TEXT NOT NULL DEFAULT ''");
+            }
+            catch { /* column already exists on this table */ }
+        }
 
         // ── LastModified column on all tables (must run before any EF query) ────
         // EF Core includes LastModified in every SELECT once the entity model has it.
@@ -158,17 +208,27 @@ public partial class App : Application
             "PMs", "Locations", "Sites", "Romps", "RompEquipmentTypes", "Orders",
             "RompStatuses", "EquipmentCategories", "EquipmentKeywords",
             "AssignmentRules", "AppConfigs", "SavedReports",
-            "CustomColumns", "CustomRows"
+            "CustomColumns", "CustomRows", "Users", "AuditEntries"
         })
         {
             try
             {
-                db.Database.ExecuteSqlRaw(
+                schemaDb.Database.ExecuteSqlRaw(
                     $"ALTER TABLE {tbl} ADD COLUMN LastModified TEXT NOT NULL " +
                     $"DEFAULT '2000-01-01 00:00:00'");
             }
             catch { /* column already exists on this table */ }
         }
+
+        // ── Phase 2: decide which database is authoritative ───────────────────
+        // In Cloud mode the server owns the data and every context below talks to it
+        // directly; the probe latches one answer for the run so OnConfiguring never has to
+        // make a network decision per context. A failed probe falls back to the mirror so
+        // the app still opens, and the Configuration page reports that it did.
+        CloudRuntime.Probe();
+
+        // ── Phase 3: seeds, config and caches on the authoritative database ────
+        using var db = new AppDbContext();
 
         // ── Seed built-in assignment rules ────────────────────────────────────
         if (!db.AssignmentRules.Any())
@@ -283,6 +343,12 @@ public partial class App : Application
         SeedConfig(ConfigKeys.SkillPerPoint,     "0.06");
         db.SaveChanges();
 
+        // ── Admin gate password ───────────────────────────────────────────────
+        // Reads AppConfigs, so it must run after EnsureCreated() and after the
+        // LastModified migrations above — not alongside DatabaseConfig.Load(),
+        // which only touches a file and must run before the first DbContext.
+        AdminConfig.Load();
+
         // ── One-time migration: populate RompEquipmentTypes from existing orders ─
         // Runs only when the junction table is empty (i.e. first launch after schema upgrade).
         // Uses the same keyword-matching logic the old WorkloadViewModel used to score on-the-fly.
@@ -291,6 +357,27 @@ public partial class App : Application
         // ── Load scoring caches ───────────────────────────────────────────────
         StatusConfig.Reload();
         ScoreConfig.Reload();
+
+        // ── Phase 4: authentication ───────────────────────────────────────────
+        // The seed account is created only when no user exists at all, and carries
+        // MustChangePassword so the login flow refuses to continue on this placeholder.
+        // NOTE: SeedPassword is a literal in source and therefore in git history - it is a
+        // first-run placeholder, not a credential, and is replaced at first sign-in.
+        // Decide where accounts live before touching them: a cloud database created from an
+        // older setup script has no Users table, and throwing here used to kill startup
+        // before Config -> Database (which supplies the fixing script) could be reached.
+        UserService.ProbeAccountStore();
+        new UserService().EnsureSeedUser(SeedPassword);
+
+        // ShutdownMode is OnExplicitShutdown (App.xaml) for exactly this: the login dialog is
+        // the only window open, and under the default OnLastWindowClose its closing would end
+        // the application before the main window was ever created.
+        var login = new Dialogs.LoginDialog();
+        if (login.ShowDialog() != true)
+        {
+            Shutdown();
+            return;
+        }
 
         // ── Start cloud background sync (Cloud mode only) ─────────────────────
         if (CloudSyncService.IsAvailable)
@@ -312,6 +399,14 @@ public partial class App : Application
                 AutoImport.Start();
             }
         }
+
+        // ── Show the main window ──────────────────────────────────────────────
+        // Created here rather than via StartupUri so it appears only after a successful
+        // sign-in, and so closing it is what ends the app from this point on.
+        var main = new MainWindow();
+        MainWindow    = main;
+        ShutdownMode  = ShutdownMode.OnMainWindowClose;
+        main.Show();
     }
 
     protected override void OnExit(ExitEventArgs e)

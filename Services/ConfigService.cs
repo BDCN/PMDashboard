@@ -33,6 +33,14 @@ public static class ConfigKeys
     public const string ItemFilterPrefix  = "ItemFilterPrefix";    // Prefix on Item column (default "SOLI") — kept for import display purposes
     public const string PercentageCalculation = "PercentageCalculation"; // "Sites" | "Score"
 
+    // Custom Data grid column order, per mode. Suffixed with the ReportMode name
+    // ("CustomDataColumnOrder_Orders"), value is a JSON array of column keys.
+    public const string CustomDataColumnOrderPrefix = "CustomDataColumnOrder_";
+
+    // Admin gate — PBKDF2 hash of the admin password. Stored here (not in a per-machine
+    // file) so it reaches every machine over the normal AppConfigs sync path.
+    public const string AdminPasswordHash = "AdminPasswordHash";
+
     // Cloud background sync
     public const string CloudSyncInterval = "CloudSyncInterval";  // seconds between sync cycles (default 30)
 

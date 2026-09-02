@@ -8,10 +8,32 @@ namespace PMDashboard.Data;
 public class AppDbContext : DbContext
 {
     /// <summary>
-    /// When true, connect to the MariaDB cloud database instead of local SQLite.
-    /// Only CloudSyncService should set this; all other callers use local SQLite.
+    /// Forces the MariaDB cloud database regardless of the reachability probe.
+    /// Used by CloudSyncService for the mirror's cloud-side reads.
     /// </summary>
     public bool ForceCloud { get; init; }
+
+    /// <summary>
+    /// Forces the local SQLite file even in Cloud mode. Used for the startup schema work
+    /// (whose raw SQL is SQLite dialect) and by CloudSyncService when writing the mirror.
+    /// </summary>
+    public bool ForceLocal { get; init; }
+
+    /// <summary>Set on read contexts; SaveChanges throws rather than writing to the mirror.</summary>
+    public bool ReadOnly { get; init; }
+
+    /// <summary>
+    /// A context for bulk reads: grids, reports and any query that materialises many rows.
+    ///
+    /// In Cloud mode these come from the local mirror rather than MariaDB. Writes still go to
+    /// the cloud through a normal context, so the server keeps assigning identity, but pulling
+    /// 131k orders across a WAN link on every page load is what makes cloud-direct reads
+    /// unusable at this data size. In Local/Network mode this is simply the live database.
+    ///
+    /// It is read-only on purpose: saving through it would write to the mirror, where the change
+    /// would be silently overwritten by the next pull. Misuse throws instead of losing data.
+    /// </summary>
+    public static AppDbContext ForRead() => new() { ForceLocal = true, ReadOnly = true };
 
     /// <summary>
     /// Set to true by CloudSyncService when writing data pulled from the cloud so that
@@ -24,6 +46,13 @@ public class AppDbContext : DbContext
     /// can push the change to cloud immediately (in addition to the periodic timer push).
     /// </summary>
     public static event Action? LocalSaved;
+
+    /// <summary>
+    /// Raised after a write that went to the cloud, so the mirror can be refreshed straight
+    /// away. Without it a grid reading the mirror would not show an edit until the next
+    /// timer tick, up to the sync interval later.
+    /// </summary>
+    public static event Action? CloudSaved;
 
     public DbSet<PM>                 PMs                  => Set<PM>();
     public DbSet<AssignmentRule>     AssignmentRules      => Set<AssignmentRule>();
@@ -40,13 +69,22 @@ public class AppDbContext : DbContext
     public DbSet<SavedReport>        SavedReports         => Set<SavedReport>();
     public DbSet<CustomColumn>       CustomColumns        => Set<CustomColumn>();
     public DbSet<CustomRow>          CustomRows           => Set<CustomRow>();
+    public DbSet<User>               Users                => Set<User>();
+    public DbSet<AuditEntry>         AuditEntries         => Set<AuditEntry>();
 
     protected override void OnConfiguring(DbContextOptionsBuilder options)
     {
-        if (ForceCloud && DatabaseConfig.IsCloud
-                       && !string.IsNullOrWhiteSpace(DatabaseConfig.CloudConnectionString))
+        // Cloud is authoritative in Cloud mode: every context reads and writes MariaDB
+        // directly, and the local SQLite file is only a mirror for offline access.
+        // ForceLocal opts out (startup DDL, mirror writes); ForceCloud opts in regardless
+        // of the reachability probe.
+        var useCloud = !ForceLocal
+                       && DatabaseConfig.IsCloud
+                       && !string.IsNullOrWhiteSpace(DatabaseConfig.CloudConnectionString)
+                       && (ForceCloud || CloudRuntime.IsCloudActive);
+
+        if (useCloud)
         {
-            // Cloud context used exclusively by CloudSyncService
             options.UseMySql(
                 DatabaseConfig.CloudConnectionString,
                 ServerVersion.AutoDetect(DatabaseConfig.CloudConnectionString),
@@ -54,9 +92,7 @@ public class AppDbContext : DbContext
         }
         else
         {
-            // Local SQLite — used by ALL regular app operations regardless of mode.
-            // Cloud mode reads/writes local SQLite for speed; CloudSyncService syncs
-            // those changes to MariaDB in the background.
+            // Local SQLite — the mirror in Cloud mode, the live database otherwise.
             var path = DatabaseConfig.ActiveSqlitePath;
             var dir  = Path.GetDirectoryName(path);
             if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
@@ -68,22 +104,44 @@ public class AppDbContext : DbContext
 
     public override int SaveChanges()
     {
+        GuardReadOnly();
         StampLastModified();
         var result = base.SaveChanges();
-        // Notify CloudSyncService after a local (non-cloud) save
-        if (!ForceCloud && DatabaseConfig.IsCloud)
-            LocalSaved?.Invoke();
+        // Only a save that actually landed in the LOCAL file needs pushing later. When the
+        // cloud is active the write already went to the server, so there is nothing to push.
+        if (NeedsDeferredPush) LocalSaved?.Invoke();
+        else if (WroteToCloud)  CloudSaved?.Invoke();
         return result;
     }
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
+        GuardReadOnly();
         StampLastModified();
         var task = base.SaveChangesAsync(cancellationToken);
-        if (!ForceCloud && DatabaseConfig.IsCloud)
-            LocalSaved?.Invoke();
+        if (NeedsDeferredPush) LocalSaved?.Invoke();
+        else if (WroteToCloud)  CloudSaved?.Invoke();
         return task;
     }
+
+    private void GuardReadOnly()
+    {
+        if (ReadOnly)
+            throw new InvalidOperationException(
+                "This AppDbContext came from ForRead() and cannot save. Reads are served from the "
+              + "local mirror in Cloud mode; writes must use a normal context so they reach the server.");
+    }
+
+    /// <summary>
+    /// True when this save went to the local mirror while Cloud mode is configured — i.e. the
+    /// app is running on the offline fallback, so the change still owes the server an update.
+    /// </summary>
+    private bool NeedsDeferredPush =>
+        !ForceCloud && !ForceLocal && DatabaseConfig.IsCloud && !CloudRuntime.IsCloudActive;
+
+    /// <summary>True when this save landed on the server, so the mirror is now behind.</summary>
+    private bool WroteToCloud =>
+        !ForceLocal && DatabaseConfig.IsCloud && CloudRuntime.IsCloudActive;
 
     private void StampLastModified()
     {
@@ -94,6 +152,12 @@ public class AppDbContext : DbContext
         {
             var prop = entry.Properties.FirstOrDefault(p => p.Metadata.Name == "LastModified");
             if (prop != null) prop.CurrentValue = now;
+
+            // Same treatment for the "who" half, on entities that carry it. Skipped along with
+            // the timestamp when SkipLastModifiedStamp is set, so a sync never rewrites the
+            // author of a row it is merely copying.
+            var byProp = entry.Properties.FirstOrDefault(p => p.Metadata.Name == "LastModifiedBy");
+            if (byProp != null) byProp.CurrentValue = CurrentUser.Email;
         }
     }
 

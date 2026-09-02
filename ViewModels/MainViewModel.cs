@@ -1,5 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 
+using PMDashboard.Services;
+
 namespace PMDashboard.ViewModels;
 
 public partial class MainViewModel : ObservableObject
@@ -35,48 +37,56 @@ public partial class MainViewModel : ObservableObject
 
     public void NavigateToPm()
     {
+        AuditService.Log("Navigate", "Page", details: "PM Maintenance");
         _pmVm.ApplyGeoFilter(GeoFilter);
         CurrentPage = _pmVm;
     }
 
     public void NavigateToSites()
     {
+        AuditService.Log("Navigate", "Page", details: "Sites");
         _sitesVm.ApplyGeoFilter(GeoFilter);
         CurrentPage = _sitesVm;
     }
 
     public void NavigateToOrders()
     {
+        AuditService.Log("Navigate", "Page", details: "Orders");
         _ordersVm.Load();
         CurrentPage = _ordersVm;
     }
 
     public void NavigateToReportBuilder()
     {
+        AuditService.Log("Navigate", "Page", details: "Report Builder");
         _reportBuilderVm.Load();
         CurrentPage = _reportBuilderVm;
     }
 
     public void NavigateToCustomData()
     {
+        AuditService.Log("Navigate", "Page", details: "Custom Data");
         _customDataVm.Load();
         CurrentPage = _customDataVm;
     }
 
     public void NavigateToWorkload()
     {
+        AuditService.Log("Navigate", "Page", details: "Workload");
         _workloadVm.ApplyGeoFilter(GeoFilter);
         CurrentPage = _workloadVm;
     }
 
     public void NavigateToConfig()
     {
+        AuditService.Log("Navigate", "Page", details: "Configuration");
         _configVm.Load();
         CurrentPage = _configVm;
     }
 
     public void NavigateToAssignment()
     {
+        AuditService.Log("Navigate", "Page", details: "Assignment");
         _assignmentVm.Load();
         CurrentPage = _assignmentVm;
     }

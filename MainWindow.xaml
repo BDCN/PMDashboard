@@ -25,6 +25,7 @@
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>  <!-- Logo -->
                     <ColumnDefinition Width="*"/>     <!-- Spacer -->
+                    <ColumnDefinition Width="Auto"/>  <!-- Signed-in user -->
                     <ColumnDefinition Width="Auto"/>  <!-- App name -->
                 </Grid.ColumnDefinitions>
 
@@ -36,8 +37,21 @@
                        RenderOptions.BitmapScalingMode="HighQuality"
                        SnapsToDevicePixels="True"/>
 
+                <!-- Signed-in user - opens the profile -->
+                <Button Grid.Column="2" Click="BtnProfile_Click" Cursor="Hand"
+                        Background="Transparent" BorderThickness="0" Padding="10,4"
+                        Margin="0,0,18,0" VerticalAlignment="Center"
+                        ToolTipService.ToolTip="View or edit your profile">
+                    <StackPanel>
+                        <TextBlock x:Name="TxtCurrentUser" FontSize="12" FontWeight="SemiBold"
+                                   Foreground="#0F172A" HorizontalAlignment="Right"/>
+                        <TextBlock x:Name="TxtCurrentUserRole" FontSize="10" Foreground="#94A3B8"
+                                   HorizontalAlignment="Right" Margin="0,2,0,0"/>
+                    </StackPanel>
+                </Button>
+
                 <!-- App name + subtitle -->
-                <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                <StackPanel Grid.Column="3" VerticalAlignment="Center">
                     <TextBlock Text="PM Dashboard"
                                FontSize="14" FontWeight="SemiBold"
                                Foreground="#0F172A"

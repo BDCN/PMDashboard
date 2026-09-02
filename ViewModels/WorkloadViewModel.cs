@@ -75,7 +75,7 @@ public partial class WorkloadViewModel : ObservableObject
 
     public void Load()
     {
-        using var db = new AppDbContext();
+        using var db = AppDbContext.ForRead();
 
         IQueryable<PM> pmQuery = db.PMs.AsNoTracking().Where(p => p.IsActive);
         if (_geoFilter != "All")

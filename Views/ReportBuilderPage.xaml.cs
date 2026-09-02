@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
+using System.Windows.Media;
 using Microsoft.Win32;
 using PMDashboard.Data.Models;
 using PMDashboard.Dialogs;
@@ -121,6 +122,53 @@ public partial class ReportBuilderPage : UserControl
                 Binding = binding,
             });
         }
+
+        ResultsGrid.Columns.Add(BuildHistoryColumn());
+    }
+
+    /// <summary>
+    /// Trailing column with a link to everything recorded against that row.
+    ///
+    /// Always present rather than user-selectable: it is navigation, not report data, so it
+    /// has no place in the column picker or in an Excel export.
+    /// </summary>
+    private DataGridTemplateColumn BuildHistoryColumn()
+    {
+        var template = new DataTemplate();
+
+        var button = new FrameworkElementFactory(typeof(Button));
+        button.SetValue(ContentControl.ContentProperty, "History");
+        button.SetValue(Button.CursorProperty, System.Windows.Input.Cursors.Hand);
+        button.SetValue(Button.BackgroundProperty, Brushes.Transparent);
+        button.SetValue(Button.BorderThicknessProperty, new Thickness(0));
+        button.SetValue(Button.ForegroundProperty, new SolidColorBrush(Color.FromRgb(0x25, 0x63, 0xEB)));
+        button.SetValue(Button.FontSizeProperty, 12.0);
+        button.SetValue(Button.PaddingProperty, new Thickness(8, 0, 8, 0));
+        button.SetValue(Button.HorizontalAlignmentProperty, HorizontalAlignment.Left);
+        button.AddHandler(Button.ClickEvent, new RoutedEventHandler(HistoryLink_Click));
+        template.VisualTree = button;
+
+        return new DataGridTemplateColumn
+        {
+            Header      = "History",
+            Width       = 90,
+            CanUserSort = false,
+            CellTemplate = template,
+        };
+    }
+
+    private void HistoryLink_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { DataContext: ReportRow row }) return;
+        if (string.IsNullOrEmpty(row.EntityType)) return;
+
+        // Label the dialog with something recognisable from the row itself rather than a bare Id.
+        var label = row.Values.GetValueOrDefault("JobName")?.ToString()
+                 ?? row.Values.GetValueOrDefault("RompName")?.ToString()
+                 ?? $"{row.EntityType} #{row.EntityId}";
+
+        new RowHistoryDialog(row.EntityType, row.EntityId, label) { Owner = Window.GetWindow(this) }
+            .ShowDialog();
     }
 
     // ── Multi-select filter ListBoxes ───────────────────────────────────────
@@ -196,7 +244,7 @@ public partial class ReportBuilderPage : UserControl
 
     // ── Run report ───────────────────────────────────────────────────────────
 
-    private void BtnRunReport_Click(object sender, RoutedEventArgs e) => Vm?.RunQuery();
+    private void BtnRunReport_Click(object sender, RoutedEventArgs e) => Vm?.RunReport();
 
     // ── Chart controls ──────────────────────────────────────────────────────
 
@@ -282,6 +330,13 @@ public partial class ReportBuilderPage : UserControl
         if (confirm != MessageBoxResult.Yes) return;
         vm.DeleteSavedReport(vm.SelectedSavedReport);
     }
+
+    // ── Paging ───────────────────────────────────────────────────────────────
+
+    private void BtnFirstPage_Click(object sender, RoutedEventArgs e) => Vm?.FirstPage();
+    private void BtnPrevPage_Click(object sender, RoutedEventArgs e)  => Vm?.PrevPage();
+    private void BtnNextPage_Click(object sender, RoutedEventArgs e)  => Vm?.NextPage();
+    private void BtnLastPage_Click(object sender, RoutedEventArgs e)  => Vm?.LastPage();
 
     // ── Export ───────────────────────────────────────────────────────────────
 

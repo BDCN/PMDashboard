@@ -37,8 +37,16 @@ public partial class ManageColumnsDialog : Window
     private void BtnDeleteColumn_Click(object sender, RoutedEventArgs e)
     {
         if (((Button)sender).Tag is not CustomColumn col) return;
+
+        // Name the data at stake — the delete purges values, and a re-added column gets a
+        // new Key, so there is no way to recover them afterwards.
+        var affected = _vm.CountRowsWithValuesFor(col);
+        var detail = affected > 0
+            ? $"\n\n{affected} row(s) have a value in this column. Those values will be permanently deleted."
+            : "\n\nNo rows currently have a value in this column.";
+
         var confirm = MessageBox.Show(
-            $"Delete column \"{col.Name}\"? Existing values in this column will no longer be shown.",
+            $"Delete column \"{col.Name}\" permanently?{detail}\n\nThis cannot be undone.",
             "Confirm Delete", MessageBoxButton.YesNo, MessageBoxImage.Warning);
         if (confirm == MessageBoxResult.Yes) _vm.DeleteColumn(col);
     }

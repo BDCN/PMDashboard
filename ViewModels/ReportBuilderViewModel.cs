@@ -227,23 +227,91 @@ public partial class ReportBuilderViewModel : ObservableObject
     public void RunQuery()
     {
         var filter = BuildFilterState();
-        using var db = new AppDbContext();
+        using var db = AppDbContext.ForRead();
 
         if (Mode == ReportMode.Orders)
         {
-            var orders = ReportQueryService.RunOrdersQuery(db, filter);
-            Results = new ObservableCollection<ReportRow>(orders.Select(ReportFieldCatalog.BuildOrderRow));
+            var page   = ReportQueryService.RunOrdersQuery(db, filter, PageIndex, PageSize);
+            TotalCount = page.TotalCount;
+            Results = new ObservableCollection<ReportRow>(page.Rows.Select(ReportFieldCatalog.BuildOrderRow));
         }
         else
         {
-            var romps = ReportQueryService.RunSiteRompQuery(db, filter);
-            Results = new ObservableCollection<ReportRow>(romps.Select(ReportFieldCatalog.BuildSiteRompRow));
+            var page   = ReportQueryService.RunSiteRompQuery(db, filter, PageIndex, PageSize);
+            TotalCount = page.TotalCount;
+            Results = new ObservableCollection<ReportRow>(page.Rows.Select(ReportFieldCatalog.BuildSiteRompRow));
+        }
+
+        // A filter change can shrink the set below the current page; land on the last real
+        // page instead of showing an empty grid. PageIndex is now valid, so this recurses once.
+        if (PageIndex > 0 && PageIndex >= TotalPages)
+        {
+            PageIndex = TotalPages - 1;
+            RunQuery();
+            return;
         }
 
         ResultCount   = Results.Count;
-        StatusMessage = $"{ResultCount} row(s) returned.";
+        StatusMessage = PageStatus;
+        NotifyPagingChanged();
         RebuildChart();
     }
+
+    /// <summary>Runs the report from the first page — use for a fresh run, not page navigation.</summary>
+    public void RunReport()
+    {
+        PageIndex = 0;
+        RunQuery();
+    }
+
+    /// <summary>
+    /// Every row the current filter matches, ignoring paging.
+    ///
+    /// The chart and the Excel export must describe the whole result set, not whichever page
+    /// happens to be on screen. Both are opt-in — the chart only when a group-by field is
+    /// chosen, the export only when the user asks — so the unpaged cost is never paid by the
+    /// plain browse path.
+    /// </summary>
+    private List<ReportRow> LoadAllRows()
+    {
+        var filter = BuildFilterState();
+        using var db = AppDbContext.ForRead();
+        return Mode == ReportMode.Orders
+            ? ReportQueryService.RunOrdersQuery(db, filter).Select(ReportFieldCatalog.BuildOrderRow).ToList()
+            : ReportQueryService.RunSiteRompQuery(db, filter).Select(ReportFieldCatalog.BuildSiteRompRow).ToList();
+    }
+
+    // ── Paging ───────────────────────────────────────────────────────────────
+
+    [ObservableProperty] private int _pageIndex;
+    [ObservableProperty] private int _pageSize = 250;
+    [ObservableProperty] private int _totalCount;
+
+    public IReadOnlyList<int> PageSizeOptions { get; } = new[] { 100, 250, 500, 1000 };
+
+    public int TotalPages => PageSize <= 0 ? 1 : Math.Max(1, (int)Math.Ceiling(TotalCount / (double)PageSize));
+    public bool CanPrevPage => PageIndex > 0;
+    public bool CanNextPage => PageIndex + 1 < TotalPages;
+
+    public string PageStatus => TotalCount == 0
+        ? "No rows returned"
+        : $"Rows {PageIndex * PageSize + 1:N0}-{Math.Min(TotalCount, (PageIndex + 1) * PageSize):N0} of {TotalCount:N0}"
+          + $"   (page {PageIndex + 1:N0} of {TotalPages:N0})";
+
+    partial void OnPageSizeChanged(int value) { PageIndex = 0; RunQuery(); }
+
+    private void NotifyPagingChanged()
+    {
+        OnPropertyChanged(nameof(TotalPages));
+        OnPropertyChanged(nameof(CanPrevPage));
+        OnPropertyChanged(nameof(CanNextPage));
+        OnPropertyChanged(nameof(PageStatus));
+    }
+
+    public void FirstPage() { if (PageIndex != 0) { PageIndex = 0; RunQuery(); } }
+    public void PrevPage()  { if (CanPrevPage)   { PageIndex--; RunQuery(); } }
+    public void NextPage()  { if (CanNextPage)   { PageIndex++; RunQuery(); } }
+    public void LastPage()  { if (PageIndex != TotalPages - 1) { PageIndex = TotalPages - 1; RunQuery(); } }
 
     private ReportFilterState BuildFilterState() => new()
     {
@@ -283,14 +351,17 @@ public partial class ReportBuilderViewModel : ObservableObject
 
     public void RebuildChart()
     {
-        if (ChartGroupByField == null || Results.Count == 0)
+        if (ChartGroupByField == null || ResultCount == 0)
         {
             ChartData = new ObservableCollection<ChartBar>();
             return;
         }
 
+        // Aggregate over every matching row, not just the page on screen.
+        var allRows = LoadAllRows();
+
         string groupKey = ChartGroupByField.Key;
-        var groups = Results.GroupBy(r => r.Values.GetValueOrDefault(groupKey)?.ToString() is { Length: > 0 } s ? s : "(blank)");
+        var groups = allRows.GroupBy(r => r.Values.GetValueOrDefault(groupKey)?.ToString() is { Length: > 0 } s ? s : "(blank)");
 
         List<(string Label, double Value)> raw;
         if (ChartAggregateField != null && ChartAggregateOp == "Sum")
@@ -430,6 +501,8 @@ public partial class ReportBuilderViewModel : ObservableObject
             .Where(f => f != null)
             .Select(f => f!)
             .ToList();
-        new ReportExportService().Export(filePath, columns, Results.ToList());
+        // Export the whole result set — exporting only the visible page would silently
+        // truncate the spreadsheet to PageSize rows.
+        new ReportExportService().Export(filePath, columns, LoadAllRows());
     }
 }

@@ -17,7 +17,7 @@ public partial class OrdersViewModel : ObservableObject
 
     public void Load()
     {
-        using var db = new AppDbContext();
+        using var db = AppDbContext.ForRead();
         var list = db.Orders.AsNoTracking().OrderBy(o => o.JobName).ToList();
         Orders     = new ObservableCollection<Order>(list);
         TotalCount = list.Count;
@@ -32,7 +32,7 @@ public partial class OrdersViewModel : ObservableObject
     {
         if (string.IsNullOrWhiteSpace(text)) { Load(); return; }
 
-        using var db  = new AppDbContext();
+        using var db  = AppDbContext.ForRead();
         var lower     = text.ToLower();
         var list      = db.Orders.AsNoTracking()
             .Where(o => (o.JobName      != null && o.JobName.ToLower().Contains(lower))
@@ -49,8 +49,10 @@ public partial class OrdersViewModel : ObservableObject
     public void ClearAll()
     {
         using var db = new AppDbContext();
+        int removed = db.Orders.Count();
         db.Orders.RemoveRange(db.Orders);
         db.SaveChanges();
+        AuditService.Log("Delete", "Order", details: $"Cleared all orders ({removed:N0} row(s))");
         Load();
     }
 
@@ -63,15 +65,23 @@ public partial class OrdersViewModel : ObservableObject
         using var db = new AppDbContext();
 
         // Existing orders — AsNoTracking, filtered in SQL before materialising.
+        // Duplicate keys are tolerated (last/newest wins) rather than throwing: none of
+        // these tables has a unique constraint, so a database that already contains a
+        // duplicate would otherwise fail every future import.
         var existingOrders = db.Orders
             .AsNoTracking()
             .Where(o => o.CustomerOrder != null && o.OrdLine != null)
             .AsEnumerable()
-            .ToDictionary(o => (o.CustomerOrder!, o.OrdLine!));
+            .ToDictionaryLastWins(o => (o.CustomerOrder!, o.OrdLine!), out int dbDuplicates);
 
         // Location / Site caches — tracked so EF can wire up FK relationships for new children.
-        var locationCache = db.Locations.ToDictionary(l => l.Name, StringComparer.OrdinalIgnoreCase);
-        var siteCache     = db.Sites.ToDictionary(s => s.Name,     StringComparer.OrdinalIgnoreCase);
+        var locationCache = db.Locations.ToDictionaryLastWins(l => l.Name, StringComparer.OrdinalIgnoreCase);
+        var siteCache     = db.Sites.ToDictionaryLastWins(s => s.Name,     StringComparer.OrdinalIgnoreCase);
+
+        // Orders added during this run, so a key repeated inside the imported file
+        // overwrites the pending row instead of inserting a second copy of it.
+        var batchOrders = new Dictionary<(string, string), Order>();
+        int fileDuplicates = 0;
 
         // Existing ROMP dedup — projection only, no entity tracking needed.
         var existingRompSet = db.Romps
@@ -88,20 +98,31 @@ public partial class OrdersViewModel : ObservableObject
             row.UploadDate = uploadTime;
 
             // --- Order upsert ---
-            if (row.CustomerOrder != null && row.OrdLine != null
-                && existingOrders.TryGetValue((row.CustomerOrder, row.OrdLine), out var found))
+            var orderKey = row.CustomerOrder != null && row.OrdLine != null
+                ? ((string, string)?)(row.CustomerOrder, row.OrdLine)
+                : null;
+
+            if (orderKey is { } key && existingOrders.TryGetValue(key, out var found))
             {
-                if (OrderHasChanged(found, row))
+                if (OrderMerge.HasChanged(found, row))
                 {
-                    ApplyOrderChanges(found, row);
+                    OrderMerge.ApplyChanges(found, row);
                     db.Orders.Update(found); // untracked (AsNoTracking), must mark explicitly
                     updated++;
                 }
                 else skipped++;
             }
+            else if (orderKey is { } dupKey && batchOrders.TryGetValue(dupKey, out var pending))
+            {
+                // Same key twice in one file — overwrite the row already queued for insert
+                // so the last occurrence wins, rather than inserting a duplicate.
+                OrderMerge.ApplyChanges(pending, row);
+                fileDuplicates++;
+            }
             else
             {
                 db.Orders.Add(row);
+                if (orderKey is { } newKey) batchOrders[newKey] = row;
                 added++;
             }
 
@@ -140,7 +161,14 @@ public partial class OrdersViewModel : ObservableObject
 
         db.SaveChanges();
         Load();
-        return new ImportResult(added, updated, skipped, locationsCreated, sitesCreated, rompsCreated);
+
+        AuditService.Log("Import", "Order", details:
+            $"{added} added, {updated} updated, {skipped} unchanged, "
+          + $"{dbDuplicates + fileDuplicates} duplicates; created {locationsCreated} location(s), "
+          + $"{sitesCreated} site(s), {rompsCreated} ROMP(s)");
+
+        return new ImportResult(added, updated, skipped, locationsCreated, sitesCreated, rompsCreated,
+                                dbDuplicates + fileDuplicates);
     }
 
     // ── Helpers ──
@@ -176,76 +204,4 @@ public partial class OrdersViewModel : ObservableObject
         return (null, null, null);
     }
 
-    private static bool OrderHasChanged(Order a, Order b) =>
-        a.CustomerPO != b.CustomerPO || a.CustPOLine != b.CustPOLine ||
-        a.ShipHold != b.ShipHold || a.FaceSite != b.FaceSite ||
-        a.CustomerOrder != b.CustomerOrder || a.OrdLine != b.OrdLine ||
-        a.AssignSite != b.AssignSite || a.AssignWhse != b.AssignWhse ||
-        a.JobName != b.JobName || a.IPN != b.IPN ||
-        a.Item != b.Item || a.ItemDescription != b.ItemDescription ||
-        a.ItemDesignation != b.ItemDesignation ||
-        a.QtyOrd != b.QtyOrd || a.QtyShip != b.QtyShip ||
-        a.ShipDate != b.ShipDate || a.DeliveryDate != b.DeliveryDate ||
-        a.WarrantyExpiration != b.WarrantyExpiration ||
-        a.EstimatedDeliveryDate != b.EstimatedDeliveryDate ||
-        a.EstimatedCompletionDate != b.EstimatedCompletionDate ||
-        a.ActualCompletionDate != b.ActualCompletionDate ||
-        a.RequestedCompletion != b.RequestedCompletion ||
-        a.ProductionVariance != b.ProductionVariance ||
-        a.RequestedOSD != b.RequestedOSD || a.DaysLate != b.DaysLate ||
-        a.PreviousEstCompletionDate != b.PreviousEstCompletionDate ||
-        a.EstCompletionDateChange != b.EstCompletionDateChange ||
-        a.ScheduledStartDate != b.ScheduledStartDate ||
-        a.ActualStartDate != b.ActualStartDate || a.InvoiceDate != b.InvoiceDate ||
-        a.CustNum != b.CustNum || a.OrderShipTo != b.OrderShipTo ||
-        a.LineItemShipTo != b.LineItemShipTo ||
-        a.CreditHold != b.CreditHold || a.Slsman != b.Slsman ||
-        a.OrderStatus != b.OrderStatus || a.ProductCode != b.ProductCode ||
-        a.Price != b.Price || a.ExtPrice != b.ExtPrice ||
-        a.SectionCount != b.SectionCount ||
-        a.EstCompletionDateChangeReason != b.EstCompletionDateChangeReason ||
-        a.OrderDate != b.OrderDate || a.OrderLineStatus != b.OrderLineStatus ||
-        a.PromiseDate != b.PromiseDate || a.LastShipDate != b.LastShipDate ||
-        a.QtyInvoiced != b.QtyInvoiced || a.SalesTax1 != b.SalesTax1 ||
-        a.SalesTax2 != b.SalesTax2 || a.TotalCOPrice != b.TotalCOPrice ||
-        a.ProjectManagerDataName != b.ProjectManagerDataName ||
-        a.CustomerName != b.CustomerName;
-
-    private static void ApplyOrderChanges(Order t, Order s)
-    {
-        t.CustomerPO = s.CustomerPO; t.CustPOLine = s.CustPOLine;
-        t.ShipHold = s.ShipHold; t.FaceSite = s.FaceSite;
-        t.CustomerOrder = s.CustomerOrder; t.OrdLine = s.OrdLine;
-        t.AssignSite = s.AssignSite; t.AssignWhse = s.AssignWhse;
-        t.JobName = s.JobName; t.IPN = s.IPN;
-        t.Item = s.Item; t.ItemDescription = s.ItemDescription;
-        t.ItemDesignation = s.ItemDesignation;
-        t.QtyOrd = s.QtyOrd; t.QtyShip = s.QtyShip;
-        t.ShipDate = s.ShipDate; t.DeliveryDate = s.DeliveryDate;
-        t.WarrantyExpiration = s.WarrantyExpiration;
-        t.EstimatedDeliveryDate = s.EstimatedDeliveryDate;
-        t.EstimatedCompletionDate = s.EstimatedCompletionDate;
-        t.ActualCompletionDate = s.ActualCompletionDate;
-        t.RequestedCompletion = s.RequestedCompletion;
-        t.ProductionVariance = s.ProductionVariance;
-        t.RequestedOSD = s.RequestedOSD; t.DaysLate = s.DaysLate;
-        t.PreviousEstCompletionDate = s.PreviousEstCompletionDate;
-        t.EstCompletionDateChange = s.EstCompletionDateChange;
-        t.ScheduledStartDate = s.ScheduledStartDate;
-        t.ActualStartDate = s.ActualStartDate; t.InvoiceDate = s.InvoiceDate;
-        t.CustNum = s.CustNum; t.OrderShipTo = s.OrderShipTo;
-        t.LineItemShipTo = s.LineItemShipTo;
-        t.CreditHold = s.CreditHold; t.Slsman = s.Slsman;
-        t.OrderStatus = s.OrderStatus; t.ProductCode = s.ProductCode;
-        t.Price = s.Price; t.ExtPrice = s.ExtPrice;
-        t.SectionCount = s.SectionCount;
-        t.EstCompletionDateChangeReason = s.EstCompletionDateChangeReason;
-        t.OrderDate = s.OrderDate; t.OrderLineStatus = s.OrderLineStatus;
-        t.PromiseDate = s.PromiseDate; t.LastShipDate = s.LastShipDate;
-        t.QtyInvoiced = s.QtyInvoiced; t.SalesTax1 = s.SalesTax1;
-        t.SalesTax2 = s.SalesTax2; t.TotalCOPrice = s.TotalCOPrice;
-        t.ProjectManagerDataName = s.ProjectManagerDataName;
-        t.CustomerName = s.CustomerName;
-        t.UploadDate = s.UploadDate;
-    }
 }

@@ -25,12 +25,19 @@ public class SiteRompFlatRow
     public string   RompStatus           { get; init; } = "";
     public string   EquipmentTypes       { get; init; } = "";
     public DateTime LastModified         { get; init; }
+    public string   LastModifiedBy       { get; init; } = "";
 }
 
 /// <summary>A single result row, keyed by field Key so the results DataGrid can bind dynamically chosen columns.</summary>
 public class ReportRow
 {
     public Dictionary<string, object?> Values { get; } = new();
+
+    /// <summary>Audit entity type this row represents ("Order" | "Romp"), for the history link.</summary>
+    public string EntityType { get; init; } = "";
+
+    /// <summary>Primary key of the underlying record, for the history link.</summary>
+    public int EntityId { get; init; }
 }
 
 public static class ReportFieldCatalog
@@ -58,6 +65,13 @@ public static class ReportFieldCatalog
         new() { Key = "DeliveryDate",             DisplayName = "Delivery Date",      FieldType = ReportFieldType.Date },
         new() { Key = "PromiseDate",              DisplayName = "Promise Date",       FieldType = ReportFieldType.Date },
         new() { Key = "RequestedCompletion",      DisplayName = "Requested Completion", FieldType = ReportFieldType.Date },
+        // When this row last changed - stamped by AppDbContext.SaveChanges on every write.
+        // Last Uploaded vs Last Changed are deliberately different questions:
+        // UploadDate is when this row's data last arrived from an imported file;
+        // LastModified is when the row last changed in the database, from any source.
+        new() { Key = "UploadDate",               DisplayName = "Last Uploaded",      FieldType = ReportFieldType.Date },
+        new() { Key = "LastModified",             DisplayName = "Last Changed",       FieldType = ReportFieldType.Date },
+        new() { Key = "LastModifiedBy",           DisplayName = "Last Changed By",    FieldType = ReportFieldType.Text },
     };
 
     /// <summary>Date-typed Order fields eligible as the date-range filter target.</summary>
@@ -74,7 +88,8 @@ public static class ReportFieldCatalog
         new() { Key = "RompName",             DisplayName = "ROMP",              FieldType = ReportFieldType.Text },
         new() { Key = "RompStatus",           DisplayName = "ROMP Status",       FieldType = ReportFieldType.Text },
         new() { Key = "EquipmentTypes",       DisplayName = "Equipment Types",   FieldType = ReportFieldType.Text },
-        new() { Key = "LastModified",         DisplayName = "Last Modified",     FieldType = ReportFieldType.Date },
+        new() { Key = "LastModified",         DisplayName = "Last Changed",      FieldType = ReportFieldType.Date },
+        new() { Key = "LastModifiedBy",       DisplayName = "Last Changed By",   FieldType = ReportFieldType.Text },
     };
 
     public static object? GetOrderValue(Order o, string key) => key switch
@@ -96,6 +111,9 @@ public static class ReportFieldCatalog
         "TotalCOPrice"           => o.TotalCOPrice,
         "DaysLate"               => o.DaysLate,
         "OrderDate"              => o.OrderDate,
+        "UploadDate"             => o.UploadDate,
+        "LastModified"           => o.LastModified,
+        "LastModifiedBy"         => o.LastModifiedBy,
         "ShipDate"               => o.ShipDate,
         "DeliveryDate"           => o.DeliveryDate,
         "PromiseDate"            => o.PromiseDate,
@@ -114,19 +132,20 @@ public static class ReportFieldCatalog
         "RompStatus"           => r.RompStatus,
         "EquipmentTypes"       => r.EquipmentTypes,
         "LastModified"         => r.LastModified,
+        "LastModifiedBy"       => r.LastModifiedBy,
         _                      => null,
     };
 
     public static ReportRow BuildOrderRow(Order o)
     {
-        var row = new ReportRow();
+        var row = new ReportRow { EntityType = "Order", EntityId = o.Id };
         foreach (var f in OrderFields) row.Values[f.Key] = GetOrderValue(o, f.Key);
         return row;
     }
 
     public static ReportRow BuildSiteRompRow(SiteRompFlatRow r)
     {
-        var row = new ReportRow();
+        var row = new ReportRow { EntityType = "Romp", EntityId = r.RompId };
         foreach (var f in SiteRompFields) row.Values[f.Key] = GetSiteRompValue(r, f.Key);
         return row;
     }

@@ -14,6 +14,9 @@ public class Site
     public PM?      AssignedPm   { get; set; }
     public DateTime LastModified { get; set; }
 
+    /// <summary>Email of whoever last wrote this row; stamped by AppDbContext.SaveChanges.</summary>
+    public string LastModifiedBy { get; set; } = "";
+
     public ICollection<Romp> Romps { get; set; } = new List<Romp>();
 
     // Derived from child ROMP statuses — not stored, ignored by EF Core in OnModelCreating.

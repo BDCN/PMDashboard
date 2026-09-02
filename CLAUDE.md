@@ -12,7 +12,7 @@ Windows desktop application for resource management — tracks Project Managers,
 - **Cloud/MySQL:** Pomelo.EntityFrameworkCore.MySql 8.0.2 + MySqlConnector 2.3.7
 - **Local DB file:** `%LOCALAPPDATA%\PMDashboard\data.db`
 - **DB config file:** `%APPDATA%\PMDashboard\dbconfig.json` (database mode, network path, cloud connection string)
-- **Admin config file:** `%APPDATA%\PMDashboard\adminconfig.json` (admin-gate password) — added 2026-08-27 when this project was first pushed to GitHub (`AdminConfig.cs`, mirrors `DatabaseConfig`'s pattern). `PasswordDialog.xaml.cs` used to have the real password as a hardcoded `const string` — that would have shipped straight into git history, so it was moved out of source into this per-machine file. **A fresh machine/clone has no admin password configured until this file is created there** (no default ships in source, and `TryConfirm()` deliberately never matches on an empty/unconfigured password) — there's currently no in-app "set admin password" UI, so seed it manually: write `{"Password": "<value>"}` to that path, or ask whoever set the original value.
+- **Admin-gate password:** PBKDF2-SHA256 hash (100k iterations, per-password salt) stored in the `AppConfigs` table under `ConfigKeys.AdminPasswordHash` (`AdminConfig.cs`). It lives in the database rather than a per-machine file so it reaches every machine over the normal `AppConfigs` sync path; the earlier `%APPDATA%\PMDashboard\adminconfig.json` holder is still read once at startup and migrated in if present. A machine with no password set is bootstrapped through `PasswordDialog`'s `SetInitial` mode (Unlock offers "Set Admin Password" instead of a gate that rejects everything); no default ships in source and `Verify()` never matches when nothing is configured. **Convenience gate, not a security boundary** - anyone with write access to the database can replace the hash.
 - **Favicon:** `favicon.ico` in project root (from iem.co), built as `<Resource>`
 - **IEM logo:** `Assets/iem-logo.png` in project root, built as `<Resource>` — displayed in app header
 
@@ -75,7 +75,7 @@ PMDashboard/
 │   ├── AddEditStatusDialog.xaml/.cs
 │   ├── AddEquipmentWeightDialog.xaml/.cs
 │   ├── AssignPmDialog.xaml/.cs
-│   ├── PasswordDialog.xaml/.cs     # Admin password gate (password = RowanU)
+│   ├── PasswordDialog.xaml/.cs     # Admin gate; Verify / SetInitial / Change modes
 │   ├── TextInputDialog.xaml/.cs    # Generic single-line text prompt (Report Builder Save As / Rename)
 │   └── ManageColumnsDialog.xaml/.cs # Custom Data's column setup screen — add/rename/reorder/delete CustomColumns; shares the CustomDataViewModel instance passed in from CustomDataPage
 └── Services/
@@ -88,9 +88,15 @@ PMDashboard/
     ├── DatabaseConfig.cs           # Persistent DB mode config in %APPDATA%\PMDashboard\dbconfig.json
     ├── SyncService.cs              # Network travel sync (SQLite ATTACH bidirectional merge) + MariaDB DDL script
     ├── CloudSyncService.cs         # Background cloud sync: initial pull + periodic push/pull via LastModified
+    ├── CloudRuntime.cs             # Latches whether Cloud mode is serving reads/writes from MariaDB; startup probe + local-mirror fallback
+    ├── PasswordHasher.cs           # PBKDF2-SHA256 hashing shared by AdminConfig and user accounts
+    ├── CurrentUser.cs              # Session-only signed-in user; SignIn/SignOut/Refresh
+    ├── UserService.cs              # Seed super admin, authenticate, profile + password change
+    ├── AuditService.cs             # Append-only interaction log; Log / Recent / ForEntity
     ├── AutoImportService.cs        # Background timer, file polling, seen-file dedup, RunUpsert
     ├── AirportLookup.cs            # Static IATA code → (Name, StateOrCountry, GeoRegion)
     ├── ImportResult.cs             # Record: Added, Updated, Skipped, LocationsCreated, ...
+    ├── ImportDictionaryExtensions.cs # ToDictionaryLastWins - duplicate-tolerant lookups for the import path
     ├── NullToBoolConverter.cs      # IValueConverter: null → false
     ├── ReportFieldCatalog.cs       # ReportField/ReportFieldType, SiteRompFlatRow, ReportRow, curated Order/SiteRomp field catalogs + value getters
     ├── ReportFilterState.cs        # Serializable filter DTO (date range, multi-select IDs/statuses, text search)
@@ -98,13 +104,14 @@ PMDashboard/
     ├── ReportExportService.cs      # ClosedXML export of report results, styled per PmImportService convention
     └── CustomCellValueConverter.cs # IValueConverter coercing a boxed Values[key] object to/from each ColumnType's editing control (stateless; ConverterParameter carries the type)
 
-PMDashboard.Tests/                  # xUnit test project (26 tests); links ScoringEngine.cs directly
+PMDashboard-Tests/                  # xUnit test project (26 tests); links ScoringEngine.cs directly
 └── ScoringTests.cs
 ```
 
 ## Layout
 
 ### App Header (MainWindow.xaml)
+`MainWindow` clamps itself to `SystemParameters.WorkArea` on startup (`FitToWorkArea`, from `OnSourceInitialized` and again on `Loaded` once `CenterScreen` has assigned `Left`/`Top`). The declared 1400x820 default is in device-independent units, so on a smaller or display-scaled desktop it could exceed the work area and `CenterScreen` would centre that oversized window at negative coordinates, putting the title bar and its window buttons off-screen. `MinWidth`/`MinHeight` are lowered first, or they would override the clamp.
 - **64px white header bar** spans the full window width above the sidebar and content area
 - **Left:** IEM logo (`Assets/iem-logo.png`) — white background blends seamlessly with the white header
 - **Right:** "PM Dashboard" + "Resource Management" subtitle
@@ -195,10 +202,15 @@ Shows **every real Order or Site/ROMP already in the database** (mode toggle, sa
 - **Setup screen** (`ManageColumnsDialog`) is a modal `Window` that takes the *same* `CustomDataViewModel` instance the page uses (passed via constructor, not a separate ViewModel) — column CRUD lives on the shared VM (`AddColumn`/`RenameColumn`/`DeleteColumn`/`MoveColumnUp`/`MoveColumnDown`, mirroring `ConfigViewModel`'s `RompStatus`/`EquipmentCategory` reorder pattern), scoped to whichever `Mode` is currently active, so both surfaces always agree.
 - **Column CRUD calls `RefreshDynamicColumns()`, not a full `RunQuery()`** — it reloads `DynamicColumns` and resyncs already-loaded `Rows`' `DynamicValues` from the DB, without re-running the (unchanged, and for Orders mode potentially 100k+-row) static Orders/ROMPs query.
 - **Row edits commit via `DataGrid.RowEditEnding`** → `SaveRow()`, same as `PmMaintenancePage`'s inline-edit convention — but unlike `PmMaintenanceViewModel.UpdatePm()`, `SaveRow()` does **not** reload the grid afterward, so editing one cell doesn't reset scroll position/selection.
+- **Every column header carries a filter glyph.** Clicking the glyph opens an Excel-style value picker (searchable checkbox list, Select all / none, Apply / Remove filter); filters across columns combine with AND, and `FilteredRows` is what the grid binds to while `Rows` stays the unfiltered source for distinct values. Matching is on *display text* via `FormatCellValue`, which gives one comparison path for the boxed doubles/DateTimes/bools/strings sharing the value dictionaries. Only the glyph is a `Button` - making the whole header one swallows the mouse-down that `DataGridColumnHeader` needs for drag-to-reorder. Sorting stays off on these columns: the cells bind through a dictionary indexer, which is not a path `ListCollectionView` can build a `SortDescription` from.
+- **Column order is persistent and covers static + dynamic columns together.** Dragging a header writes the full left-to-right key order to `AppConfigs` under `CustomDataColumnOrderPrefix + Mode`; `RebuildColumns` re-sequences by it, with unknown keys (a newly added column) falling to the end via a stable `OrderBy`. `CustomColumn.SortOrder` only ever ranked dynamic columns against each other, so it could never place a custom column between two static ones - the Manage Columns arrows now also shift the key inside the saved order so the two surfaces cannot disagree.
+- **Deleting a column purges its values.** `DeleteColumn` strips the column key from every `CustomRow.ValuesJson` and drops it from the saved order. A re-added column always gets a new `Key`, so values left behind would be permanently unreachable rather than recoverable.
 
 ### Orders (Import)
 - Routes to three parsers based on `ConfigService.Get(SourceDataType)`
 - Upsert by `(CustomerOrder, OrdLine)` key; auto-creates Locations/Sites/ROMPs from JobName
+- **Duplicate keys are tolerated, not fatal.** No table has a unique constraint on the import keys, so `ToDictionary` threw `An item with the same key has already been added` once the DB held a duplicate, poisoning every later import. `ToDictionaryLastWins` keeps the newest row instead; the import also tracks keys seen within the file so a repeated row overwrites the pending insert rather than adding a second copy. `ImportResult.DuplicatesSkipped` reports the count.
+- **`AutoImportService` never applies changed values.** Its update branch calls `db.Orders.Update(found)` on the existing row without copying anything from the incoming row, so semi-automatic imports only touch the timestamp. Manual import does this correctly via `ApplyOrderChanges`. Not fixed - fixing it changes import behaviour.
 
 ### Configuration
 Cards in order (top → bottom):
@@ -209,13 +221,13 @@ Cards in order (top → bottom):
 5. **Site/ROMP Statuses** — status list with inline **score weight slider** (0–2.4; CX default 1.2 = 50%)
 6. **Equipment Score Categories** — categories DataGrid with inline **score weight slider** (0–3.2; PAX default 1.6 = 50%)
 7. **Source Data** — VADATA / Tableau / Open Lines (admin-locked, see below)
-8. **Database** — Local / Network / Cloud modes (admin-locked, see below)
+8. **Database** - Local / Network / Cloud modes, cloud sync status, phpMyAdmin DDL script, and a **Danger Zone** with "Delete Local Database Data" (admin-locked, see below)
 
 #### Admin Lock (Source Data + Database)
 A single amber/green banner above the Source Data card controls both sections:
 - **Locked**: both cards are 40% opacity, disabled, single **Unlock** button visible
 - **Unlocked**: `ConfigViewModel.IsAdminUnlocked = true` → both cards fully interactive, banner turns green
-- One `PasswordDialog` (password = RowanU) unlocks both for the current session
+- One `PasswordDialog` unlocks both for the current session; a **Change Password** button sits beside Unlock once unlocked
 - `ConfigViewModel.IsAdminUnlocked` replaces the old `IsSourceDataUnlocked` / `IsDatabaseUnlocked` booleans
 - XAML still uses `IsSourceDataUnlocked` and `IsDatabaseUnlocked` as computed aliases → both return `IsAdminUnlocked`
 
@@ -237,6 +249,13 @@ Note: `TargetCapacity` default was updated from 18 → **259.2** based on actual
 Workload param ViewModel properties are now `double` (not string). `SaveWorkloadParams()` formats them to invariant-culture strings for AppConfig storage.
 
 ## Data Hierarchy
+
+### Users, Auditing and "who changed this"
+- **`User`** - email is the username; `PasswordHash` uses `PasswordHasher` (PBKDF2-SHA256, 100k iterations, per-password salt). `Role` is "SuperAdmin" | "User". `MustChangePassword` is set on a seeded account and the login flow refuses to continue until it is replaced.
+- **Seed account**: `charles.bell@iemfg.com`, created by `UserService.EnsureSeedUser` only when the `Users` table is empty. **The seed password is a literal in `App.xaml.cs` and therefore in git** - it is a first-run placeholder, not a credential, and `MustChangePassword` forces it to be replaced at first sign-in.
+- **`AuditEntry`** - append-only. `UserEmail` is stored as text rather than a FK, so the trail survives an account being renamed or deleted; an audit row that changes retroactively is not an audit row. `AuditService.Log` never throws - an audit failure must not abort the action being audited - and reports through `LastError` instead.
+- **`LastModifiedBy`** is on `Order`, `Romp` and `Site`, stamped by the same `AppDbContext.SaveChanges` loop that sets `LastModified`, and skipped along with it when `SkipLastModifiedStamp` is set so a sync never rewrites the author of a row it is only copying. Surfaced in both report modes as **Last Changed By**.
+- **The report grid always appends a "History" column** - a link opening `RowHistoryDialog` for that row's `(EntityType, EntityId)`. It is deliberately not in the column picker or the Excel export: it is navigation, not report data. Bulk imports are logged once per run with no `EntityId`, so they do not appear in a single row's history, and the empty state says so.
 
 ```
 Location (3-letter airport code, GeographicalLocation East|West)
@@ -365,9 +384,11 @@ PM status thresholds: utilization > OverloadThreshold → "Overloaded"; ≥ Near
 | **Cloud** | MariaDB (via Pomelo) | Multi-user, always synced |
 
 ### AppDbContext Connection Logic
-- `new AppDbContext()` — ALWAYS uses local SQLite, even in Cloud mode (speed)
+- `new AppDbContext()` - in **Cloud mode connects to MariaDB directly** (the cloud is authoritative); SQLite otherwise, or when the startup probe found the server unreachable
+- `new AppDbContext { ForceLocal = true }` - always local SQLite; used for the startup schema work (its raw SQL is SQLite dialect) and by `CloudSyncService` when writing the mirror
+- `AppDbContext.ForRead()` - the mirror, read-only (`SaveChanges` throws). Use for grids, reports and any query materialising many rows. In Local/Network mode it is simply the live database.
 - `new AppDbContext { ForceCloud = true }` — uses MariaDB; used exclusively by `CloudSyncService`
-- **Never** use `ForceCloud = true` in ViewModels or other app code
+- **Never** use `ForceCloud = true` or `ForceLocal = true` in ViewModels - a plain `new AppDbContext()` already resolves to whichever database is authoritative
 
 ### Network Travel Sync (`SyncService`)
 - **Sync Before Travel**: copy network DB → local, enable travel mode
@@ -376,6 +397,14 @@ PM status thresholds: utilization > OverloadThreshold → "Overloaded"; ≥ Near
 - **Limitation**: record deletions made offline are not propagated
 
 ### Cloud Background Sync (`CloudSyncService`)
+- **Users / AuditEntries.** Accounts and the audit trail sync like any other table and are wired into all four sync methods. `UserService` and `AuditService` read through a **normal** context, not `ForRead()` - a fresh machine must be able to sign in before its mirror has been pulled.
+- **Cloud mode is write-through, read-from-mirror.** Writes go to MariaDB through a normal `new AppDbContext()`, so the server assigns every Id and two machines can never mint the same one. Bulk reads use `AppDbContext.ForRead()`, which serves the local SQLite mirror - pulling 131k orders over a WAN link on every page load is what makes cloud-direct reads unusable at this size. `ForRead()` contexts are read-only and **throw** on `SaveChanges`, because a write through one would land in the mirror and be silently overwritten by the next pull.
+- **`CloudSyncService` is pull-only while `CloudRuntime.IsCloudActive`** - the mirror has nothing the cloud needs, and its first push sends EVERY local row, which would overwrite a machine that legitimately owns the data. Its own "local" contexts must use `ForceLocal = true`, or they resolve to MariaDB and the mirror copies cloud-to-cloud.
+- **The initial pull is a delta, not a full table copy.** `CloudDelta` takes the mirror's own max `LastModified` per table as the watermark, so a warm mirror transfers almost nothing at startup; previously every launch re-downloaded all 131k orders to discover nothing had changed.
+- **`AppDbContext.CloudSaved`** fires after a cloud write and triggers an immediate delta pull, so mirror-backed grids reflect an edit at once instead of waiting up to a full sync interval.
+- **Deletions never propagate.** `BatchPush` only inserts and updates; there is no delete path in any sync method. A record deleted on one machine survives on every other one indefinitely. Soft deletes (`IsDeleted`/`DeletedAt`, filtered from queries) are the fix and are not implemented yet.
+- **The sync watermark uses the client clock** (`_lastSyncUtc = DateTime.UtcNow`) while `LastModified` values come from other machines. Clock skew can silently skip rows from a delta pull; a server-side `UTC_TIMESTAMP()` watermark would remove that.
+- **Merging is by integer `Id`.** Two machines that filled their databases independently collide (machine A's `Order` 5 is not machine B's `Order` 5) and `LastModified` picks a winner silently. Cloud-direct writes avoid this going forward, since MariaDB assigns every Id.
 - Started in `App.OnStartup` when Cloud mode active (`App.CloudSync`)
 - On startup: full pull from cloud → local SQLite — each table pulled independently; failure in one table reported as warning, others continue
 - Background timer (default 30 s): push local-newer rows to cloud, pull cloud-newer rows to local
@@ -415,7 +444,7 @@ Background timer; polls configured folder; routes to correct parser; deduplicate
 ## Coding Conventions
 
 ### DbContext Pattern
-**Every method creates its own `using var db = new AppDbContext()`** — no shared long-lived context. In Cloud mode, regular contexts use local SQLite. Only `CloudSyncService` uses `ForceCloud = true`.
+**Every method creates its own context** - no shared long-lived context. Writes and single-entity reads use `new AppDbContext()`; bulk reads use `AppDbContext.ForRead()`. In Cloud mode the former is MariaDB and the latter the local mirror, decided by `CloudRuntime.IsCloudActive`, which a probe in `App.OnStartup` latches once so `OnConfiguring` never makes a network call per context. A failed probe falls back to the mirror for everything and the Configuration page reports it.
 
 **A no-tracking query with an `Include` path that loops back to the root entity type throws `InvalidOperationException: ... results in a cycle`, not a silent wrong result.** E.g. querying `Romps` with `.Include(r => r.Site).ThenInclude(s => s.Romps)` fails, since `Site.Romps` re-enters the `Romp` type already at the root of the query. When a related aggregate (like `Site.SiteStatus`, which reads `Site.Romps`) is needed alongside a query rooted on one of that aggregate's children, compute it via a second, separately-rooted query instead of extending the `Include` chain.
 
@@ -468,14 +497,14 @@ Equipment score weight: same pattern with `Maximum=3.2`. Save handlers in `Confi
 ## Running / Building
 
 ```
-cd C:\Users\IMVRT\Documents\Projects\PMDashboard
+cd C:\Users\<you>\Documents\Projects\PMDashboard
 dotnet build
 dotnet run
 ```
 
 Tests:
 ```
-cd C:\Users\IMVRT\Documents\Projects\PMDashboard.Tests
+cd C:\Users\<you>\Documents\Projects\PMDashboard-Tests
 dotnet test
 ```
 

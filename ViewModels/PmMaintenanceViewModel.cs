@@ -4,6 +4,8 @@ using PMDashboard.Data;
 using PMDashboard.Data.Models;
 using System.Collections.ObjectModel;
 
+using PMDashboard.Services;
+
 namespace PMDashboard.ViewModels;
 
 public partial class PmMaintenanceViewModel : ObservableObject
@@ -50,6 +52,8 @@ public partial class PmMaintenanceViewModel : ObservableObject
         if (tracked == null) return;
         db.Entry(tracked).CurrentValues.SetValues(updated);
         db.SaveChanges();
+        AuditService.Log("Update", "PM", tracked.Id,
+            $"{tracked.FullName} (cap {tracked.Capacity}, ideal {tracked.IdealUtilization}%, active {tracked.IsActive})");
         Load();
     }
 

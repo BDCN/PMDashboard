@@ -39,6 +39,8 @@ public static class SyncService
         "Orders",
         "SavedReports",
         "CustomColumns",
+        "Users",
+        "AuditEntries",
         "CustomRows",
     ];
 
@@ -276,6 +278,9 @@ public static class SyncService
 
         -- Add PmMultiplier to existing PMs table (safe to run on already-migrated DBs)
         ALTER TABLE `PMs` ADD COLUMN IF NOT EXISTS `PmMultiplier` INT NULL;
+        ALTER TABLE `Orders` ADD COLUMN IF NOT EXISTS `LastModifiedBy` VARCHAR(320) NOT NULL DEFAULT '';
+        ALTER TABLE `Romps`  ADD COLUMN IF NOT EXISTS `LastModifiedBy` VARCHAR(320) NOT NULL DEFAULT '';
+        ALTER TABLE `Sites`  ADD COLUMN IF NOT EXISTS `LastModifiedBy` VARCHAR(320) NOT NULL DEFAULT '';
 
         -- Locations (airport codes) ──────────────────────────────────────
         CREATE TABLE IF NOT EXISTS `Locations` (
@@ -495,6 +500,39 @@ public static class SyncService
             `LastModified` DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
                            ON UPDATE CURRENT_TIMESTAMP(3),
             PRIMARY KEY (`Id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+        -- Accounts and the append-only interaction log --------------------
+        CREATE TABLE IF NOT EXISTS `Users` (
+            `Id`                 INT          NOT NULL AUTO_INCREMENT,
+            `Email`              VARCHAR(320) NOT NULL,
+            `FirstName`          VARCHAR(255) NOT NULL DEFAULT '',
+            `LastName`           VARCHAR(255) NOT NULL DEFAULT '',
+            `PasswordHash`       VARCHAR(500) NOT NULL DEFAULT '',
+            `Role`               VARCHAR(50)  NOT NULL DEFAULT 'User',
+            `IsActive`           TINYINT(1)   NOT NULL DEFAULT 1,
+            `MustChangePassword` TINYINT(1)   NOT NULL DEFAULT 0,
+            `LastLoginUtc`       DATETIME(3)  NULL,
+            `LastModified`       DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+                                 ON UPDATE CURRENT_TIMESTAMP(3),
+            PRIMARY KEY (`Id`),
+            UNIQUE KEY `UX_Users_Email` (`Email`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+        CREATE TABLE IF NOT EXISTS `AuditEntries` (
+            `Id`           INT          NOT NULL AUTO_INCREMENT,
+            `TimestampUtc` DATETIME(3)  NOT NULL,
+            `UserEmail`    VARCHAR(320) NOT NULL DEFAULT '',
+            `UserName`     VARCHAR(255) NOT NULL DEFAULT '',
+            `Action`       VARCHAR(100) NOT NULL DEFAULT '',
+            `EntityType`   VARCHAR(100) NOT NULL DEFAULT '',
+            `EntityId`     INT          NULL,
+            `Details`      TEXT         NOT NULL,
+            `MachineName`  VARCHAR(255) NOT NULL DEFAULT '',
+            `LastModified` DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+                           ON UPDATE CURRENT_TIMESTAMP(3),
+            PRIMARY KEY (`Id`),
+            KEY `IX_AuditEntries_TimestampUtc` (`TimestampUtc`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
         -- ================================================================
