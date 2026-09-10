@@ -61,4 +61,7 @@ public class Order
 
     public DateTime UploadDate   { get; set; }
     public DateTime LastModified { get; set; }
+
+    /// <summary>Email of whoever last wrote this row; stamped by AppDbContext.SaveChanges.</summary>
+    public string LastModifiedBy { get; set; } = "";
 }

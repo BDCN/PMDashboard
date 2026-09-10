@@ -1,7 +1,9 @@
 using System.Windows;
 using System.Windows.Controls;
+using Microsoft.Win32;
 using PMDashboard.Data.Models;
 using PMDashboard.Dialogs;
+using PMDashboard.Services;
 using PMDashboard.ViewModels;
 
 namespace PMDashboard.Views;
@@ -60,7 +62,7 @@ public partial class SitesPage : UserControl
         if (Vm is not { } vm) return;
         if (((Button)sender).Tag is not Location loc) return;
         var dlg = new AddEditLocationDialog(loc) { Owner = Window.GetWindow(this) };
-        if (dlg.ShowDialog() == true) vm.UpdateLocation(dlg.Result!);
+        if (dlg.ShowDialog() == true) vm.UpdateLocation(dlg.Result!, dlg.BulkRompStatus, dlg.CloseAllSites);
     }
 
     private void BtnDeleteLocation_Click(object sender, RoutedEventArgs e)
@@ -197,5 +199,74 @@ public partial class SitesPage : UserControl
         var result = MessageBox.Show($"Delete ROMP \"{romp.Name}\"?", "Confirm Delete",
             MessageBoxButton.YesNo, MessageBoxImage.Warning);
         if (result == MessageBoxResult.Yes) vm.DeleteRomp(romp);
+    }
+
+    // ── Sites/ROMPs bulk import ──────────────────────────────────────────────
+
+    private void BtnDownloadSitesTemplate_Click(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm) return;
+        var dlg = new SaveFileDialog
+        {
+            Title      = "Save Sites/ROMPs Template",
+            FileName   = "Sites_Bulk_Import_Template",
+            DefaultExt = ".xlsx",
+            Filter     = "Excel Files|*.xlsx"
+        };
+        if (dlg.ShowDialog() != true) return;
+
+        try
+        {
+            var romps = vm.GetAllRompsForExport();
+            new SitesImportService().GenerateTemplate(dlg.FileName, romps);
+
+            var msg = romps.Count > 0
+                ? $"Template saved with {romps.Count} current ROMP(s) and their status.\n\nEdit the Status column (or add new rows), then use Import Sites to apply changes."
+                : "Template saved (no sites/ROMPs in database yet).\n\nFill in the \"Sites Bulk Import\" sheet and use Import Sites to load it.";
+            MessageBox.Show(msg, "Template Saved", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Could not save template:\n{ex.Message}", "Error",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void BtnImportSites_Click(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm) return;
+        var dlg = new OpenFileDialog
+        {
+            Title  = "Select Sites/ROMPs File",
+            Filter = "Excel Files|*.xlsx;*.xls|All Files|*.*"
+        };
+        if (dlg.ShowDialog() != true) return;
+
+        try
+        {
+            var confirm = MessageBox.Show(
+                "Import sites/ROMPs from this file?\n\n" +
+                "New Locations/Sites/ROMPs will be created; existing ROMPs will have their Status updated to match the sheet.",
+                "Confirm Import", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (confirm != MessageBoxResult.Yes) return;
+
+            var (result, errors) = new SitesImportService().ImportSites(dlg.FileName);
+            vm.RefreshAfterImport();
+
+            var summary = $"Locations created: {result.LocationsCreated}\nSites created: {result.SitesCreated}\n" +
+                          $"ROMPs created: {result.RompsCreated}\nROMPs updated: {result.RompsUpdated}\n" +
+                          $"Unchanged: {result.RompsUnchanged}\nErrors: {result.Errors}";
+            if (errors.Count > 0)
+                summary += "\n\nDetails:\n" + string.Join("\n", errors.Take(30))
+                         + (errors.Count > 30 ? $"\n...and {errors.Count - 30} more." : "");
+
+            MessageBox.Show(summary, "Import Complete", MessageBoxButton.OK,
+                result.Errors > 0 ? MessageBoxImage.Warning : MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Import failed:\n{ex.Message}", "Error",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 }

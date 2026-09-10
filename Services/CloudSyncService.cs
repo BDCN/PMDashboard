@@ -33,6 +33,12 @@ public sealed class CloudSyncService : IDisposable
     private bool                  _firstPushDone = false;
 
     public event Action<string>?  StatusChanged;
+
+    // Fires from a periodic (not the initial startup) pull when it brought in rows someone
+    // else changed — a short, human-readable summary for a non-distracting toast. Deliberately
+    // not raised from the initial pull (that's just this machine catching up, not "news").
+    public event Action<string>?  DataChanged;
+
     public string                 LastStatus   { get; private set; } = "Not started";
     public DateTime?              LastSyncTime { get; private set; }
     public bool                   IsRunning    { get; private set; }
@@ -52,10 +58,14 @@ public sealed class CloudSyncService : IDisposable
         // Hook immediate push on every local save
         AppDbContext.LocalSaved += OnLocalSaved;
 
-        // Initial full pull on background thread; start timer after it finishes
+        // Initial full pull on background thread; start timer after it finishes.
+        // Re-check IsRunning before creating the timer — Stop()/Dispose() may have run while
+        // the pull was still in flight (e.g. app closed mid-sync), and without this guard the
+        // continuation would spin up a new Timer after shutdown already believed sync was off.
         Task.Run(async () =>
         {
             await DoInitialPullAsync();
+            if (!IsRunning) return;
             _timer = new Timer(SyncTick, null,
                 TimeSpan.FromSeconds(intervalSeconds),
                 TimeSpan.FromSeconds(intervalSeconds));
@@ -107,11 +117,45 @@ public sealed class CloudSyncService : IDisposable
             int pushed = DoPush(_firstPushDone ? since : DateTime.MinValue);
             _firstPushDone = true;
             int pulled = DoPull(since);
+            if (pulled > 0) ReportDataChanged(since);
             _lastSyncUtc = DateTime.UtcNow;
             LastSyncTime = DateTime.Now;
             Report($"Synced  {LastSyncTime:HH:mm:ss}  (↑{pushed} ↓{pulled})");
         }
         catch (Exception ex) { Report($"Sync error: {InnerMessage(ex)}"); }
+        finally { _lock.Release(); }
+    }
+
+    // ── On-demand push (import lock flow) ───────────────────────────────────────
+
+    /// <summary>
+    /// Forces an immediate push and waits for it, so a caller (the import-lock flow) can be
+    /// sure local changes reached the cloud before releasing the lock. A no-op when cloud sync
+    /// isn't running (Local/Network mode, or before the initial pull has completed) — locking
+    /// only exists in Cloud mode anyway. If the wait times out, this simply returns rather than
+    /// wedging the caller forever; the next regular sync tick will push anything still pending.
+    /// </summary>
+    public async Task PushNowAndWaitAsync(TimeSpan? timeout = null)
+    {
+        if (!IsAvailable || !IsRunning || !_initialDone) return;
+
+        var wait = timeout ?? TimeSpan.FromSeconds(60);
+        if (!await _lock.WaitAsync(wait))
+        {
+            Report("Push timed out waiting for an in-progress sync — will retry on the next cycle.");
+            return;
+        }
+
+        try
+        {
+            var since = _lastSyncUtc;
+            int pushed = await Task.Run(() => DoPush(_firstPushDone ? since : DateTime.MinValue));
+            _firstPushDone = true;
+            _lastSyncUtc = DateTime.UtcNow;
+            LastSyncTime = DateTime.Now;
+            if (pushed > 0) Report($"Pushed {pushed} record(s)  {DateTime.Now:HH:mm:ss}");
+        }
+        catch (Exception ex) { Report($"Push error: {InnerMessage(ex)}"); }
         finally { _lock.Release(); }
     }
 
@@ -141,6 +185,8 @@ public sealed class CloudSyncService : IDisposable
             InitialPullTable("SavedReports",         cloud.SavedReports.AsNoTracking().ToList(),        db => db.SavedReports,       e => e.Id, e => e.LastModified);
             InitialPullTable("CustomColumns",        cloud.CustomColumns.AsNoTracking().ToList(),       db => db.CustomColumns,      e => e.Id, e => e.LastModified);
             InitialPullTable("CustomRows",           cloud.CustomRows.AsNoTracking().ToList(),          db => db.CustomRows,         e => e.Id, e => e.LastModified);
+            InitialPullTable("Users",                cloud.Users.AsNoTracking().ToList(),               db => db.Users,              e => e.Id, e => e.LastModified);
+            InitialPullTable("AuditEntries",         cloud.AuditEntries.AsNoTracking().ToList(),        db => db.AuditEntries,       e => e.Id, e => e.LastModified);
 
             // AppConfigs (string PK)
             try
@@ -196,7 +242,16 @@ public sealed class CloudSyncService : IDisposable
                 bool exists = local.RompEquipmentTypes.Any(
                     x => x.RompId == record.RompId && x.EquipmentCategoryId == record.EquipmentCategoryId);
                 if (!exists)
-                    local.RompEquipmentTypes.Add(record);
+                    // A fresh entity, not the cloud row itself — this table's Id values aren't
+                    // expected to align across machines (that's why natural key drives the exists
+                    // check above), so reusing record.Id risks colliding with an unrelated local
+                    // row that already occupies that Id, which throws a UNIQUE constraint error.
+                    local.RompEquipmentTypes.Add(new RompEquipmentType
+                    {
+                        RompId              = record.RompId,
+                        EquipmentCategoryId = record.EquipmentCategoryId,
+                        LastModified        = record.LastModified,
+                    });
             }
             local.SaveChanges();
         }
@@ -234,6 +289,8 @@ public sealed class CloudSyncService : IDisposable
         total += BatchPush(Since(local.SavedReports,        since, e => e.LastModified), cloud.SavedReports,       cloud, e => e.Id, e => e.LastModified);
         total += BatchPush(Since(local.CustomColumns,       since, e => e.LastModified), cloud.CustomColumns,      cloud, e => e.Id, e => e.LastModified);
         total += BatchPush(Since(local.CustomRows,          since, e => e.LastModified), cloud.CustomRows,         cloud, e => e.Id, e => e.LastModified);
+        total += BatchPush(Since(local.Users,               since, e => e.LastModified), cloud.Users,              cloud, e => e.Id, e => e.LastModified);
+        total += BatchPush(Since(local.AuditEntries,        since, e => e.LastModified), cloud.AuditEntries,       cloud, e => e.Id, e => e.LastModified);
         total += BatchPushConfigs(Since(local.AppConfigs, since, c => c.LastModified), cloud);
 
         if (total > 0) cloud.SaveChanges();
@@ -261,6 +318,8 @@ public sealed class CloudSyncService : IDisposable
         total += BatchPush(Since(cloud.SavedReports,        since, e => e.LastModified), local.SavedReports,       local, e => e.Id, e => e.LastModified);
         total += BatchPush(Since(cloud.CustomColumns,       since, e => e.LastModified), local.CustomColumns,      local, e => e.Id, e => e.LastModified);
         total += BatchPush(Since(cloud.CustomRows,          since, e => e.LastModified), local.CustomRows,         local, e => e.Id, e => e.LastModified);
+        total += BatchPush(Since(cloud.Users,               since, e => e.LastModified), local.Users,              local, e => e.Id, e => e.LastModified);
+        total += BatchPush(Since(cloud.AuditEntries,        since, e => e.LastModified), local.AuditEntries,       local, e => e.Id, e => e.LastModified);
         total += BatchPushConfigs(Since(cloud.AppConfigs, since, c => c.LastModified), local);
 
         if (total > 0) local.SaveChanges();
@@ -303,10 +362,18 @@ public sealed class CloudSyncService : IDisposable
     {
         if (source.Count == 0) return 0;
 
+        // A single `ids.Contains(...)` query with tens of thousands of parameters (e.g. a full
+        // Orders table pull) is pathologically slow to plan/execute — chunk the destination
+        // lookup instead of ever building one query with the whole id list.
         var ids     = source.Select(getId).ToList();
-        var destMap = destSet
-            .Where(e => ids.Contains(EF.Property<int>(e, "Id")))
-            .ToDictionary(e => getId(e));
+        var destMap = new Dictionary<int, T>();
+        const int chunkSize = 500;
+        for (int i = 0; i < ids.Count; i += chunkSize)
+        {
+            var chunk = ids.Skip(i).Take(chunkSize).ToList();
+            foreach (var e in destSet.Where(e => chunk.Contains(EF.Property<int>(e, "Id"))))
+                destMap[getId(e)] = e;
+        }
 
         int count = 0;
         foreach (var record in source)
@@ -394,6 +461,8 @@ public sealed class CloudSyncService : IDisposable
         ForceMergeTable(local.SavedReports.AsNoTracking().ToList(),        cloud.SavedReports,       cloud, e => e.Id);
         ForceMergeTable(local.CustomColumns.AsNoTracking().ToList(),       cloud.CustomColumns,      cloud, e => e.Id);
         ForceMergeTable(local.CustomRows.AsNoTracking().ToList(),          cloud.CustomRows,         cloud, e => e.Id);
+        ForceMergeTable(local.Users.AsNoTracking().ToList(),               cloud.Users,              cloud, e => e.Id);
+        ForceMergeTable(local.AuditEntries.AsNoTracking().ToList(),        cloud.AuditEntries,       cloud, e => e.Id);
         ForceMergeAppConfigs(local.AppConfigs.AsNoTracking().ToList(),     cloud);
         cloud.SaveChanges();
     }
@@ -431,5 +500,42 @@ public sealed class CloudSyncService : IDisposable
     {
         LastStatus = msg;
         StatusChanged?.Invoke(msg);
+    }
+
+    /// <summary>
+    /// Builds and raises a short "who changed what" summary for the rows this pull just
+    /// brought in, using the LastModifiedBy column (Orders/Sites/Romps only — the entities that
+    /// column exists on). This machine's own changes are excluded, since they aren't news to
+    /// the person sitting at it. Best-effort: a failure here must never break the sync cycle
+    /// itself, so it's caught and silently skipped.
+    /// </summary>
+    private void ReportDataChanged(DateTime since)
+    {
+        if (DataChanged == null) return;
+
+        try
+        {
+            using var cloud = new AppDbContext { ForceCloud = true };
+            var parts = new List<string>();
+
+            void Summarize(string label, IEnumerable<string> byWhom)
+            {
+                foreach (var group in byWhom
+                    .Where(who => !string.IsNullOrWhiteSpace(who) &&
+                                  !string.Equals(who, CurrentUser.Email, StringComparison.OrdinalIgnoreCase))
+                    .GroupBy(who => who))
+                {
+                    var count = group.Count();
+                    parts.Add($"{count} {label}{(count == 1 ? "" : "s")} updated by {group.Key}");
+                }
+            }
+
+            Summarize("order", cloud.Orders.AsNoTracking().Where(o => o.LastModified > since).Select(o => o.LastModifiedBy));
+            Summarize("site",  cloud.Sites.AsNoTracking().Where(s => s.LastModified > since).Select(s => s.LastModifiedBy));
+            Summarize("ROMP",  cloud.Romps.AsNoTracking().Where(r => r.LastModified > since).Select(r => r.LastModifiedBy));
+
+            if (parts.Count > 0) DataChanged?.Invoke(string.Join("  •  ", parts));
+        }
+        catch { /* notifications are best-effort — never break the sync cycle over one */ }
     }
 }

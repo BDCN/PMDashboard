@@ -61,6 +61,9 @@ public partial class PmDetailViewModel : ObservableObject
     [ObservableProperty] private ObservableCollection<PmStatusRow> _rompBreakdown = new();
     [ObservableProperty] private ObservableCollection<PmSiteRow>   _sites         = new();
 
+    /// <summary>Site Count Only mode — hides every capacity/score figure on this page (see Configuration).</summary>
+    [ObservableProperty] private bool _isCountMode;
+
     public string UtilizationText =>
         Capacity > 0 ? $"{UtilizationPct:F1}%" : "No capacity set";
 
@@ -202,7 +205,9 @@ public partial class PmDetailViewModel : ObservableObject
         Availability = ScoringEngine.Availability(util);
         PmStatus     = ScoringEngine.PmStatus(util, p);
 
-        bool useScore = new ConfigService().Get(ConfigKeys.PercentageCalculation, "Sites") == "Score";
+        var pctMode = new ConfigService().Get(ConfigKeys.PercentageCalculation, "Sites");
+        bool useScore = pctMode == "Score";
+        IsCountMode   = pctMode == "Count";
         UtilizationPct = useScore
             ? util * 100.0
             : (Capacity > 0 ? ActiveSiteCount / Capacity * 100.0 : 0);

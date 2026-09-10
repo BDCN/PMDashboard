@@ -32,6 +32,8 @@ public partial class AddEditSiteDialog : Window
             TxtName.Text  = existing.Name;
             CboLocation.SelectedItem  = locations.Find(l => l.Id == existing.LocationId);
             BulkRompSection.Visibility = Visibility.Visible; // only show for edits
+            CloseSiteSection.Visibility = Visibility.Visible; // only show for edits
+            ChkCloseAll.IsChecked = existing.IsClosed; // reflect current state — unchecking reopens it
         }
         else
         {
@@ -65,17 +67,37 @@ public partial class AddEditSiteDialog : Window
             return;
         }
 
+        bool wasClosed = _existing?.IsClosed ?? false;
+        bool nowClosed = ChkCloseAll.IsChecked == true;
+
+        if (nowClosed && !wasClosed)
+        {
+            // Newly closing — confirm. (Already-closed staying checked, or unchecking to
+            // reopen, needs no confirmation — only the act of hiding it does.)
+            var confirm = MessageBox.Show(
+                $"Close all ROMPs at \"{TxtName.Text.Trim()}\" and remove this site from the list?\n\n" +
+                "Everything stays in the database for reporting and scoring history — use \"Show Completed\" " +
+                "on the Sites list to find it again.",
+                "Confirm Close Site", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (confirm != MessageBoxResult.Yes) return;
+
+            BulkRompStatus = StatusConfig.Complete.FirstOrDefault();
+        }
+        else
+        {
+            // Read bulk ROMP status — null means no change
+            var selected = CboBulkRompStatus.SelectedItem as string;
+            BulkRompStatus = (selected == "No change" || string.IsNullOrEmpty(selected)) ? null : selected;
+        }
+
         Result = new Site
         {
             Id           = _existing?.Id ?? 0,
             Name         = TxtName.Text.Trim(),
             LocationId   = selectedLocation.Id,
             AssignedPmId = _existing?.AssignedPmId, // preserve PM assignment — SetValues copies ALL scalars
+            IsClosed     = nowClosed,
         };
-
-        // Read bulk ROMP status — null means no change
-        var selected = CboBulkRompStatus.SelectedItem as string;
-        BulkRompStatus = (selected == "No change" || string.IsNullOrEmpty(selected)) ? null : selected;
 
         DialogResult = true;
     }

@@ -9,7 +9,9 @@ namespace PMDashboard.Dialogs;
 public partial class AddEditLocationDialog : Window
 {
     private readonly Location? _existing;
-    public Location? Result { get; private set; }
+    public Location? Result         { get; private set; }
+    public string?   BulkRompStatus { get; private set; } // null = no change
+    public bool      CloseAllSites  { get; private set; } // sets Site.IsClosed on every site here too
 
     public AddEditLocationDialog(Location? existing)
     {
@@ -21,6 +23,7 @@ public partial class AddEditLocationDialog : Window
             TxtTitle.Text = "Edit Location";
             TxtName.Text  = existing.Name;
             SelectRegion(existing.GeographicalLocation);
+            CloseLocationSection.Visibility = Visibility.Visible; // only show for edits
         }
         else
         {
@@ -79,9 +82,22 @@ public partial class AddEditLocationDialog : Window
         if (AirportLookup.Lookup(name) == null &&
             string.IsNullOrEmpty((CboRegion.SelectedItem as ComboBoxItem)?.Content?.ToString()))
         {
-            TxtError.Text = "Please select the geographical region (East or West).";
+            TxtError.Text = "Please select the geographical region (East, Central, or West).";
             TxtError.Visibility = Visibility.Visible;
             return;
+        }
+
+        if (ChkCloseAll.IsChecked == true)
+        {
+            var confirm = MessageBox.Show(
+                $"Close all sites at \"{name}\" and remove this location, its sites, and their ROMPs from their lists?\n\n" +
+                "Everything stays in the database for reporting and scoring history — use \"Show Completed\" " +
+                "to find them again.",
+                "Confirm Close Location", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (confirm != MessageBoxResult.Yes) return;
+
+            BulkRompStatus = StatusConfig.Complete.FirstOrDefault();
+            CloseAllSites  = true;
         }
 
         Result = new Location { Id = _existing?.Id ?? 0, Name = name, GeographicalLocation = region };

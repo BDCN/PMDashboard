@@ -23,6 +23,10 @@ public sealed class AutoImportService : IDisposable
     // Fires on the WPF dispatcher thread when an import completes or fails.
     public event Action<string>? StatusChanged;
 
+    // Fires on the WPF dispatcher thread after a successful auto-import, so any open page
+    // (e.g. Orders) can refresh a "last import" summary without polling.
+    public event Action<ImportResult>? ImportCompleted;
+
     public void Configure(string folder, int pollSeconds)
     {
         _folder      = folder;
@@ -99,6 +103,7 @@ public sealed class AutoImportService : IDisposable
             Notify($"Auto-imported \"{Path.GetFileName(filePath)}\": " +
                    $"{result.Added} added, {result.Updated} updated, {result.Skipped} unchanged, " +
                    $"{result.LocationsCreated} locations, {result.SitesCreated} sites, {result.RompsCreated} ROMPs.");
+            Application.Current?.Dispatcher.InvokeAsync(() => ImportCompleted?.Invoke(result));
         }
         catch (Exception ex)
         {
@@ -137,10 +142,10 @@ public sealed class AutoImportService : IDisposable
             if (row.CustomerOrder != null && row.OrdLine != null
                 && existingOrders.TryGetValue((row.CustomerOrder, row.OrdLine), out var found))
             {
-                // Simplified change detection: only update if upload date differs
-                if (found.UploadDate != uploadTime)
+                if (OrderMerge.HasChanged(found, row))
                 {
-                    db.Orders.Update(found); // mark for update (timestamp changes triggers refresh)
+                    OrderMerge.ApplyChanges(found, row);
+                    db.Orders.Update(found); // untracked (AsNoTracking), must mark explicitly
                     updated++;
                 }
                 else skipped++;

@@ -6,7 +6,7 @@ namespace PMDashboard.Services;
 public class PmImportService
 {
     private static readonly string[] ValidHomeOffices = ["FRE", "VAN", "JAX", "Remote"];
-    private static readonly string[] ValidGeoLocations = ["East", "West"];
+    private static readonly string[] ValidGeoLocations = ["East", "Central", "West"];
 
     // Pass existingPms to pre-populate the template with current database records.
     // Leave null (or empty) to generate a blank template with a dimmed example row.
@@ -92,10 +92,10 @@ public class PmImportService
         // Geographical Location dropdown (column D)
         var geoRange = ws.Range("D2:D10000");
         var dvGeo = geoRange.CreateDataValidation();
-        dvGeo.List("\"East,West\"");
+        dvGeo.List("\"East,Central,West\"");
         dvGeo.ShowErrorMessage = true;
         dvGeo.ErrorTitle = "Invalid Region";
-        dvGeo.ErrorMessage = "Please choose East or West";
+        dvGeo.ErrorMessage = "Please choose East, Central, or West";
     }
 
     private static void BuildInstructionsSheet(XLWorkbook wb)
@@ -109,7 +109,7 @@ public class PmImportService
         ws.Cell("A3").Value = "1. Fill in the \"PM Bulk Import\" sheet starting at row 2.";
         ws.Cell("A4").Value = "2. Delete or overwrite the example row (row 2) before importing.";
         ws.Cell("A5").Value = "3. Home Office: FRE, VAN, JAX, or Remote (column C dropdown).";
-        ws.Cell("A6").Value = "4. Geographical Location: East or West (column D dropdown).";
+        ws.Cell("A6").Value = "4. Geographical Location: East, Central, or West (column D dropdown).";
         ws.Cell("A7").Value = "5. First Name and Last Name are required. All other fields are optional.";
         ws.Cell("A8").Value = "6. Capacity is decimal (e.g. 1.0 = full time). Ideal Utilization is 0–100.";
 
@@ -128,7 +128,7 @@ public class PmImportService
             { "A", "First Name",             "Required" },
             { "B", "Last Name",              "Required" },
             { "C", "Home Office",            "Required — FRE, VAN, JAX, or Remote" },
-            { "D", "Geographical Location",  "Required — East or West" },
+            { "D", "Geographical Location",  "Required — East, Central, or West" },
             { "E", "Data Name",              "Optional — short data-system identifier" },
             { "F", "Capacity",               "Optional — decimal (default 0)" },
             { "G", "Ideal Utilization (%)",  "Optional — number 0–100 (default 0)" },
@@ -183,7 +183,7 @@ public class PmImportService
 
             if (!string.IsNullOrEmpty(geoLoc) && !ValidGeoLocations.Contains(geoLoc, StringComparer.OrdinalIgnoreCase))
             {
-                errors.Add($"Row {row} ({firstName} {lastName}): Geographical Location \"{geoLoc}\" must be East or West — defaulting to empty.");
+                errors.Add($"Row {row} ({firstName} {lastName}): Geographical Location \"{geoLoc}\" must be East, Central, or West — defaulting to empty.");
                 geoLoc = "";
             }
 

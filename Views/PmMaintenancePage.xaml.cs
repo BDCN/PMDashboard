@@ -15,6 +15,16 @@ public partial class PmMaintenancePage : UserControl
     public PmMaintenancePage()
     {
         InitializeComponent();
+
+        // Site Count Only mode: these columns drive numbers nobody uses in that mode, so hide
+        // them rather than leave editable fields that quietly do nothing.
+        if (new ConfigService().Get(ConfigKeys.PercentageCalculation, "Sites") == "Count")
+        {
+            ColSiteCap.Visibility    = Visibility.Collapsed;
+            ColScoreCap.Visibility   = Visibility.Collapsed;
+            ColMultiplier.Visibility = Visibility.Collapsed;
+            ColIdealUtil.Visibility  = Visibility.Collapsed;
+        }
     }
 
     // ── Inline row save ──
@@ -36,8 +46,10 @@ public partial class PmMaintenancePage : UserControl
     private void BtnAdd_Click(object sender, RoutedEventArgs e)
     {
         if (Vm is not { } vm) return;
-        var dlg = new AddEditPmDialog(null) { Owner = Window.GetWindow(this) };
-        if (dlg.ShowDialog() == true) vm.AddPm(dlg.Result!);
+        var dlg = new AddEditPmDialog(null, vm.GetAllPms()) { Owner = Window.GetWindow(this) };
+        if (dlg.ShowDialog() != true) return;
+        vm.AddPm(dlg.Result!);
+        if (vm.SelectedPm != null) PmGrid.ScrollIntoView(vm.SelectedPm);
     }
 
     // ── Delete ──

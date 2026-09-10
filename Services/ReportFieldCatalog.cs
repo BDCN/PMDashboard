@@ -25,6 +25,7 @@ public class SiteRompFlatRow
     public string   RompStatus           { get; init; } = "";
     public string   EquipmentTypes       { get; init; } = "";
     public DateTime LastModified         { get; init; }
+    public string   LastModifiedBy       { get; init; } = "";
 }
 
 /// <summary>A single result row, keyed by field Key so the results DataGrid can bind dynamically chosen columns.</summary>
@@ -58,6 +59,12 @@ public static class ReportFieldCatalog
         new() { Key = "DeliveryDate",             DisplayName = "Delivery Date",      FieldType = ReportFieldType.Date },
         new() { Key = "PromiseDate",              DisplayName = "Promise Date",       FieldType = ReportFieldType.Date },
         new() { Key = "RequestedCompletion",      DisplayName = "Requested Completion", FieldType = ReportFieldType.Date },
+        // Last Uploaded vs Last Changed are deliberately different questions:
+        // UploadDate is when this row's data last arrived from an imported file;
+        // LastModified is when the row last changed in the database, from any source.
+        new() { Key = "UploadDate",               DisplayName = "Last Uploaded",      FieldType = ReportFieldType.Date },
+        new() { Key = "LastModified",             DisplayName = "Last Changed",       FieldType = ReportFieldType.Date },
+        new() { Key = "LastModifiedBy",           DisplayName = "Last Changed By",    FieldType = ReportFieldType.Text },
     };
 
     /// <summary>Date-typed Order fields eligible as the date-range filter target.</summary>
@@ -74,7 +81,8 @@ public static class ReportFieldCatalog
         new() { Key = "RompName",             DisplayName = "ROMP",              FieldType = ReportFieldType.Text },
         new() { Key = "RompStatus",           DisplayName = "ROMP Status",       FieldType = ReportFieldType.Text },
         new() { Key = "EquipmentTypes",       DisplayName = "Equipment Types",   FieldType = ReportFieldType.Text },
-        new() { Key = "LastModified",         DisplayName = "Last Modified",     FieldType = ReportFieldType.Date },
+        new() { Key = "LastModified",         DisplayName = "Last Changed",      FieldType = ReportFieldType.Date },
+        new() { Key = "LastModifiedBy",       DisplayName = "Last Changed By",   FieldType = ReportFieldType.Text },
     };
 
     public static object? GetOrderValue(Order o, string key) => key switch
@@ -96,6 +104,9 @@ public static class ReportFieldCatalog
         "TotalCOPrice"           => o.TotalCOPrice,
         "DaysLate"               => o.DaysLate,
         "OrderDate"              => o.OrderDate,
+        "UploadDate"             => o.UploadDate,
+        "LastModified"           => o.LastModified,
+        "LastModifiedBy"         => o.LastModifiedBy,
         "ShipDate"               => o.ShipDate,
         "DeliveryDate"           => o.DeliveryDate,
         "PromiseDate"            => o.PromiseDate,
@@ -114,6 +125,7 @@ public static class ReportFieldCatalog
         "RompStatus"           => r.RompStatus,
         "EquipmentTypes"       => r.EquipmentTypes,
         "LastModified"         => r.LastModified,
+        "LastModifiedBy"       => r.LastModifiedBy,
         _                      => null,
     };
 

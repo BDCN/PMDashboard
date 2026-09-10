@@ -57,6 +57,7 @@ public partial class WorkloadViewModel : ObservableObject
     [ObservableProperty] private string _avgUtilizationText = "–";
     [ObservableProperty] private double _hundredPctX;
     [ObservableProperty] private bool   _isScoreMode;
+    [ObservableProperty] private bool   _isCountMode;
 
     private string _geoFilter = "All";
 
@@ -98,8 +99,11 @@ public partial class WorkloadViewModel : ObservableObject
         var sitesByPm = allSites.GroupBy(s => s.AssignedPmId!.Value)
                                 .ToDictionary(g => g.Key, g => g.ToList());
 
-        bool useScore = new ConfigService().Get(ConfigKeys.PercentageCalculation, "Sites") == "Score";
+        var  pctMode  = new ConfigService().Get(ConfigKeys.PercentageCalculation, "Sites");
+        bool useScore = pctMode == "Score";
+        bool useCount = pctMode == "Count";
         IsScoreMode   = useScore;
+        IsCountMode   = useCount;
 
         var p = ScoreConfig.WorkloadParams;
 
@@ -137,34 +141,49 @@ public partial class WorkloadViewModel : ObservableObject
 
             return new RawPmRow(pm, pmSites.Count, romps.Count, active, util, ideal, cap,
                                 byStatus, pmLoad, avail, pmStatus, effCap);
-        }).OrderBy(x => x.UtilPct).ToList();
+        // Site Count Only mode: no capacity/utilization math exists to sort by, so order by
+        // raw assigned-site count instead — fewest sites first, same "least loaded at top"
+        // convention the other two modes already use.
+        }).OrderBy(x => useCount ? (double)x.Sites : x.UtilPct).ToList();
 
         // ── KPI summary ──
         PmCount   = pms.Count;
         TotalSites = sitesByPm.Values.Sum(sl => sl.Count);
         TotalRomps = _rawData.Sum(r => r.Romps);
 
-        var withCap = _rawData.Where(r => r.Capacity > 0).ToList();
-        NoCapacityCount    = _rawData.Count(r => r.Capacity == 0);
-        AvgUtilizationText = withCap.Count > 0 ? $"{withCap.Average(r => r.UtilPct):F1}%" : "–";
-
-        if (useScore)
+        if (useCount)
         {
-            // Threshold-based KPI counts for Score mode
-            OverloadedCount   = _rawData.Count(r => r.Capacity > 0 && r.UtilPct / 100.0 > p.OverloadThreshold);
-            NearFullCount     = _rawData.Count(r => r.Capacity > 0 && r.UtilPct / 100.0 >= p.NearFullThreshold
-                                                                    && r.UtilPct / 100.0 <= p.OverloadThreshold);
-            HasCapacityCount  = _rawData.Count(r => r.Capacity > 0 && r.UtilPct / 100.0 < p.NearFullThreshold);
-            // Keep sites-mode counts at 0 so XAML DataTriggers collapse those cards
+            // The entire KPI panel is hidden in this mode (WorkloadPage.xaml) since none of
+            // these numbers mean anything without a capacity figure to compare against.
+            NoCapacityCount = 0;
+            AvgUtilizationText = "–";
+            OverloadedCount = NearFullCount = HasCapacityCount = 0;
             OverCapacityCount = OnTargetCount = UnderTargetCount = 0;
         }
         else
         {
-            // Classic sites-mode KPI counts
-            OverCapacityCount = _rawData.Count(r => r.Capacity > 0 && r.UtilPct > 100);
-            OnTargetCount     = _rawData.Count(r => r.Capacity > 0 && r.UtilPct >= r.IdealPct && r.UtilPct <= 100);
-            UnderTargetCount  = _rawData.Count(r => r.Capacity > 0 && r.UtilPct < r.IdealPct);
-            OverloadedCount = NearFullCount = HasCapacityCount = 0;
+            var withCap = _rawData.Where(r => r.Capacity > 0).ToList();
+            NoCapacityCount    = _rawData.Count(r => r.Capacity == 0);
+            AvgUtilizationText = withCap.Count > 0 ? $"{withCap.Average(r => r.UtilPct):F1}%" : "–";
+
+            if (useScore)
+            {
+                // Threshold-based KPI counts for Score mode
+                OverloadedCount   = _rawData.Count(r => r.Capacity > 0 && r.UtilPct / 100.0 > p.OverloadThreshold);
+                NearFullCount     = _rawData.Count(r => r.Capacity > 0 && r.UtilPct / 100.0 >= p.NearFullThreshold
+                                                                        && r.UtilPct / 100.0 <= p.OverloadThreshold);
+                HasCapacityCount  = _rawData.Count(r => r.Capacity > 0 && r.UtilPct / 100.0 < p.NearFullThreshold);
+                // Keep sites-mode counts at 0 so XAML DataTriggers collapse those cards
+                OverCapacityCount = OnTargetCount = UnderTargetCount = 0;
+            }
+            else
+            {
+                // Classic sites-mode KPI counts
+                OverCapacityCount = _rawData.Count(r => r.Capacity > 0 && r.UtilPct > 100);
+                OnTargetCount     = _rawData.Count(r => r.Capacity > 0 && r.UtilPct >= r.IdealPct && r.UtilPct <= 100);
+                UnderTargetCount  = _rawData.Count(r => r.Capacity > 0 && r.UtilPct < r.IdealPct);
+                OverloadedCount = NearFullCount = HasCapacityCount = 0;
+            }
         }
 
         ApplyScale(700);
@@ -174,21 +193,43 @@ public partial class WorkloadViewModel : ObservableObject
     {
         if (_rawData.Count == 0 || availableWidth <= 0) return;
 
-        double maxUtil = Math.Max(100.0, _rawData.Max(r => r.UtilPct));
-        double scale   = availableWidth / maxUtil;
-        HundredPctX    = 100.0 * scale;
+        bool   countMode = IsCountMode;
+        double scale;
 
-        double maxTick = Math.Ceiling(maxUtil / 10.0) * 10.0;
-        var tickList   = new List<AxisTick>();
-        for (double t = 0; t <= maxTick; t += 10)
+        if (countMode)
         {
-            bool major = t % 50 == 0;
-            tickList.Add(new AxisTick { Label = major ? $"{(int)t}" : "", X = t * scale, IsMajor = major });
+            // Scale by raw assigned-site count — there's no capacity/utilization figure in
+            // this mode to compare bars against, so the "100%" reference concept doesn't apply.
+            double maxCount = Math.Max(1, _rawData.Max(r => r.Sites));
+            scale       = availableWidth / maxCount;
+            HundredPctX = -1; // off-screen sentinel; WorkloadPage skips the reference line in this mode
+
+            int tickMax  = (int)Math.Ceiling(maxCount);
+            int tickStep = tickMax <= 10 ? 1 : (int)Math.Ceiling(tickMax / 10.0);
+            var countTicks = new List<AxisTick>();
+            for (int t = 0; t <= tickMax; t += tickStep)
+                countTicks.Add(new AxisTick { Label = $"{t}", X = t * scale, IsMajor = true });
+            Ticks = new ObservableCollection<AxisTick>(countTicks);
         }
-        Ticks = new ObservableCollection<AxisTick>(tickList);
+        else
+        {
+            double maxUtil = Math.Max(100.0, _rawData.Max(r => r.UtilPct));
+            scale       = availableWidth / maxUtil;
+            HundredPctX = 100.0 * scale;
+
+            double maxTick = Math.Ceiling(maxUtil / 10.0) * 10.0;
+            var tickList   = new List<AxisTick>();
+            for (double t = 0; t <= maxTick; t += 10)
+            {
+                bool major = t % 50 == 0;
+                tickList.Add(new AxisTick { Label = major ? $"{(int)t}" : "", X = t * scale, IsMajor = major });
+            }
+            Ticks = new ObservableCollection<AxisTick>(tickList);
+        }
 
         var workloadStatuses = StatusConfig.Workload;
-        bool scoreMode       = IsScoreMode;
+        bool scoreMode     = IsScoreMode;
+        double maxSiteCount = countMode ? Math.Max(1, _rawData.Max(r => r.Sites)) : 1;
 
         Rows = new ObservableCollection<PmWorkloadRow>(
             _rawData.Select(raw =>
@@ -196,8 +237,16 @@ public partial class WorkloadViewModel : ObservableObject
                 bool   over      = raw.UtilPct > 100;
                 double activePct = raw.Sites > 0 ? raw.ActiveSites / (double)raw.Sites * 100.0 : 0;
                 string label;
+                double barWidth    = 0;
+                double fillFracPct;  // drives IsHighUtilization → inside-vs-outside label placement
 
-                if (scoreMode)
+                if (countMode)
+                {
+                    label = $"{raw.Sites} site{(raw.Sites == 1 ? "" : "s")} · {raw.Romps} ROMP{(raw.Romps == 1 ? "" : "s")}";
+                    barWidth    = raw.Sites * scale;
+                    fillFracPct = raw.Sites / maxSiteCount * 100.0;
+                }
+                else if (scoreMode)
                 {
                     // Lead with Score so it's visible even on short bars; avail & context follow
                     string warnFlag = over ? " ⚠" : "";
@@ -205,6 +254,7 @@ public partial class WorkloadViewModel : ObservableObject
                     label = raw.Capacity > 0
                         ? $"Score: {raw.PmLoad:F2}{warnFlag}  ·  {raw.UtilPct:F1}% util  ·  {availPct} avail  ·  {raw.Sites} sites / {raw.Romps} ROMPs"
                         : $"Score: {raw.PmLoad:F2}  ·  No capacity  ·  {raw.Sites} sites / {raw.Romps} ROMPs";
+                    fillFracPct = raw.UtilPct;
                 }
                 else
                 {
@@ -212,6 +262,7 @@ public partial class WorkloadViewModel : ObservableObject
                     label = raw.Capacity > 0
                         ? $"{raw.UtilPct:F1}%{(over ? " ⚠" : "")} / {raw.Sites} sites{activeTxt} / {raw.Romps} ROMPs"
                         : $"No capacity · {raw.Sites} sites";
+                    fillFracPct = raw.UtilPct;
                 }
 
                 var statusLines = workloadStatuses
@@ -222,14 +273,17 @@ public partial class WorkloadViewModel : ObservableObject
                     : "not set (factor 1.00)";
                 string tooltip = string.Join(Environment.NewLine, statusLines)
                                + Environment.NewLine + "─────────────────"
-                               + (scoreMode
-                                   ? Environment.NewLine + $"Score (PM Load): {raw.PmLoad:F2}"
-                                   + Environment.NewLine + $"Eff. Capacity: {raw.EffCapacity:F1}"
-                                   + Environment.NewLine + $"PM Multiplier: {multText}"
-                                   + Environment.NewLine + $"Utilization: {raw.UtilPct:F1}%"
-                                   + Environment.NewLine + $"Availability: {raw.Availability * 100.0:F1}%"
-                                   + Environment.NewLine + $"Status: {raw.PmStatus}"
-                                   : "");
+                               + (countMode
+                                   ? Environment.NewLine + $"Assigned sites: {raw.Sites}"
+                                   + Environment.NewLine + $"Total ROMPs: {raw.Romps}"
+                                   : scoreMode
+                                       ? Environment.NewLine + $"Score (PM Load): {raw.PmLoad:F2}"
+                                       + Environment.NewLine + $"Eff. Capacity: {raw.EffCapacity:F1}"
+                                       + Environment.NewLine + $"PM Multiplier: {multText}"
+                                       + Environment.NewLine + $"Utilization: {raw.UtilPct:F1}%"
+                                       + Environment.NewLine + $"Availability: {raw.Availability * 100.0:F1}%"
+                                       + Environment.NewLine + $"Status: {raw.PmStatus}"
+                                       : "");
 
                 return new PmWorkloadRow
                 {
@@ -237,16 +291,16 @@ public partial class WorkloadViewModel : ObservableObject
                     PmName         = $"{raw.Pm.FirstName} {raw.Pm.LastName}".Trim(),
                     SiteCount      = raw.Sites,
                     RompCount      = raw.Romps,
-                    UtilizationPct = raw.UtilPct,
+                    UtilizationPct = fillFracPct,
                     IdealPct       = raw.IdealPct,
                     Capacity       = raw.Capacity,
                     PmLoad         = raw.PmLoad,
                     Availability   = raw.Availability,
                     PmStatus       = raw.PmStatus,
-                    BlueWidth      = Math.Max(0, Math.Min(raw.UtilPct, raw.IdealPct)) * scale,
-                    GreenWidth     = raw.UtilPct > raw.IdealPct
-                                        ? Math.Max(0, Math.Min(raw.UtilPct, 100.0) - raw.IdealPct) * scale : 0,
-                    RedWidth       = Math.Max(0, raw.UtilPct - 100.0) * scale,
+                    BlueWidth      = countMode ? barWidth : Math.Max(0, Math.Min(raw.UtilPct, raw.IdealPct)) * scale,
+                    GreenWidth     = countMode ? 0 : (raw.UtilPct > raw.IdealPct
+                                        ? Math.Max(0, Math.Min(raw.UtilPct, 100.0) - raw.IdealPct) * scale : 0),
+                    RedWidth       = countMode ? 0 : Math.Max(0, raw.UtilPct - 100.0) * scale,
                     Label          = label,
                     TooltipText    = tooltip,
                 };

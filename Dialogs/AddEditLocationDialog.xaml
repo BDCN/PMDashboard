@@ -28,8 +28,22 @@
             <ComboBox x:Name="CboRegion" Style="{StaticResource FormComboBoxStyle}"
                       Margin="0,0,0,24">
                 <ComboBoxItem Content="East"/>
+                <ComboBoxItem Content="Central"/>
                 <ComboBoxItem Content="West"/>
             </ComboBox>
+
+            <!-- Close shortcut — completes every ROMP at every Site under this location (edit only) -->
+            <Border x:Name="CloseLocationSection" Visibility="Collapsed"
+                    Background="#FEF2F2" BorderBrush="#FECACA" BorderThickness="1"
+                    CornerRadius="6" Padding="14,12" Margin="0,0,0,20">
+                <StackPanel>
+                    <CheckBox x:Name="ChkCloseAll" Content="Close All Sites &amp; This Location"
+                              FontSize="12" FontWeight="SemiBold" Foreground="#B91C1C"
+                              Margin="0,0,0,4"/>
+                    <TextBlock Text="Marks every ROMP at every Site under this location complete, and hides the location, its sites, and their ROMPs from their lists — the data stays for reporting/scoring history. Use &quot;Show Completed&quot; to find them again."
+                               FontSize="11" Foreground="#94A3B8" TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
 
             <TextBlock x:Name="TxtError" Foreground="#EF4444" FontSize="12"
                        Visibility="Collapsed" Margin="0,0,0,12" TextWrapping="Wrap"/>

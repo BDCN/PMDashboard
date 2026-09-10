@@ -18,7 +18,6 @@ public partial class App : Application
         // Must load before the first AppDbContext is constructed so OnConfiguring
         // knows which provider / path to use.
         DatabaseConfig.Load();
-        AdminConfig.Load();
 
         using var db = new AppDbContext();
         db.Database.EnsureCreated();
@@ -144,6 +143,51 @@ public partial class App : Application
             "ALTER TABLE CustomRows ADD COLUMN EntityId INTEGER NOT NULL DEFAULT 0"); }
         catch { /* column already exists */ }
 
+        // Users / AuditEntries — accounts and the append-only interaction log
+        db.Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS Users (
+                Id                 INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                Email              TEXT    NOT NULL,
+                FirstName          TEXT    NOT NULL DEFAULT '',
+                LastName           TEXT    NOT NULL DEFAULT '',
+                PasswordHash       TEXT    NOT NULL DEFAULT '',
+                Role               TEXT    NOT NULL DEFAULT 'User',
+                IsActive           INTEGER NOT NULL DEFAULT 1,
+                MustChangePassword INTEGER NOT NULL DEFAULT 0,
+                LastLoginUtc       TEXT    NULL
+            )
+            """);
+        db.Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS AuditEntries (
+                Id           INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                TimestampUtc TEXT    NOT NULL,
+                UserEmail    TEXT    NOT NULL DEFAULT '',
+                UserName     TEXT    NOT NULL DEFAULT '',
+                Action       TEXT    NOT NULL DEFAULT '',
+                EntityType   TEXT    NOT NULL DEFAULT '',
+                EntityId     INTEGER NULL,
+                Details      TEXT    NOT NULL DEFAULT '',
+                MachineName  TEXT    NOT NULL DEFAULT ''
+            )
+            """);
+
+        // LastModifiedBy — who last wrote the row; only on the entities the reports/notifications
+        // attribute changes to. EF includes it in every SELECT once the model has it, so it must
+        // exist before the first query, same rule as LastModified below.
+        foreach (var tbl in new[] { "Orders", "Romps", "Sites" })
+        {
+            try { db.Database.ExecuteSqlRaw(
+                $"ALTER TABLE {tbl} ADD COLUMN LastModifiedBy TEXT NOT NULL DEFAULT ''"); }
+            catch { /* column already exists on this table */ }
+        }
+
+        // Site.IsClosed — explicit close flag for the "Close All ROMPs & This Site"/Location
+        // cascade, needed because a zero-ROMP site can never reach SiteStatus "Complete" through
+        // ROMP data alone (see Site.cs).
+        try { db.Database.ExecuteSqlRaw(
+            "ALTER TABLE Sites ADD COLUMN IsClosed INTEGER NOT NULL DEFAULT 0"); }
+        catch { /* column already exists */ }
+
         // ── LastModified column on all tables (must run before any EF query) ────
         // EF Core includes LastModified in every SELECT once the entity model has it.
         // Adding the column here — after all CREATE TABLE blocks but before the first
@@ -158,7 +202,7 @@ public partial class App : Application
             "PMs", "Locations", "Sites", "Romps", "RompEquipmentTypes", "Orders",
             "RompStatuses", "EquipmentCategories", "EquipmentKeywords",
             "AssignmentRules", "AppConfigs", "SavedReports",
-            "CustomColumns", "CustomRows"
+            "CustomColumns", "CustomRows", "Users", "AuditEntries"
         })
         {
             try
@@ -292,6 +336,23 @@ public partial class App : Application
         StatusConfig.Reload();
         ScoreConfig.Reload();
 
+        // ── Authentication ─────────────────────────────────────────────────────
+        // No user exists yet (fresh install) → the first real person creates the admin
+        // account directly, choosing their own email and password. Unlike a seeded
+        // placeholder password, nothing here is ever a literal in source, so there is
+        // nothing to leak into git history.
+        if (!db.Users.Any())
+        {
+            var create = new Dialogs.CreateAdminAccountDialog();
+            if (create.ShowDialog() != true) { Shutdown(); return; }
+        }
+
+        // ShutdownMode is OnExplicitShutdown (App.xaml) for exactly this: the login/create-
+        // account dialog is the only window open, and under the default OnLastWindowClose its
+        // closing would end the application before the main window was ever created.
+        var login = new Dialogs.LoginDialog();
+        if (login.ShowDialog() != true) { Shutdown(); return; }
+
         // ── Start cloud background sync (Cloud mode only) ─────────────────────
         if (CloudSyncService.IsAvailable)
         {
@@ -312,6 +373,14 @@ public partial class App : Application
                 AutoImport.Start();
             }
         }
+
+        // ── Show the main window ──────────────────────────────────────────────
+        // Created here rather than via StartupUri so it appears only after a successful
+        // sign-in, and so closing it is what ends the app from this point on.
+        var main = new MainWindow();
+        MainWindow   = main;
+        ShutdownMode = ShutdownMode.OnMainWindowClose;
+        main.Show();
     }
 
     protected override void OnExit(ExitEventArgs e)

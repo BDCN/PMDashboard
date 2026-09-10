@@ -1,7 +1,9 @@
 using System.Windows;
 using System.Windows.Controls;
+using Microsoft.Win32;
 using PMDashboard.Data.Models;
 using PMDashboard.Dialogs;
+using PMDashboard.Services;
 using PMDashboard.ViewModels;
 
 namespace PMDashboard.Views;
@@ -10,7 +12,15 @@ public partial class AssignmentPage : UserControl
 {
     private AssignmentViewModel? Vm => DataContext as AssignmentViewModel;
 
-    public AssignmentPage() => InitializeComponent();
+    public AssignmentPage()
+    {
+        InitializeComponent();
+
+        // Site Count Only mode: ranking never computes a utilization percentage, so the column
+        // would just show "—" for every candidate.
+        if (new ConfigService().Get(ConfigKeys.PercentageCalculation, "Sites") == "Count")
+            ColUtil.Visibility = Visibility.Collapsed;
+    }
 
     // ── Multi-select ListBox ──────────────────────────────────────────────────
 
@@ -190,5 +200,73 @@ public partial class AssignmentPage : UserControl
         // Re-sync ViewModel selection with what's now in the ListBox
         if (Vm is { } vm)
             vm.SetSelectedSites(SitesListBox.SelectedItems.Cast<Site>());
+    }
+
+    // ── Site Assignments bulk import ────────────────────────────────────────────
+
+    private void BtnDownloadTemplate_Click(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm) return;
+        var dlg = new SaveFileDialog
+        {
+            Title      = "Save Site Assignments Template",
+            FileName   = "Site_Assignments_Template",
+            DefaultExt = ".xlsx",
+            Filter     = "Excel Files|*.xlsx"
+        };
+        if (dlg.ShowDialog() != true) return;
+
+        try
+        {
+            var sites = vm.GetAllSitesForExport();
+            new SiteAssignmentImportService().GenerateTemplate(dlg.FileName, sites, vm.AllPms.ToList());
+
+            var msg = sites.Count > 0
+                ? $"Template saved with {sites.Count} current site(s) and their assignments.\n\nEdit the \"PM Data Name\" column, then use Import Assignments to apply changes."
+                : "Template saved (no sites in database yet).\n\nFill in the \"Site Assignments\" sheet and use Import Assignments to load it.";
+            MessageBox.Show(msg, "Template Saved", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Could not save template:\n{ex.Message}", "Error",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void BtnImportAssignments_Click(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm) return;
+        var dlg = new OpenFileDialog
+        {
+            Title  = "Select Site Assignments File",
+            Filter = "Excel Files|*.xlsx;*.xls|All Files|*.*"
+        };
+        if (dlg.ShowDialog() != true) return;
+
+        try
+        {
+            var confirm = MessageBox.Show(
+                "Import site assignments from this file?\n\n" +
+                "Sites already assigned to a different PM than the sheet says will be skipped and reported, not overwritten.",
+                "Confirm Import", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (confirm != MessageBoxResult.Yes) return;
+
+            var (result, messages) = new SiteAssignmentImportService().ImportAssignments(dlg.FileName);
+            vm.RefreshAfterImport();
+
+            var summary = $"Assigned: {result.Assigned}\nUnchanged: {result.Unchanged}\n" +
+                          $"Conflicts (not changed): {result.Conflicts}\nErrors: {result.Errors}";
+            if (messages.Count > 0)
+                summary += "\n\nDetails:\n" + string.Join("\n", messages.Take(30))
+                         + (messages.Count > 30 ? $"\n...and {messages.Count - 30} more." : "");
+
+            MessageBox.Show(summary, "Import Complete", MessageBoxButton.OK,
+                result.Errors > 0 || result.Conflicts > 0 ? MessageBoxImage.Warning : MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Import failed:\n{ex.Message}", "Error",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 }

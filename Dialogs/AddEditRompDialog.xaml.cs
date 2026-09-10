@@ -114,6 +114,18 @@ public partial class AddEditRompDialog : Window
                      ?? StatusConfig.All.FirstOrDefault()
                      ?? "Ordered";
 
+        if (ChkMarkComplete.IsChecked == true)
+        {
+            var confirm = MessageBox.Show(
+                $"Mark ROMP \"{TxtName.Text.Trim()}\" complete and remove it from the list?\n\n" +
+                "It stays in the database for reporting and scoring history — use \"Show Completed\" " +
+                "on the ROMP list to find it again.",
+                "Confirm Complete", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (confirm != MessageBoxResult.Yes) return;
+
+            status = StatusConfig.Complete.FirstOrDefault() ?? status;
+        }
+
         Result = new Romp
         {
             Id     = _existing?.Id ?? 0,

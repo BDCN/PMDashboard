@@ -143,6 +143,7 @@
                                           BorderThickness="0" Background="White"
                                           FontFamily="Segoe UI" FontSize="13">
                                     <ComboBoxItem Content="East"/>
+                                    <ComboBoxItem Content="Central"/>
                                     <ComboBoxItem Content="West"/>
                                 </ComboBox>
                             </DataTemplate>
@@ -153,7 +154,7 @@
                     <DataGridTextColumn Header="Data Name"
                                         Binding="{Binding DataName, UpdateSourceTrigger=LostFocus}"
                                         Width="135"/>
-                    <DataGridTextColumn Header="Site Cap"
+                    <DataGridTextColumn x:Name="ColSiteCap" Header="Site Cap"
                                         Binding="{Binding Capacity, UpdateSourceTrigger=LostFocus, StringFormat={}{0:N1}}"
                                         Width="80"
                                         HeaderStyle="{StaticResource DataGridColumnHeaderStyle}">
@@ -163,7 +164,7 @@
                             </DataTemplate>
                         </DataGridTextColumn.HeaderTemplate>
                     </DataGridTextColumn>
-                    <DataGridTextColumn Header="Score Cap"
+                    <DataGridTextColumn x:Name="ColScoreCap" Header="Score Cap"
                                         Binding="{Binding ScoreCapacity, UpdateSourceTrigger=LostFocus, StringFormat={}{0:N0}}"
                                         Width="90">
                         <DataGridTextColumn.HeaderTemplate>
@@ -172,7 +173,7 @@
                             </DataTemplate>
                         </DataGridTextColumn.HeaderTemplate>
                     </DataGridTextColumn>
-                    <DataGridTextColumn Binding="{Binding PmMultiplier, UpdateSourceTrigger=LostFocus}"
+                    <DataGridTextColumn x:Name="ColMultiplier" Binding="{Binding PmMultiplier, UpdateSourceTrigger=LostFocus}"
                                         Width="90">
                         <DataGridTextColumn.HeaderTemplate>
                             <DataTemplate>
@@ -180,7 +181,7 @@
                             </DataTemplate>
                         </DataGridTextColumn.HeaderTemplate>
                     </DataGridTextColumn>
-                    <DataGridTextColumn Header="Ideal Util (%)"
+                    <DataGridTextColumn x:Name="ColIdealUtil" Header="Ideal Util (%)"
                                         Binding="{Binding IdealUtilization, UpdateSourceTrigger=LostFocus, StringFormat={}{0:N1}}"
                                         Width="110"/>
 

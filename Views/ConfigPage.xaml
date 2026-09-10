@@ -3,19 +3,52 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              Background="#F1F5F9">
 
+    <Grid>
+        <!-- Access restricted — the entire Configuration page requires Super Admin (replaces
+             the old shared admin-gate password that used to cover only Percentage Calculation/
+             Source Data/Database). Shown instead of the page for anyone else. -->
+        <StackPanel Margin="32,28,32,28" HorizontalAlignment="Center" VerticalAlignment="Center">
+            <StackPanel.Style>
+                <Style TargetType="StackPanel">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsSuperAdmin}" Value="False">
+                            <Setter Property="Visibility" Value="Visible"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </StackPanel.Style>
+            <TextBlock Text="🔒" FontSize="40" HorizontalAlignment="Center" Margin="0,0,0,16"/>
+            <TextBlock Text="Configuration is restricted to Super Admins" FontSize="18" FontWeight="SemiBold"
+                       Foreground="#0F172A" HorizontalAlignment="Center"/>
+            <TextBlock Text="Ask a Super Admin if you need a setting changed here."
+                       FontSize="13" Foreground="#64748B" HorizontalAlignment="Center" Margin="0,6,0,0"/>
+        </StackPanel>
+
     <ScrollViewer VerticalScrollBarVisibility="Auto">
     <Grid Margin="32,28,32,28">
+        <Grid.Style>
+            <Style TargetType="Grid">
+                <Setter Property="Visibility" Value="Collapsed"/>
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding IsSuperAdmin}" Value="True">
+                        <Setter Property="Visibility" Value="Visible"/>
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+        </Grid.Style>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>  <!-- Title -->
             <RowDefinition Height="Auto"/>  <!-- Upload Method card -->
             <RowDefinition Height="Auto"/>  <!-- Semi-Auto settings card -->
             <RowDefinition Height="Auto"/>  <!-- Assignment Rules card -->
-            <RowDefinition Height="Auto"/>  <!-- Percentage Calculation card -->
             <RowDefinition Height="Auto"/>  <!-- Workload Scoring Parameters card -->
             <RowDefinition Height="Auto"/>  <!-- Site/ROMP Statuses card -->
             <RowDefinition Height="Auto"/>  <!-- Equipment Score Categories card -->
-            <RowDefinition Height="Auto"/>  <!-- Source Data card (password-locked) -->
-            <RowDefinition Height="Auto"/>  <!-- Database card (password-locked) -->
+            <RowDefinition Height="Auto"/>  <!-- Percentage Calculation card -->
+            <RowDefinition Height="Auto"/>  <!-- Source Data card -->
+            <RowDefinition Height="Auto"/>  <!-- Database card -->
+            <RowDefinition Height="Auto"/>  <!-- Manage Users card -->
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
@@ -27,75 +60,8 @@
                        FontSize="13" Foreground="#64748B" Margin="0,4,0,0"/>
         </StackPanel>
 
-        <!-- ── Percentage Calculation card ── -->
-        <Border Grid.Row="4" Background="White" CornerRadius="10"
-                BorderBrush="#E2E8F0" BorderThickness="1" Padding="24,20" Margin="0,0,0,16">
-            <StackPanel>
-                <TextBlock Text="Percentage Calculation" FontSize="16" FontWeight="SemiBold"
-                           Foreground="#0F172A" Margin="0,0,0,4"/>
-                <TextBlock Text="Choose how PM utilization percentage is calculated in the Workload chart."
-                           FontSize="13" Foreground="#64748B" Margin="0,0,0,20"/>
-
-                <!-- Sites option -->
-                <Border CornerRadius="8" Padding="16,14" Margin="0,0,0,10">
-                    <Border.Style>
-                        <Style TargetType="Border">
-                            <Setter Property="Background" Value="White"/>
-                            <Setter Property="BorderThickness" Value="1"/>
-                            <Setter Property="BorderBrush" Value="#E2E8F0"/>
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding IsSitesMode}" Value="True">
-                                    <Setter Property="Background" Value="#EFF6FF"/>
-                                    <Setter Property="BorderThickness" Value="2"/>
-                                    <Setter Property="BorderBrush" Value="#2563EB"/>
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </Border.Style>
-                    <StackPanel Orientation="Horizontal">
-                        <RadioButton GroupName="PctCalc" VerticalAlignment="Top"
-                                     IsChecked="{Binding IsSitesMode, Mode=OneWay}"
-                                     Click="BtnPctSites_Click" Margin="0,2,12,0"/>
-                        <StackPanel>
-                            <TextBlock Text="Sites  (default)" FontSize="13" FontWeight="SemiBold" Foreground="#0F172A"/>
-                            <TextBlock Text="Utilization = non-complete sites ÷ Site Capacity × 100%.  Set each PM's Site Cap in PM Maintenance."
-                                       FontSize="12" Foreground="#64748B" Margin="0,3,0,0" TextWrapping="Wrap"/>
-                        </StackPanel>
-                    </StackPanel>
-                </Border>
-
-                <!-- Score option -->
-                <Border CornerRadius="8" Padding="16,14">
-                    <Border.Style>
-                        <Style TargetType="Border">
-                            <Setter Property="Background" Value="White"/>
-                            <Setter Property="BorderThickness" Value="1"/>
-                            <Setter Property="BorderBrush" Value="#E2E8F0"/>
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding IsScoreMode}" Value="True">
-                                    <Setter Property="Background" Value="#EFF6FF"/>
-                                    <Setter Property="BorderThickness" Value="2"/>
-                                    <Setter Property="BorderBrush" Value="#2563EB"/>
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </Border.Style>
-                    <StackPanel Orientation="Horizontal">
-                        <RadioButton GroupName="PctCalc" VerticalAlignment="Top"
-                                     IsChecked="{Binding IsScoreMode, Mode=OneWay}"
-                                     Click="BtnPctScore_Click" Margin="0,2,12,0"/>
-                        <StackPanel>
-                            <TextBlock Text="Score" FontSize="13" FontWeight="SemiBold" Foreground="#0F172A"/>
-                            <TextBlock Text="Utilization = total difficulty score ÷ Score Capacity × 100%.  Set each PM's Score Cap in PM Maintenance."
-                                       FontSize="12" Foreground="#64748B" Margin="0,3,0,0" TextWrapping="Wrap"/>
-                        </StackPanel>
-                    </StackPanel>
-                </Border>
-            </StackPanel>
-        </Border>
-
         <!-- ── Workload Scoring Parameters card ── -->
-        <Border Grid.Row="5" Background="White" CornerRadius="10"
+        <Border Grid.Row="4" Background="White" CornerRadius="10"
                 BorderBrush="#E2E8F0" BorderThickness="1" Padding="24,20" Margin="0,0,0,16">
             <StackPanel>
                 <TextBlock Text="Workload Scoring Parameters" FontSize="16" FontWeight="SemiBold"
@@ -237,83 +203,113 @@
             </StackPanel>
         </Border>
 
-        <!-- ── Shared admin lock bar — unlocks BOTH Source Data and Database ── -->
-        <Border Grid.Row="8" CornerRadius="8" Margin="0,0,0,8"
-                Padding="16,10">
-            <Border.Style>
-                <Style TargetType="Border">
-                    <Setter Property="Background"   Value="#FEF9C3"/>
-                    <Setter Property="BorderBrush"  Value="#FDE68A"/>
-                    <Setter Property="BorderThickness" Value="1"/>
-                    <Style.Triggers>
-                        <DataTrigger Binding="{Binding IsAdminUnlocked}" Value="True">
-                            <Setter Property="Background"   Value="#D1FAE5"/>
-                            <Setter Property="BorderBrush"  Value="#6EE7B7"/>
-                        </DataTrigger>
-                    </Style.Triggers>
-                </Style>
-            </Border.Style>
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                    <!-- Locked state text -->
-                    <TextBlock FontSize="12" FontWeight="SemiBold">
-                        <TextBlock.Style>
-                            <Style TargetType="TextBlock">
-                                <Setter Property="Text"       Value="🔒  Admin settings are locked — Source Data and Database require a password to modify."/>
-                                <Setter Property="Foreground" Value="#92400E"/>
+        <!-- ── Percentage Calculation card ── -->
+        <Border Grid.Row="7" Background="White" CornerRadius="10"
+                BorderBrush="#E2E8F0" BorderThickness="1" Padding="24,20" Margin="0,0,0,16">
+            <StackPanel>
+                <TextBlock Text="Percentage Calculation" FontSize="16" FontWeight="SemiBold"
+                           Foreground="#0F172A" Margin="0,0,0,4"/>
+
+                <StackPanel>
+                    <TextBlock Text="Choose how PM workload is measured."
+                               FontSize="13" Foreground="#64748B" TextWrapping="Wrap" Margin="0,0,0,20"/>
+
+                    <!-- Sites option -->
+                    <Border CornerRadius="8" Padding="16,14" Margin="0,0,0,10">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Background" Value="White"/>
+                                <Setter Property="BorderThickness" Value="1"/>
+                                <Setter Property="BorderBrush" Value="#E2E8F0"/>
                                 <Style.Triggers>
-                                    <DataTrigger Binding="{Binding IsAdminUnlocked}" Value="True">
-                                        <Setter Property="Text"       Value="🔓  Admin settings unlocked — Source Data and Database are editable for this session."/>
-                                        <Setter Property="Foreground" Value="#065F46"/>
+                                    <DataTrigger Binding="{Binding IsSitesMode}" Value="True">
+                                        <Setter Property="Background" Value="#EFF6FF"/>
+                                        <Setter Property="BorderThickness" Value="2"/>
+                                        <Setter Property="BorderBrush" Value="#2563EB"/>
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
-                        </TextBlock.Style>
-                    </TextBlock>
+                        </Border.Style>
+                        <StackPanel Orientation="Horizontal">
+                            <RadioButton GroupName="PctCalc" VerticalAlignment="Top"
+                                         IsChecked="{Binding IsSitesMode, Mode=OneWay}"
+                                         Click="BtnPctSites_Click" Margin="0,2,12,0"/>
+                            <StackPanel>
+                                <TextBlock Text="Sites  (default)" FontSize="13" FontWeight="SemiBold" Foreground="#0F172A"/>
+                                <TextBlock Text="Utilization = non-complete sites ÷ Site Capacity × 100%.  Set each PM's Site Cap in PM Maintenance."
+                                           FontSize="12" Foreground="#64748B" Margin="0,3,0,0" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Score option -->
+                    <Border CornerRadius="8" Padding="16,14" Margin="0,0,0,10">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Background" Value="White"/>
+                                <Setter Property="BorderThickness" Value="1"/>
+                                <Setter Property="BorderBrush" Value="#E2E8F0"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsScoreMode}" Value="True">
+                                        <Setter Property="Background" Value="#EFF6FF"/>
+                                        <Setter Property="BorderThickness" Value="2"/>
+                                        <Setter Property="BorderBrush" Value="#2563EB"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <StackPanel Orientation="Horizontal">
+                            <RadioButton GroupName="PctCalc" VerticalAlignment="Top"
+                                         IsChecked="{Binding IsScoreMode, Mode=OneWay}"
+                                         Click="BtnPctScore_Click" Margin="0,2,12,0"/>
+                            <StackPanel>
+                                <TextBlock Text="Score" FontSize="13" FontWeight="SemiBold" Foreground="#0F172A"/>
+                                <TextBlock Text="Utilization = total difficulty score ÷ Score Capacity × 100%.  Set each PM's Score Cap in PM Maintenance."
+                                           FontSize="12" Foreground="#64748B" Margin="0,3,0,0" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Count Only option -->
+                    <Border CornerRadius="8" Padding="16,14">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Background" Value="White"/>
+                                <Setter Property="BorderThickness" Value="1"/>
+                                <Setter Property="BorderBrush" Value="#E2E8F0"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsCountMode}" Value="True">
+                                        <Setter Property="Background" Value="#EFF6FF"/>
+                                        <Setter Property="BorderThickness" Value="2"/>
+                                        <Setter Property="BorderBrush" Value="#2563EB"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <StackPanel Orientation="Horizontal">
+                            <RadioButton GroupName="PctCalc" VerticalAlignment="Top"
+                                         IsChecked="{Binding IsCountMode, Mode=OneWay}"
+                                         Click="BtnPctCount_Click" Margin="0,2,12,0"/>
+                            <StackPanel>
+                                <TextBlock Text="Site Count Only" FontSize="13" FontWeight="SemiBold" Foreground="#0F172A"/>
+                                <TextBlock Text="No capacity or utilization used anywhere — Workload shows plain site/ROMP counts, PM records hide Capacity/Ideal Utilization/Score Cap/Multiplier, and assignment ranks PMs by fewest currently-assigned active sites."
+                                           FontSize="12" Foreground="#64748B" Margin="0,3,0,0" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
-                <!-- Single Unlock button — solid blue for contrast on amber background -->
-                <Button Grid.Column="1" Content="🔒 Unlock" Click="BtnUnlockAdmin_Click">
-                    <Button.Style>
-                        <Style TargetType="Button" BasedOn="{StaticResource PrimaryButtonStyle}">
-                            <Setter Property="Padding" Value="14,6"/>
-                            <Setter Property="FontSize" Value="12"/>
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding IsAdminUnlocked}" Value="True">
-                                    <Setter Property="Visibility" Value="Collapsed"/>
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </Button.Style>
-                </Button>
-            </Grid>
+            </StackPanel>
         </Border>
 
         <!-- ── Source Data card ── -->
         <Border Grid.Row="8" Background="White" CornerRadius="10"
-                BorderBrush="#E2E8F0" BorderThickness="1" Padding="24,20" Margin="0,46,0,16">
+                BorderBrush="#E2E8F0" BorderThickness="1" Padding="24,20" Margin="0,0,0,16">
             <StackPanel>
                 <TextBlock Text="Source Data" FontSize="16" FontWeight="SemiBold"
                            Foreground="#0F172A" Margin="0,0,0,4"/>
 
-                <!-- Content — greyed and disabled when locked -->
                 <StackPanel>
-                    <StackPanel.Style>
-                        <Style TargetType="StackPanel">
-                            <Setter Property="Opacity"    Value="0.40"/>
-                            <Setter Property="IsEnabled"  Value="False"/>
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding IsAdminUnlocked}" Value="True">
-                                    <Setter Property="Opacity"   Value="1.0"/>
-                                    <Setter Property="IsEnabled" Value="True"/>
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </StackPanel.Style>
-                <TextBlock Text="Select the Excel format being imported. Changing this setting requires the admin password."
+                <TextBlock Text="Select the Excel format being imported."
                            FontSize="13" Foreground="#64748B" TextWrapping="Wrap" Margin="0,0,0,20"/>
 
                 <!-- VADATA -->
@@ -697,7 +693,7 @@
         </Border>
 
         <!-- ── Site/ROMP Statuses card ── -->
-        <Border Grid.Row="6" Background="White" CornerRadius="10"
+        <Border Grid.Row="5" Background="White" CornerRadius="10"
                 BorderBrush="#E2E8F0" BorderThickness="1" Padding="24,20" Margin="0,0,0,16">
             <StackPanel>
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
@@ -854,7 +850,7 @@
         </Border>
 
         <!-- ── Equipment Score Categories card ── -->
-        <Border Grid.Row="7" Background="White" CornerRadius="10"
+        <Border Grid.Row="6" Background="White" CornerRadius="10"
                 BorderBrush="#E2E8F0" BorderThickness="1" Padding="24,20" Margin="0,0,0,16">
             <StackPanel>
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
@@ -1051,20 +1047,7 @@
                     </Border>
                 </StackPanel>
 
-                <!-- Content — greyed and disabled when locked (same IsAdminUnlocked) -->
                 <StackPanel>
-                    <StackPanel.Style>
-                        <Style TargetType="StackPanel">
-                            <Setter Property="Opacity"   Value="0.40"/>
-                            <Setter Property="IsEnabled" Value="False"/>
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding IsAdminUnlocked}" Value="True">
-                                    <Setter Property="Opacity"   Value="1.0"/>
-                                    <Setter Property="IsEnabled" Value="True"/>
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </StackPanel.Style>
                 <TextBlock FontSize="13" Foreground="#64748B" TextWrapping="Wrap" Margin="0,0,0,20">
                     <Run Text="Choose where the application stores its data. "/>
                     <Run Text="Local" FontWeight="SemiBold"/>
@@ -1377,6 +1360,26 @@
                                              Height="200" Padding="12,10"/>
                                 </StackPanel>
                             </Border>
+
+                            <!-- Danger zone — destructive, admin-gated with the rest of this card -->
+                            <Border BorderBrush="#FECACA" BorderThickness="1" CornerRadius="8"
+                                    Background="#FEF2F2" Padding="14,12" Margin="0,12,0,0">
+                                <StackPanel>
+                                    <TextBlock Text="Danger Zone" FontSize="13" FontWeight="SemiBold"
+                                               Foreground="#991B1B" Margin="0,0,0,4"/>
+                                    <TextBlock FontSize="11" Foreground="#7F1D1D" TextWrapping="Wrap"
+                                               Margin="0,0,0,10"
+                                               Text="Deletes every Order, Location, Site, ROMP, saved report and custom column from THIS computer's local database. Your PM roster is kept, along with settings, statuses, and equipment categories. In Cloud mode the next sync pulls the cloud's copy back down — nothing is deleted from the cloud."/>
+                                    <Button Content="Delete Local Database Data"
+                                            Click="BtnDeleteLocalData_Click"
+                                            Padding="12,6" FontSize="12"
+                                            HorizontalAlignment="Left"
+                                            Style="{StaticResource DangerButtonStyle}"
+                                            ToolTipService.ToolTip="Empties this machine's local data so the cloud copy becomes authoritative. Cannot be undone."/>
+                                    <TextBlock x:Name="TxtDeleteLocalStatus" FontSize="11" Foreground="#7F1D1D"
+                                               TextWrapping="Wrap" Margin="0,8,0,0" Visibility="Collapsed"/>
+                                </StackPanel>
+                            </Border>
                         </StackPanel>
                     </StackPanel>
                 </Border>
@@ -1388,6 +1391,85 @@
             </StackPanel>
         </Border>
 
+        <!-- ── Manage Users card — this whole page already requires SuperAdmin, so this
+             section header exists purely for visual grouping, not an additional gate ── -->
+        <Border Grid.Row="10" Background="White" CornerRadius="10"
+                BorderBrush="#E2E8F0" BorderThickness="1" Padding="24,20" Margin="0,0,0,16">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsSuperAdmin}" Value="True">
+                            <Setter Property="Visibility" Value="Visible"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+            <StackPanel>
+                <Grid Margin="0,0,0,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Manage Users" FontSize="16" FontWeight="SemiBold" Foreground="#0F172A"/>
+                    <Button Grid.Column="1" Content="+ Add User" Click="BtnAddUser_Click"
+                            Style="{StaticResource PrimaryButtonStyle}" Padding="12,6" FontSize="12"/>
+                </Grid>
+                <TextBlock Text="Create logins for team members and reset passwords. Visible only to Super Admins."
+                           FontSize="13" Foreground="#64748B" Margin="0,0,0,16"/>
+
+                <Border BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" ClipToBounds="True">
+                    <DataGrid x:Name="UsersGrid"
+                              Style="{StaticResource AppDataGridStyle}"
+                              CellStyle="{StaticResource DataGridCellStyle}"
+                              ColumnHeaderStyle="{StaticResource DataGridColumnHeaderStyle}"
+                              ItemsSource="{Binding Users}"
+                              AutoGenerateColumns="False" IsReadOnly="True" BorderThickness="0">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Name"  Width="180" Binding="{Binding DisplayName}"/>
+                            <DataGridTextColumn Header="Email" Width="220" Binding="{Binding Email}"/>
+                            <DataGridTextColumn Header="Role"  Width="110" Binding="{Binding Role}"/>
+                            <DataGridTextColumn Header="Last Login" Width="140"
+                                                Binding="{Binding LastLoginUtc, StringFormat='yyyy-MM-dd HH:mm'}"/>
+                            <DataGridTemplateColumn Header="Active" Width="80">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <CheckBox IsChecked="{Binding IsActive, Mode=OneWay}"
+                                                  IsHitTestVisible="False" HorizontalAlignment="Center"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTemplateColumn Header="" Width="*">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,2">
+                                            <Button Content="Reset Password" Click="BtnResetUserPassword_Click"
+                                                    Style="{StaticResource SecondaryButtonStyle}"
+                                                    Padding="8,3" FontSize="11" Margin="0,0,8,0"/>
+                                            <Button Click="BtnToggleUserActive_Click"
+                                                    Padding="8,3" FontSize="11">
+                                                <Button.Style>
+                                                    <Style TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
+                                                        <Setter Property="Content" Value="Deactivate"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsActive}" Value="False">
+                                                                <Setter Property="Content" Value="Activate"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Button.Style>
+                                            </Button>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Border>
+            </StackPanel>
+        </Border>
+
     </Grid>
     </ScrollViewer>
+    </Grid>
 </UserControl>

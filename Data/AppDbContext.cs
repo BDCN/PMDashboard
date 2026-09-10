@@ -40,6 +40,8 @@ public class AppDbContext : DbContext
     public DbSet<SavedReport>        SavedReports         => Set<SavedReport>();
     public DbSet<CustomColumn>       CustomColumns        => Set<CustomColumn>();
     public DbSet<CustomRow>          CustomRows           => Set<CustomRow>();
+    public DbSet<User>               Users                => Set<User>();
+    public DbSet<AuditEntry>         AuditEntries         => Set<AuditEntry>();
 
     protected override void OnConfiguring(DbContextOptionsBuilder options)
     {
@@ -94,6 +96,10 @@ public class AppDbContext : DbContext
         {
             var prop = entry.Properties.FirstOrDefault(p => p.Metadata.Name == "LastModified");
             if (prop != null) prop.CurrentValue = now;
+
+            // Same treatment for the "who" half, on the entities that carry it (Order/Romp/Site).
+            var byProp = entry.Properties.FirstOrDefault(p => p.Metadata.Name == "LastModifiedBy");
+            if (byProp != null) byProp.CurrentValue = CurrentUser.Email;
         }
     }
 
@@ -148,5 +154,8 @@ public class AppDbContext : DbContext
 
         modelBuilder.Entity<Site>()
             .Ignore(s => s.SiteStatus);
+
+        modelBuilder.Entity<Location>()
+            .Ignore(l => l.IsFullyClosed);
     }
 }

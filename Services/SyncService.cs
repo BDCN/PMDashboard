@@ -40,6 +40,8 @@ public static class SyncService
         "SavedReports",
         "CustomColumns",
         "CustomRows",
+        "Users",
+        "AuditEntries",
     ];
 
     // ── Before travel ─────────────────────────────────────────────────────────
@@ -496,6 +498,45 @@ public static class SyncService
                            ON UPDATE CURRENT_TIMESTAMP(3),
             PRIMARY KEY (`Id`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+        -- Users / AuditEntries — accounts and the append-only interaction log ───
+        CREATE TABLE IF NOT EXISTS `Users` (
+            `Id`                 INT          NOT NULL AUTO_INCREMENT,
+            `Email`              VARCHAR(255) NOT NULL,
+            `FirstName`          LONGTEXT     NOT NULL,
+            `LastName`           LONGTEXT     NOT NULL,
+            `PasswordHash`       LONGTEXT     NOT NULL,
+            `Role`               VARCHAR(50)  NOT NULL DEFAULT 'User',
+            `IsActive`           TINYINT(1)   NOT NULL DEFAULT 1,
+            `MustChangePassword` TINYINT(1)   NOT NULL DEFAULT 0,
+            `LastLoginUtc`       DATETIME     NULL,
+            `LastModified`       DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+                                 ON UPDATE CURRENT_TIMESTAMP(3),
+            PRIMARY KEY (`Id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+        CREATE TABLE IF NOT EXISTS `AuditEntries` (
+            `Id`           INT          NOT NULL AUTO_INCREMENT,
+            `TimestampUtc` DATETIME     NOT NULL,
+            `UserEmail`    VARCHAR(255) NOT NULL DEFAULT '',
+            `UserName`     VARCHAR(255) NOT NULL DEFAULT '',
+            `Action`       VARCHAR(100) NOT NULL DEFAULT '',
+            `EntityType`   VARCHAR(100) NOT NULL DEFAULT '',
+            `EntityId`     INT          NULL,
+            `Details`      TEXT         NOT NULL,
+            `MachineName`  VARCHAR(255) NOT NULL DEFAULT '',
+            `LastModified` DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+                           ON UPDATE CURRENT_TIMESTAMP(3),
+            PRIMARY KEY (`Id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+        -- LastModifiedBy — who last wrote the row (Orders/Romps/Sites only)
+        ALTER TABLE `Orders` ADD COLUMN IF NOT EXISTS `LastModifiedBy` VARCHAR(255) NOT NULL DEFAULT '';
+        ALTER TABLE `Romps`  ADD COLUMN IF NOT EXISTS `LastModifiedBy` VARCHAR(255) NOT NULL DEFAULT '';
+        ALTER TABLE `Sites`  ADD COLUMN IF NOT EXISTS `LastModifiedBy` VARCHAR(255) NOT NULL DEFAULT '';
+
+        -- IsClosed — explicit close flag for a Site (see Site.cs; needed for zero-ROMP sites)
+        ALTER TABLE `Sites`  ADD COLUMN IF NOT EXISTS `IsClosed` TINYINT(1) NOT NULL DEFAULT 0;
 
         -- ================================================================
         -- Done. Connect the app using:

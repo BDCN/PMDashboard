@@ -34,6 +34,15 @@ public partial class ConfigViewModel : ObservableObject
         CloudSyncStatus = $"{svc.LastStatus}   —   {lastTime}";
     }
 
+    // Keeps the Database card's status text live instead of only refreshing on page load /
+    // the manual Refresh button. CloudSyncService.Report() fires StatusChanged from a
+    // background thread (Task.Run continuations / Timer callbacks), so the handler must hop
+    // back to the UI thread itself before touching an ObservableProperty. Named distinctly
+    // from "OnCloudSyncStatusChanged" — that name is reserved by the [ObservableProperty]
+    // source generator for CloudSyncStatus's own partial change-callback.
+    private void HandleCloudSyncServiceStatus(string _) =>
+        System.Windows.Application.Current?.Dispatcher.Invoke(RefreshCloudSyncStatus);
+
     public bool IsDbLocal   => DbMode == DatabaseMode.Local;
     public bool IsDbNetwork => DbMode == DatabaseMode.Network;
     public bool IsDbCloud   => DbMode == DatabaseMode.Cloud;
@@ -193,11 +202,13 @@ public partial class ConfigViewModel : ObservableObject
 
     public bool IsSitesMode => PercentageCalculation == "Sites";
     public bool IsScoreMode  => PercentageCalculation == "Score";
+    public bool IsCountMode  => PercentageCalculation == "Count";
 
     partial void OnPercentageCalculationChanged(string value)
     {
         OnPropertyChanged(nameof(IsSitesMode));
         OnPropertyChanged(nameof(IsScoreMode));
+        OnPropertyChanged(nameof(IsCountMode));
     }
 
     public void SavePercentageCalculation(string mode)
@@ -216,19 +227,101 @@ public partial class ConfigViewModel : ObservableObject
     [ObservableProperty] private double _skillBase         = 0.40;  // floor factor for eff_capacity
     [ObservableProperty] private double _skillPerPoint     = 0.06;  // increment per multiplier point
 
-    // Single admin unlock — controls both Source Data and Database sections
-    [ObservableProperty] private bool _isAdminUnlocked = false;
+    // ── Delete local data ────────────────────────────────────────────────────
 
-    public bool IsAdminLocked => !IsAdminUnlocked;
+    /// <summary>
+    /// Tables cleared by <see cref="DeleteLocalData"/>, in FK-safe order (children first).
+    /// Configuration tables are deliberately NOT in this list — see the remarks there.
+    /// </summary>
+    private static readonly string[] LocalDataTables =
+    {
+        "RompEquipmentTypes", "Romps", "Sites", "Locations",
+        "Orders", "CustomRows", "CustomColumns", "SavedReports", "EquipmentWeights",
+    };
 
-    partial void OnIsAdminUnlockedChanged(bool value) => OnPropertyChanged(nameof(IsAdminLocked));
+    /// <summary>Row counts for the tables the delete would clear, for the confirmation prompt.</summary>
+    public Dictionary<string, int> GetLocalDataCounts()
+    {
+        using var db = new AppDbContext();
+        var counts = new Dictionary<string, int>();
+        foreach (var table in LocalDataTables)
+        {
+            try { counts[table] = db.Database.SqlQueryRaw<int>($"SELECT COUNT(*) AS Value FROM {table}").AsEnumerable().First(); }
+            catch { counts[table] = 0; }   // table missing on an older schema
+        }
+        return counts;
+    }
 
-    public void UnlockAdmin() { IsAdminUnlocked = true; }
-    public void LockAdmin()   { IsAdminUnlocked = false; }
+    /// <summary>
+    /// Empties the local SQLite database of records, leaving the schema in place.
+    ///
+    /// PMs are preserved — the roster is maintained by hand rather than imported, so it is not
+    /// something a re-import or a cloud pull would bring back. Deleting Sites while keeping PMs
+    /// leaves no dangling FK, since Site.AssignedPmId points at PM and not the other way round;
+    /// the surviving PMs simply end up with no sites assigned.
+    ///
+    /// Configuration tables (AppConfigs, RompStatuses, EquipmentCategories, EquipmentKeywords,
+    /// AssignmentRules) are preserved for the same reason: they hold the admin password hash, the
+    /// workload scoring parameters and the status/equipment setup, none of which is "data" in the
+    /// sense meant here, and wiping AppConfigs would drop the admin password and lock this card.
+    ///
+    /// Raw DELETE is used rather than EF RemoveRange so 8k+ Orders do not have to be
+    /// materialised and tracked. That also means SaveChanges never runs, so no cloud push is
+    /// triggered — and since sync never deletes remotely, nothing is removed from the cloud.
+    /// In Cloud mode the next sync pulls the cloud's copy back down, which is the point: it
+    /// makes the cloud authoritative for this machine.
+    /// </summary>
+    public string DeleteLocalData()
+    {
+        using var db = new AppDbContext();
+        int total = 0;
+        var cleared = new List<string>();
 
-    // Aliases kept so XAML bindings that still use the old names compile cleanly
-    public bool IsSourceDataUnlocked => IsAdminUnlocked;
-    public bool IsDatabaseUnlocked   => IsAdminUnlocked;
+        foreach (var table in LocalDataTables)
+        {
+            try
+            {
+                var before = db.Database.SqlQueryRaw<int>($"SELECT COUNT(*) AS Value FROM {table}").AsEnumerable().First();
+                if (before == 0) continue;
+                db.Database.ExecuteSqlRaw($"DELETE FROM {table}");
+                total += before;
+                cleared.Add($"{table} ({before:N0})");
+            }
+            catch { /* table absent on this schema — nothing to clear */ }
+        }
+
+        // Reset AUTOINCREMENT counters so a subsequent cloud pull can insert the cloud's own
+        // Ids directly instead of colliding with locally-consumed ones.
+        try { db.Database.ExecuteSqlRaw("DELETE FROM sqlite_sequence"); } catch { /* no AUTOINCREMENT tables */ }
+
+        StatusConfig.Reload();
+        ScoreConfig.Reload();
+
+        AuditService.Log("Delete", "LocalDatabase", details:
+            total == 0 ? "Delete local data: nothing to delete" : $"Deleted {total:N0} local record(s)");
+
+        return total == 0
+            ? "Local database was already empty — nothing deleted."
+            : $"Deleted {total:N0} record(s): {string.Join(", ", cleared)}.";
+    }
+
+    // ── Manage users ─────────────────────────────────────────────────────────
+
+    private readonly UserService _userService = new();
+
+    [ObservableProperty] private ObservableCollection<User> _users = new();
+
+    /// <summary>Gates the Manage Users card — a real per-person check, independent of the shared admin-gate password.</summary>
+    public bool IsSuperAdmin => CurrentUser.IsSuperAdmin;
+
+    public void LoadUsers() => Users = new ObservableCollection<User>(_userService.AllUsers());
+
+    public void SetUserActive(User user, bool active)
+    {
+        _userService.SetActive(user.Id, active);
+        AuditService.Log(active ? "Activate" : "Deactivate", "User", user.Id, $"{(active ? "Activated" : "Deactivated")} {user.Email}");
+        LoadUsers();
+    }
 
     public void SaveWorkloadParams()
     {
@@ -281,9 +374,12 @@ public partial class ConfigViewModel : ObservableObject
         StatusMessage           = "";
         LoadDatabaseSettings();
         RefreshCloudSyncStatus();
+        App.CloudSync.StatusChanged -= HandleCloudSyncServiceStatus;
+        App.CloudSync.StatusChanged += HandleCloudSyncServiceStatus;
         LoadRules();
         LoadRompStatuses();
         LoadEquipmentWeights();
+        LoadUsers();
     }
 
     public void SaveUploadMethod()

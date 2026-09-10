@@ -196,7 +196,23 @@ public partial class ReportBuilderPage : UserControl
 
     // ── Run report ───────────────────────────────────────────────────────────
 
-    private void BtnRunReport_Click(object sender, RoutedEventArgs e) => Vm?.RunQuery();
+    private void BtnRunReport_Click(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm) return;
+
+        // Orders is now 100,000+ rows and growing — an unfiltered run loads all of it into
+        // memory. Ask before doing that by accident rather than silently eating minutes/RAM.
+        if (vm.Mode == ReportMode.Orders && vm.DateFrom == null && vm.DateTo == null)
+        {
+            var confirm = MessageBox.Show(
+                "No date filter is set. This will load every Order in the database — currently " +
+                "100,000+ rows — which can be slow and use significant memory.\n\nContinue anyway?",
+                "No Date Filter", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            if (confirm != MessageBoxResult.Yes) return;
+        }
+
+        vm.RunQuery();
+    }
 
     // ── Chart controls ──────────────────────────────────────────────────────
 

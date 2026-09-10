@@ -15,3 +15,6 @@ stuff.txt
 # Real business data, not app code - kept out of git by explicit choice
 Details.xlsx
 Open Lines Report.xlsx
+
+# Generated from testing the Site Assignments / Sites import templates - not source
+Site_Assignments_Template.xlsx

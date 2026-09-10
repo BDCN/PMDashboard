@@ -1,4 +1,3 @@
-using System.Collections.ObjectModel;
 using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.EntityFrameworkCore;
@@ -10,40 +9,62 @@ namespace PMDashboard.ViewModels;
 
 public partial class OrdersViewModel : ObservableObject
 {
-    [ObservableProperty] private ObservableCollection<Order> _orders = new();
     [ObservableProperty] private int    _totalCount;
-    [ObservableProperty] private string _searchText     = "";
     [ObservableProperty] private string _lastUploadDate = "No imports yet";
+
+    // ── Last import results — persistent card, replaces the old one-shot MessageBox ──
+    [ObservableProperty] private bool   _hasLastImport;
+    [ObservableProperty] private string _lastImportHeadline = "";
+    [ObservableProperty] private string _lastImportDetails  = "";
+    [ObservableProperty] private string _lastImportWhen     = "";
+    [ObservableProperty] private string _lastImportBy       = "";
+
+    // ── Import-in-progress state — disables the button and shows the lock/push status ──
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsNotImporting))]
+    private bool _isImporting;
+    [ObservableProperty] private string _importingStatus = "";
+
+    public bool IsNotImporting => !IsImporting;
 
     public void Load()
     {
         using var db = new AppDbContext();
-        var list = db.Orders.AsNoTracking().OrderBy(o => o.JobName).ToList();
-        Orders     = new ObservableCollection<Order>(list);
-        TotalCount = list.Count;
+        TotalCount = db.Orders.Count();
 
         var latest = db.Orders.Max(o => (DateTime?)o.UploadDate);
         LastUploadDate = latest.HasValue
             ? latest.Value.ToString("MMM d, yyyy  h:mm tt")
             : "No imports yet";
+
+        // Semi-automatic imports can land while this page isn't the active one — subscribing
+        // here (idempotent, same -=/+= pattern as ConfigViewModel) keeps the card current
+        // whenever the user does navigate back, without a separate always-running listener.
+        App.AutoImport.ImportCompleted -= OnAutoImportCompleted;
+        App.AutoImport.ImportCompleted += OnAutoImportCompleted;
     }
 
-    public void Search(string text)
+    private void OnAutoImportCompleted(ImportResult result)
     {
-        if (string.IsNullOrWhiteSpace(text)) { Load(); return; }
+        SetLastImportResult(result, "Automatic import");
+        Load();
+    }
 
-        using var db  = new AppDbContext();
-        var lower     = text.ToLower();
-        var list      = db.Orders.AsNoTracking()
-            .Where(o => (o.JobName      != null && o.JobName.ToLower().Contains(lower))
-                     || (o.CustomerPO   != null && o.CustomerPO.ToLower().Contains(lower))
-                     || (o.CustomerOrder != null && o.CustomerOrder.ToLower().Contains(lower))
-                     || (o.Item         != null && o.Item.ToLower().Contains(lower))
-                     || (o.CustNum      != null && o.CustNum.ToLower().Contains(lower)))
-            .OrderBy(o => o.JobName)
-            .ToList();
-        Orders     = new ObservableCollection<Order>(list);
-        TotalCount = list.Count;
+    private void SetLastImportResult(ImportResult result, string by)
+    {
+        HasLastImport      = true;
+        LastImportHeadline = $"{result.Added:N0} added  ·  {result.Updated:N0} updated  ·  {result.Skipped:N0} unchanged";
+
+        var created = new List<string>();
+        if (result.LocationsCreated > 0) created.Add($"{result.LocationsCreated:N0} location(s)");
+        if (result.SitesCreated     > 0) created.Add($"{result.SitesCreated:N0} site(s)");
+        if (result.RompsCreated     > 0) created.Add($"{result.RompsCreated:N0} ROMP(s)");
+        LastImportDetails = created.Count > 0
+            ? $"Created: {string.Join(", ", created)}"
+            : "No new locations, sites, or ROMPs created.";
+
+        LastImportWhen = DateTime.Now.ToString("MMM d, yyyy  h:mm tt");
+        LastImportBy   = by;
     }
 
     public void ClearAll()
@@ -51,6 +72,7 @@ public partial class OrdersViewModel : ObservableObject
         using var db = new AppDbContext();
         db.Orders.RemoveRange(db.Orders);
         db.SaveChanges();
+        AuditService.Log("Delete", "Orders", details: "Cleared all imported order records");
         Load();
     }
 
@@ -91,9 +113,9 @@ public partial class OrdersViewModel : ObservableObject
             if (row.CustomerOrder != null && row.OrdLine != null
                 && existingOrders.TryGetValue((row.CustomerOrder, row.OrdLine), out var found))
             {
-                if (OrderHasChanged(found, row))
+                if (OrderMerge.HasChanged(found, row))
                 {
-                    ApplyOrderChanges(found, row);
+                    OrderMerge.ApplyChanges(found, row);
                     db.Orders.Update(found); // untracked (AsNoTracking), must mark explicitly
                     updated++;
                 }
@@ -139,8 +161,50 @@ public partial class OrdersViewModel : ObservableObject
         }
 
         db.SaveChanges();
+
+        var result = new ImportResult(added, updated, skipped, locationsCreated, sitesCreated, rompsCreated);
+        SetLastImportResult(result, CurrentUser.DisplayName);
+        AuditService.Log("Import", "Orders", details:
+            $"Imported orders: {added} added, {updated} updated, {skipped} unchanged, " +
+            $"{locationsCreated} location(s), {sitesCreated} site(s), {rompsCreated} ROMP(s) created");
         Load();
-        return new ImportResult(added, updated, skipped, locationsCreated, sitesCreated, rompsCreated);
+        return result;
+    }
+
+    /// <summary>
+    /// Full import flow: acquire the cross-user lock (Cloud mode only — a no-op elsewhere),
+    /// import to local SQLite (fast, unchanged), push the result to the cloud and wait for it,
+    /// then release the lock. This keeps the local-first speed of a normal import while still
+    /// stopping two people from importing over each other in Cloud mode.
+    /// </summary>
+    public async Task<(bool Success, string? Message)> ImportWithLockAsync(List<Order> incoming)
+    {
+        IsImporting     = true;
+        ImportingStatus = "Checking import lock…";
+        try
+        {
+            var (acquired, heldByMessage) = ImportLockService.TryAcquire(CurrentUser.Email);
+            if (!acquired) return (false, heldByMessage);
+
+            try
+            {
+                ImportingStatus = "Importing locally…";
+                UpsertOrders(incoming);
+
+                ImportingStatus = "Uploading to the cloud…";
+                await App.CloudSync.PushNowAndWaitAsync();
+                return (true, null);
+            }
+            finally
+            {
+                ImportLockService.Release(CurrentUser.Email);
+            }
+        }
+        finally
+        {
+            IsImporting     = false;
+            ImportingStatus = "";
+        }
     }
 
     // ── Helpers ──
@@ -176,76 +240,4 @@ public partial class OrdersViewModel : ObservableObject
         return (null, null, null);
     }
 
-    private static bool OrderHasChanged(Order a, Order b) =>
-        a.CustomerPO != b.CustomerPO || a.CustPOLine != b.CustPOLine ||
-        a.ShipHold != b.ShipHold || a.FaceSite != b.FaceSite ||
-        a.CustomerOrder != b.CustomerOrder || a.OrdLine != b.OrdLine ||
-        a.AssignSite != b.AssignSite || a.AssignWhse != b.AssignWhse ||
-        a.JobName != b.JobName || a.IPN != b.IPN ||
-        a.Item != b.Item || a.ItemDescription != b.ItemDescription ||
-        a.ItemDesignation != b.ItemDesignation ||
-        a.QtyOrd != b.QtyOrd || a.QtyShip != b.QtyShip ||
-        a.ShipDate != b.ShipDate || a.DeliveryDate != b.DeliveryDate ||
-        a.WarrantyExpiration != b.WarrantyExpiration ||
-        a.EstimatedDeliveryDate != b.EstimatedDeliveryDate ||
-        a.EstimatedCompletionDate != b.EstimatedCompletionDate ||
-        a.ActualCompletionDate != b.ActualCompletionDate ||
-        a.RequestedCompletion != b.RequestedCompletion ||
-        a.ProductionVariance != b.ProductionVariance ||
-        a.RequestedOSD != b.RequestedOSD || a.DaysLate != b.DaysLate ||
-        a.PreviousEstCompletionDate != b.PreviousEstCompletionDate ||
-        a.EstCompletionDateChange != b.EstCompletionDateChange ||
-        a.ScheduledStartDate != b.ScheduledStartDate ||
-        a.ActualStartDate != b.ActualStartDate || a.InvoiceDate != b.InvoiceDate ||
-        a.CustNum != b.CustNum || a.OrderShipTo != b.OrderShipTo ||
-        a.LineItemShipTo != b.LineItemShipTo ||
-        a.CreditHold != b.CreditHold || a.Slsman != b.Slsman ||
-        a.OrderStatus != b.OrderStatus || a.ProductCode != b.ProductCode ||
-        a.Price != b.Price || a.ExtPrice != b.ExtPrice ||
-        a.SectionCount != b.SectionCount ||
-        a.EstCompletionDateChangeReason != b.EstCompletionDateChangeReason ||
-        a.OrderDate != b.OrderDate || a.OrderLineStatus != b.OrderLineStatus ||
-        a.PromiseDate != b.PromiseDate || a.LastShipDate != b.LastShipDate ||
-        a.QtyInvoiced != b.QtyInvoiced || a.SalesTax1 != b.SalesTax1 ||
-        a.SalesTax2 != b.SalesTax2 || a.TotalCOPrice != b.TotalCOPrice ||
-        a.ProjectManagerDataName != b.ProjectManagerDataName ||
-        a.CustomerName != b.CustomerName;
-
-    private static void ApplyOrderChanges(Order t, Order s)
-    {
-        t.CustomerPO = s.CustomerPO; t.CustPOLine = s.CustPOLine;
-        t.ShipHold = s.ShipHold; t.FaceSite = s.FaceSite;
-        t.CustomerOrder = s.CustomerOrder; t.OrdLine = s.OrdLine;
-        t.AssignSite = s.AssignSite; t.AssignWhse = s.AssignWhse;
-        t.JobName = s.JobName; t.IPN = s.IPN;
-        t.Item = s.Item; t.ItemDescription = s.ItemDescription;
-        t.ItemDesignation = s.ItemDesignation;
-        t.QtyOrd = s.QtyOrd; t.QtyShip = s.QtyShip;
-        t.ShipDate = s.ShipDate; t.DeliveryDate = s.DeliveryDate;
-        t.WarrantyExpiration = s.WarrantyExpiration;
-        t.EstimatedDeliveryDate = s.EstimatedDeliveryDate;
-        t.EstimatedCompletionDate = s.EstimatedCompletionDate;
-        t.ActualCompletionDate = s.ActualCompletionDate;
-        t.RequestedCompletion = s.RequestedCompletion;
-        t.ProductionVariance = s.ProductionVariance;
-        t.RequestedOSD = s.RequestedOSD; t.DaysLate = s.DaysLate;
-        t.PreviousEstCompletionDate = s.PreviousEstCompletionDate;
-        t.EstCompletionDateChange = s.EstCompletionDateChange;
-        t.ScheduledStartDate = s.ScheduledStartDate;
-        t.ActualStartDate = s.ActualStartDate; t.InvoiceDate = s.InvoiceDate;
-        t.CustNum = s.CustNum; t.OrderShipTo = s.OrderShipTo;
-        t.LineItemShipTo = s.LineItemShipTo;
-        t.CreditHold = s.CreditHold; t.Slsman = s.Slsman;
-        t.OrderStatus = s.OrderStatus; t.ProductCode = s.ProductCode;
-        t.Price = s.Price; t.ExtPrice = s.ExtPrice;
-        t.SectionCount = s.SectionCount;
-        t.EstCompletionDateChangeReason = s.EstCompletionDateChangeReason;
-        t.OrderDate = s.OrderDate; t.OrderLineStatus = s.OrderLineStatus;
-        t.PromiseDate = s.PromiseDate; t.LastShipDate = s.LastShipDate;
-        t.QtyInvoiced = s.QtyInvoiced; t.SalesTax1 = s.SalesTax1;
-        t.SalesTax2 = s.SalesTax2; t.TotalCOPrice = s.TotalCOPrice;
-        t.ProjectManagerDataName = s.ProjectManagerDataName;
-        t.CustomerName = s.CustomerName;
-        t.UploadDate = s.UploadDate;
-    }
 }

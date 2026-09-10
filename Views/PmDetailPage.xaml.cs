@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using Microsoft.EntityFrameworkCore;
 using PMDashboard.Data;
 using PMDashboard.Dialogs;
+using PMDashboard.Services;
 using PMDashboard.ViewModels;
 
 namespace PMDashboard.Views;
@@ -11,7 +12,15 @@ public partial class PmDetailPage : UserControl
 {
     private PmDetailViewModel? Vm => DataContext as PmDetailViewModel;
 
-    public PmDetailPage() => InitializeComponent();
+    public PmDetailPage()
+    {
+        InitializeComponent();
+
+        // Site Count Only mode: per-site score is meaningless without the weighted scoring
+        // system, so hide it rather than show "0.00" for every row.
+        if (new ConfigService().Get(ConfigKeys.PercentageCalculation, "Sites") == "Count")
+            ColSiteScore.Visibility = Visibility.Collapsed;
+    }
 
     private void BtnBack_Click(object sender, RoutedEventArgs e) => Vm?.GoBack();
 

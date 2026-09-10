@@ -10,12 +10,26 @@
         </Grid.RowDefinitions>
 
         <!-- ── Title ── -->
-        <StackPanel Grid.Row="0" Margin="0,0,0,20">
-            <TextBlock Text="Assignment" FontSize="22" FontWeight="Bold"
-                       Foreground="#0F172A" FontFamily="Segoe UI Semibold"/>
-            <TextBlock Text="Select a location and site, then assign a PM from the ranked suggestion list"
-                       FontSize="13" Foreground="#64748B" Margin="0,4,0,0"/>
-        </StackPanel>
+        <Grid Grid.Row="0" Margin="0,0,0,20">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0">
+                <TextBlock Text="Assignment" FontSize="22" FontWeight="Bold"
+                           Foreground="#0F172A" FontFamily="Segoe UI Semibold"/>
+                <TextBlock Text="Select a location and site, then assign a PM from the ranked suggestion list"
+                           FontSize="13" Foreground="#64748B" Margin="0,4,0,0"/>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                <Button Content="Download Assignments Template" x:Name="BtnDownloadTemplate"
+                        Style="{StaticResource SecondaryButtonStyle}"
+                        Click="BtnDownloadTemplate_Click" Margin="0,0,10,0"/>
+                <Button Content="Import Assignments" x:Name="BtnImportAssignments"
+                        Style="{StaticResource PrimaryButtonStyle}"
+                        Click="BtnImportAssignments_Click"/>
+            </StackPanel>
+        </Grid>
 
         <!-- ── Two-panel body ── -->
         <Grid Grid.Row="1">
@@ -69,6 +83,10 @@
                                             <Setter Property="Visibility" Value="Visible"/>
                                             <Setter Property="Background" Value="#EFF6FF"/>
                                         </DataTrigger>
+                                        <DataTrigger Binding="{Binding SelectedLocationGeo}" Value="Central">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                            <Setter Property="Background" Value="#F5F3FF"/>
+                                        </DataTrigger>
                                         <DataTrigger Binding="{Binding SelectedLocationGeo}" Value="West">
                                             <Setter Property="Visibility" Value="Visible"/>
                                             <Setter Property="Background" Value="#F0FDF4"/>
@@ -82,6 +100,9 @@
                                     <Style TargetType="TextBlock">
                                         <Setter Property="Foreground" Value="#2563EB"/>
                                         <Style.Triggers>
+                                            <DataTrigger Binding="{Binding SelectedLocationGeo}" Value="Central">
+                                                <Setter Property="Foreground" Value="#7C3AED"/>
+                                            </DataTrigger>
                                             <DataTrigger Binding="{Binding SelectedLocationGeo}" Value="West">
                                                 <Setter Property="Foreground" Value="#16A34A"/>
                                             </DataTrigger>
@@ -286,6 +307,31 @@
                     </StackPanel>
                 </Grid>
 
+                <!-- No active rules warning — otherwise an empty candidates list with a site
+                     selected reads as "this is broken" rather than "nothing is configured" -->
+                <Border Grid.Row="1" Background="#FFFBEB" BorderBrush="#FDE68A" BorderThickness="1"
+                        CornerRadius="8" Padding="16,12" VerticalAlignment="Top" Panel.ZIndex="1">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <MultiDataTrigger>
+                                    <MultiDataTrigger.Conditions>
+                                        <Condition Binding="{Binding ActiveRuleCount}" Value="0"/>
+                                        <Condition Binding="{Binding HasSelection}" Value="True"/>
+                                    </MultiDataTrigger.Conditions>
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </MultiDataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="⚠" FontSize="14" Foreground="#B45309" Margin="0,0,8,0"/>
+                        <TextBlock Text="No assignment rules are enabled, so no PMs can be ranked. Turn on at least one rule in Configuration → Assignment Rules."
+                                   FontSize="12" Foreground="#92400E" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </Border>
+
                 <!-- Candidates DataGrid -->
                 <Border Grid.Row="1" CornerRadius="10" BorderBrush="#E2E8F0" BorderThickness="1"
                         Background="White" ClipToBounds="True">
@@ -300,7 +346,7 @@
                             <DataGridTextColumn Header="Name" Binding="{Binding Pm.FullName}"  Width="160"/>
                             <DataGridTextColumn Header="Region" Binding="{Binding Pm.GeographicalLocation}" Width="70"/>
                             <DataGridTextColumn Header="Sites" Binding="{Binding CurrentSites}" Width="55"/>
-                            <DataGridTextColumn Header="Util"  Binding="{Binding UtilText}"    Width="60"/>
+                            <DataGridTextColumn x:Name="ColUtil" Header="Util"  Binding="{Binding UtilText}"    Width="60"/>
                             <DataGridTextColumn Header="Score" Binding="{Binding ScoreText}"   Width="65"/>
                             <DataGridTextColumn Header="Why" Binding="{Binding Reasons}"       Width="*"/>
                             <DataGridTemplateColumn Header="" Width="80">

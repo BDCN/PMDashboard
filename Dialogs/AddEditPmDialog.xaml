@@ -55,6 +55,7 @@
                                Foreground="#374151" Margin="0,0,0,6"/>
                     <ComboBox x:Name="CboGeoLocation" Style="{StaticResource FormComboBoxStyle}">
                         <ComboBoxItem Content="East"/>
+                        <ComboBoxItem Content="Central"/>
                         <ComboBoxItem Content="West"/>
                     </ComboBox>
                 </StackPanel>
@@ -65,8 +66,8 @@
                        Foreground="#374151" Margin="0,0,0,6"/>
             <TextBox x:Name="TxtDataName" Style="{StaticResource FormTextBoxStyle}" Margin="0,0,0,16"/>
 
-            <!-- Capacity & Ideal Utilization -->
-            <Grid Margin="0,0,0,16">
+            <!-- Capacity & Ideal Utilization — hidden entirely in Site Count Only mode -->
+            <Grid x:Name="CapacityRow" Margin="0,0,0,16">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="16"/>
@@ -84,12 +85,13 @@
                 </StackPanel>
             </Grid>
 
-            <!-- PM Multiplier -->
-            <TextBlock Text="PM Multiplier (1–10)" FontSize="12" FontWeight="SemiBold"
-                       Foreground="#374151" Margin="0,0,0,6"
-                       ToolTipService.ToolTip="Experience rating 1–10. Scales effective capacity in Score mode. Leave blank to use the 1.0 factor (same as 10)."/>
-            <TextBox x:Name="TxtPmMultiplier" Style="{StaticResource FormTextBoxStyle}"
-                     Margin="0,0,0,24"/>
+            <!-- PM Multiplier — hidden entirely in Site Count Only mode -->
+            <StackPanel x:Name="PmMultiplierPanel" Margin="0,0,0,24">
+                <TextBlock Text="PM Multiplier (1–10)" FontSize="12" FontWeight="SemiBold"
+                           Foreground="#374151" Margin="0,0,0,6"
+                           ToolTipService.ToolTip="Experience rating 1–10. Scales effective capacity in Score mode. Leave blank to use the 1.0 factor (same as 10)."/>
+                <TextBox x:Name="TxtPmMultiplier" Style="{StaticResource FormTextBoxStyle}"/>
+            </StackPanel>
 
             <!-- Active status -->
             <Border Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1"

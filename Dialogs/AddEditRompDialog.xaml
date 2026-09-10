@@ -34,7 +34,14 @@
             <TextBlock Text="Status" FontSize="12" FontWeight="SemiBold"
                        Foreground="#374151" Margin="0,0,0,6"/>
             <ComboBox x:Name="CboStatus" Style="{StaticResource FormComboBoxStyle}"
-                      Margin="0,0,0,20"/>
+                      Margin="0,0,0,12"/>
+
+            <!-- Close shortcut — marks complete and hides from the list (edit only) -->
+            <CheckBox x:Name="ChkMarkComplete" Content="Mark Complete &amp; Remove from List"
+                      FontSize="12" FontWeight="SemiBold" Foreground="#B91C1C"
+                      Margin="0,0,0,4"/>
+            <TextBlock Text="Hides this ROMP from the list once saved — the data stays for reporting/scoring history. Use &quot;Show Completed&quot; on the ROMP list to find it again."
+                       FontSize="11" Foreground="#94A3B8" Margin="0,0,0,20" TextWrapping="Wrap"/>
 
             <!-- Equipment Types (multi-select checkboxes, loaded from EquipmentCategories) -->
             <TextBlock Text="Equipment Types" FontSize="12" FontWeight="SemiBold"

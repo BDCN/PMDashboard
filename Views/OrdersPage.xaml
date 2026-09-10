@@ -17,14 +17,8 @@
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
             <StackPanel>
-                <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="Orders" FontSize="22" FontWeight="Bold"
-                               Foreground="#0F172A" FontFamily="Segoe UI Semibold"/>
-                    <Border Background="#FEF9C3" BorderBrush="#FDE68A" BorderThickness="1"
-                            CornerRadius="4" Padding="8,2" Margin="12,4,0,0" VerticalAlignment="Center">
-                        <TextBlock Text="Import Preview" FontSize="11" Foreground="#92400E" FontWeight="SemiBold"/>
-                    </Border>
-                </StackPanel>
+                <TextBlock Text="Orders" FontSize="22" FontWeight="Bold"
+                           Foreground="#0F172A" FontFamily="Segoe UI Semibold"/>
                 <StackPanel Orientation="Horizontal">
                     <TextBlock Text="Imported spreadsheet data  •  " FontSize="13" Foreground="#64748B" Margin="0,4,0,0"/>
                     <TextBlock Text="{Binding TotalCount, StringFormat={}{0} records}"
@@ -37,192 +31,80 @@
                 <Button Content="Clear All" x:Name="BtnClear"
                         Style="{StaticResource DangerButtonStyle}"
                         Click="BtnClear_Click" Margin="0,0,10,0"/>
-                <Button Content="Import Excel" x:Name="BtnImport"
-                        Style="{StaticResource PrimaryButtonStyle}"
-                        Click="BtnImport_Click"/>
+                <Button x:Name="BtnImport"
+                        Click="BtnImport_Click" IsEnabled="{Binding IsNotImporting}">
+                    <Button.Style>
+                        <Style TargetType="Button" BasedOn="{StaticResource PrimaryButtonStyle}">
+                            <Setter Property="Content" Value="Import Excel"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsImporting}" Value="True">
+                                    <Setter Property="Content" Value="Importing…"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
             </StackPanel>
         </Grid>
 
-        <!-- Search -->
-        <Border Grid.Row="1" Background="White" CornerRadius="8"
-                BorderBrush="#E2E8F0" BorderThickness="1"
-                Padding="12,0" Margin="0,0,0,16" Height="42">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <TextBlock Text="🔍" FontSize="14" VerticalAlignment="Center"
-                           Foreground="#94A3B8" Margin="0,0,8,0"/>
-                <TextBox Grid.Column="1" x:Name="TxtSearch"
-                         BorderThickness="0" Background="Transparent"
-                         FontSize="13" VerticalAlignment="Center"
-                         Foreground="#374151"
-                         TextChanged="TxtSearch_TextChanged">
-                    <TextBox.Style>
-                        <Style TargetType="TextBox">
-                            <Setter Property="Template">
-                                <Setter.Value>
-                                    <ControlTemplate TargetType="TextBox">
-                                        <Grid>
-                                            <TextBlock x:Name="placeholder"
-                                                       Text="Search by job name, customer PO, item, customer number..."
-                                                       Foreground="#94A3B8" FontSize="13"
-                                                       VerticalAlignment="Center"
-                                                       IsHitTestVisible="False"
-                                                       Visibility="Collapsed"/>
-                                            <ScrollViewer x:Name="PART_ContentHost" VerticalAlignment="Center"/>
-                                        </Grid>
-                                        <ControlTemplate.Triggers>
-                                            <Trigger Property="Text" Value="">
-                                                <Setter TargetName="placeholder" Property="Visibility" Value="Visible"/>
-                                            </Trigger>
-                                        </ControlTemplate.Triggers>
-                                    </ControlTemplate>
-                                </Setter.Value>
-                            </Setter>
-                        </Style>
-                    </TextBox.Style>
-                </TextBox>
-            </Grid>
+        <!-- Importing indicator -->
+        <Border Grid.Row="1" Background="#EFF6FF" CornerRadius="8" BorderBrush="#BFDBFE" BorderThickness="1"
+                Padding="14,10" Margin="0,0,0,16">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsImporting}" Value="True">
+                            <Setter Property="Visibility" Value="Visible"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+            <TextBlock Text="{Binding ImportingStatus}" FontSize="13" Foreground="#1D4ED8" FontWeight="SemiBold"/>
         </Border>
 
-        <!-- Data Grid — all 33 columns -->
-        <Border Grid.Row="2" CornerRadius="10" BorderBrush="#E2E8F0" BorderThickness="1"
-                Background="White" ClipToBounds="True">
-            <DataGrid x:Name="OrdersGrid"
-                      Style="{StaticResource AppDataGridStyle}"
-                      CellStyle="{StaticResource DataGridCellStyle}"
-                      ColumnHeaderStyle="{StaticResource DataGridColumnHeaderStyle}"
-                      ItemsSource="{Binding Orders}"
-                      BorderThickness="0"
-                      EnableRowVirtualization="True"
-                      EnableColumnVirtualization="True">
-                <DataGrid.Columns>
-                    <!-- A -->
-                    <DataGridTextColumn Header="Customer PO" Binding="{Binding CustomerPO}" Width="130"/>
-                    <!-- B -->
-                    <DataGridTextColumn Header="Cust PO Line" Binding="{Binding CustPOLine}" Width="100"/>
-                    <!-- C -->
-                    <DataGridTextColumn Header="Ship Hold" Binding="{Binding ShipHold}" Width="90"/>
-                    <!-- D -->
-                    <DataGridTextColumn Header="Face Site" Binding="{Binding FaceSite}" Width="100"/>
-                    <!-- E -->
-                    <DataGridTextColumn Header="Customer Order" Binding="{Binding CustomerOrder}" Width="130"/>
-                    <!-- F -->
-                    <DataGridTextColumn Header="Ord Line" Binding="{Binding OrdLine}" Width="80"/>
-                    <!-- G -->
-                    <DataGridTextColumn Header="Assign Site" Binding="{Binding AssignSite}" Width="100"/>
-                    <!-- H -->
-                    <DataGridTextColumn Header="Assign Whse" Binding="{Binding AssignWhse}" Width="110"/>
-                    <!-- I -->
-                    <DataGridTextColumn Header="Job Name" Binding="{Binding JobName}" Width="160"/>
-                    <!-- J -->
-                    <DataGridTextColumn Header="IPN" Binding="{Binding IPN}" Width="130"/>
-                    <!-- K -->
-                    <DataGridTextColumn Header="Item" Binding="{Binding Item}" Width="120"/>
-                    <!-- L -->
-                    <DataGridTextColumn Header="Item Description" Binding="{Binding ItemDescription}" Width="160"/>
-                    <!-- M -->
-                    <DataGridTextColumn Header="Item Designation" Binding="{Binding ItemDesignation}" Width="140"/>
-                    <!-- N -->
-                    <DataGridTextColumn Header="Qty Ord" Width="90">
-                        <DataGridTextColumn.Binding>
-                            <Binding Path="QtyOrd" StringFormat="{}{0:N2}"/>
-                        </DataGridTextColumn.Binding>
-                    </DataGridTextColumn>
-                    <!-- O -->
-                    <DataGridTextColumn Header="Qty Ship" Width="90">
-                        <DataGridTextColumn.Binding>
-                            <Binding Path="QtyShip" StringFormat="{}{0:N2}"/>
-                        </DataGridTextColumn.Binding>
-                    </DataGridTextColumn>
-                    <!-- P -->
-                    <DataGridTextColumn Header="Ship Date" Width="100">
-                        <DataGridTextColumn.Binding>
-                            <Binding Path="ShipDate" StringFormat="{}{0:yyyy-MM-dd}"/>
-                        </DataGridTextColumn.Binding>
-                    </DataGridTextColumn>
-                    <!-- Q -->
-                    <DataGridTextColumn Header="Delivery Date" Width="110">
-                        <DataGridTextColumn.Binding>
-                            <Binding Path="DeliveryDate" StringFormat="{}{0:yyyy-MM-dd}"/>
-                        </DataGridTextColumn.Binding>
-                    </DataGridTextColumn>
-                    <!-- R -->
-                    <DataGridTextColumn Header="Warranty Expiration" Width="150">
-                        <DataGridTextColumn.Binding>
-                            <Binding Path="WarrantyExpiration" StringFormat="{}{0:yyyy-MM-dd}"/>
-                        </DataGridTextColumn.Binding>
-                    </DataGridTextColumn>
-                    <!-- S -->
-                    <DataGridTextColumn Header="Est. Delivery Date" Width="140">
-                        <DataGridTextColumn.Binding>
-                            <Binding Path="EstimatedDeliveryDate" StringFormat="{}{0:yyyy-MM-dd}"/>
-                        </DataGridTextColumn.Binding>
-                    </DataGridTextColumn>
-                    <!-- T -->
-                    <DataGridTextColumn Header="Est. Completion Date" Width="155">
-                        <DataGridTextColumn.Binding>
-                            <Binding Path="EstimatedCompletionDate" StringFormat="{}{0:yyyy-MM-dd}"/>
-                        </DataGridTextColumn.Binding>
-                    </DataGridTextColumn>
-                    <!-- U -->
-                    <DataGridTextColumn Header="Actual Completion" Width="140">
-                        <DataGridTextColumn.Binding>
-                            <Binding Path="ActualCompletionDate" StringFormat="{}{0:yyyy-MM-dd}"/>
-                        </DataGridTextColumn.Binding>
-                    </DataGridTextColumn>
-                    <!-- V -->
-                    <DataGridTextColumn Header="Requested Completion" Width="160">
-                        <DataGridTextColumn.Binding>
-                            <Binding Path="RequestedCompletion" StringFormat="{}{0:yyyy-MM-dd}"/>
-                        </DataGridTextColumn.Binding>
-                    </DataGridTextColumn>
-                    <!-- W -->
-                    <DataGridTextColumn Header="Production Variance" Binding="{Binding ProductionVariance}" Width="150"/>
-                    <!-- X -->
-                    <DataGridTextColumn Header="Requested OSD" Binding="{Binding RequestedOSD}" Width="130"/>
-                    <!-- Y -->
-                    <DataGridTextColumn Header="Days Late" Binding="{Binding DaysLate}" Width="90"/>
-                    <!-- Z -->
-                    <DataGridTextColumn Header="Prev Est Completion" Width="155">
-                        <DataGridTextColumn.Binding>
-                            <Binding Path="PreviousEstCompletionDate" StringFormat="{}{0:yyyy-MM-dd}"/>
-                        </DataGridTextColumn.Binding>
-                    </DataGridTextColumn>
-                    <!-- AA -->
-                    <DataGridTextColumn Header="Est Completion Change" Width="165">
-                        <DataGridTextColumn.Binding>
-                            <Binding Path="EstCompletionDateChange" StringFormat="{}{0:yyyy-MM-dd}"/>
-                        </DataGridTextColumn.Binding>
-                    </DataGridTextColumn>
-                    <!-- AB -->
-                    <DataGridTextColumn Header="Scheduled Start" Width="130">
-                        <DataGridTextColumn.Binding>
-                            <Binding Path="ScheduledStartDate" StringFormat="{}{0:yyyy-MM-dd}"/>
-                        </DataGridTextColumn.Binding>
-                    </DataGridTextColumn>
-                    <!-- AC -->
-                    <DataGridTextColumn Header="Actual Start" Width="110">
-                        <DataGridTextColumn.Binding>
-                            <Binding Path="ActualStartDate" StringFormat="{}{0:yyyy-MM-dd}"/>
-                        </DataGridTextColumn.Binding>
-                    </DataGridTextColumn>
-                    <!-- AD -->
-                    <DataGridTextColumn Header="Invoice Date" Width="110">
-                        <DataGridTextColumn.Binding>
-                            <Binding Path="InvoiceDate" StringFormat="{}{0:yyyy-MM-dd}"/>
-                        </DataGridTextColumn.Binding>
-                    </DataGridTextColumn>
-                    <!-- AE -->
-                    <DataGridTextColumn Header="Cust Num" Binding="{Binding CustNum}" Width="100"/>
-                    <!-- AF -->
-                    <DataGridTextColumn Header="Order Ship To" Binding="{Binding OrderShipTo}" Width="200"/>
-                    <!-- AG -->
-                    <DataGridTextColumn Header="Line Item Ship To" Binding="{Binding LineItemShipTo}" Width="150"/>
-                </DataGrid.Columns>
-            </DataGrid>
+        <!-- Last Import results card — persists until the next import, replaces the old one-shot popup -->
+        <Border Grid.Row="2" Background="White" CornerRadius="10"
+                BorderBrush="#E2E8F0" BorderThickness="1" Padding="24,20" VerticalAlignment="Top">
+            <StackPanel>
+                <StackPanel>
+                    <StackPanel.Style>
+                        <Style TargetType="StackPanel">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding HasLastImport}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </StackPanel.Style>
+                    <TextBlock Text="Last Import" FontSize="16" FontWeight="SemiBold" Foreground="#0F172A" Margin="0,0,0,4"/>
+                    <TextBlock Text="{Binding LastImportHeadline}" FontSize="20" FontWeight="SemiBold"
+                               Foreground="#111827" Margin="0,10,0,4"/>
+                    <TextBlock Text="{Binding LastImportDetails}" FontSize="13" Foreground="#64748B" Margin="0,0,0,14"/>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="{Binding LastImportWhen}" FontSize="12" Foreground="#94A3B8"/>
+                        <TextBlock Text="  •  " FontSize="12" Foreground="#94A3B8"/>
+                        <TextBlock Text="{Binding LastImportBy}" FontSize="12" Foreground="#94A3B8"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <StackPanel>
+                    <StackPanel.Style>
+                        <Style TargetType="StackPanel">
+                            <Setter Property="Visibility" Value="Visible"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding HasLastImport}" Value="True">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </StackPanel.Style>
+                    <TextBlock Text="No imports yet this session" FontSize="16" FontWeight="SemiBold" Foreground="#0F172A"/>
+                    <TextBlock Text="Import an Excel file to see a summary of what changed here."
+                               FontSize="13" Foreground="#64748B" Margin="0,4,0,0"/>
+                </StackPanel>
+            </StackPanel>
         </Border>
 
     </Grid>

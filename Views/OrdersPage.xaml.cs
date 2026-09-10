@@ -15,7 +15,7 @@ public partial class OrdersPage : UserControl
         InitializeComponent();
     }
 
-    private void BtnImport_Click(object sender, RoutedEventArgs e)
+    private async void BtnImport_Click(object sender, RoutedEventArgs e)
     {
         var dlg = new OpenFileDialog
         {
@@ -23,6 +23,8 @@ public partial class OrdersPage : UserControl
             Filter = "Excel Files|*.xlsx;*.xls|All Files|*.*"
         };
         if (dlg.ShowDialog() != true) return;
+
+        if (Vm is not { } vm) return;
 
         try
         {
@@ -46,15 +48,13 @@ public partial class OrdersPage : UserControl
                 "Confirm Import", MessageBoxButton.YesNo, MessageBoxImage.Question);
             if (confirm != MessageBoxResult.Yes) return;
 
-            if (Vm is not { } vm) return;
-            var result = vm.UpsertOrders(orders);
-            MessageBox.Show(
-                $"Import complete.\n\n" +
-                $"Orders:  {result.Added} added,  {result.Updated} updated,  {result.Skipped} unchanged\n" +
-                $"Locations created:  {result.LocationsCreated}\n" +
-                $"Sites created:  {result.SitesCreated}\n" +
-                $"ROMPs created:  {result.RompsCreated}",
-                "Done", MessageBoxButton.OK, MessageBoxImage.Information);
+            var (success, message) = await vm.ImportWithLockAsync(orders);
+            if (!success)
+            {
+                MessageBox.Show(message ?? "Import could not be started.", "Import Locked",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            // On success, the "Last Import" card on the page shows the results — no popup needed.
         }
         catch (Exception ex)
         {
@@ -70,10 +70,5 @@ public partial class OrdersPage : UserControl
             "Confirm Clear", MessageBoxButton.YesNo, MessageBoxImage.Warning);
         if (result == MessageBoxResult.Yes)
             Vm?.ClearAll();
-    }
-
-    private void TxtSearch_TextChanged(object sender, TextChangedEventArgs e)
-    {
-        Vm?.Search(TxtSearch.Text);
     }
 }

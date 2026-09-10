@@ -40,32 +40,46 @@
                     <TextBlock Text="{Binding DataName}" FontSize="15" FontWeight="SemiBold"
                                Foreground="#0F172A" Margin="0,2,0,0"/>
                 </StackPanel>
-                <StackPanel Margin="0,0,40,0">
-                    <TextBlock Text="CAPACITY" FontSize="10" FontWeight="SemiBold" Foreground="#64748B"/>
-                    <TextBlock Text="{Binding CapacityText}" FontSize="15" FontWeight="SemiBold"
-                               Foreground="#0F172A" Margin="0,2,0,0"/>
-                </StackPanel>
-                <StackPanel Margin="0,0,40,0">
-                    <TextBlock Text="IDEAL UTILIZATION" FontSize="10" FontWeight="SemiBold" Foreground="#64748B"/>
-                    <TextBlock Text="{Binding IdealText}" FontSize="15" FontWeight="SemiBold"
-                               Foreground="#0F172A" Margin="0,2,0,0"/>
-                </StackPanel>
-                <StackPanel Margin="0,0,40,0">
-                    <TextBlock Text="CURRENT UTILIZATION" FontSize="10" FontWeight="SemiBold" Foreground="#64748B"/>
-                    <TextBlock Text="{Binding UtilizationText}" FontSize="15" FontWeight="SemiBold"
-                               Foreground="#2563EB" Margin="0,2,0,0"/>
-                </StackPanel>
-                <StackPanel Margin="0,0,40,0">
-                    <TextBlock Text="PM MULTIPLIER" FontSize="10" FontWeight="SemiBold" Foreground="#64748B"
-                               ToolTipService.ToolTip="Experience multiplier 1–10. Scales effective capacity in Score mode."/>
-                    <TextBlock Text="{Binding PmMultiplierText}" FontSize="15" FontWeight="SemiBold"
-                               Foreground="#0F172A" Margin="0,2,0,0"/>
-                </StackPanel>
-                <StackPanel>
-                    <TextBlock Text="EFF. CAPACITY" FontSize="10" FontWeight="SemiBold" Foreground="#64748B"
-                               ToolTipService.ToolTip="Effective capacity = Target Capacity × skill_factor (Score mode denominator)"/>
-                    <TextBlock Text="{Binding EffCapacityText}" FontSize="15" FontWeight="SemiBold"
-                               Foreground="#0F172A" Margin="0,2,0,0"/>
+
+                <!-- Capacity/score figures — hidden entirely in Site Count Only mode -->
+                <StackPanel Orientation="Horizontal">
+                    <StackPanel.Style>
+                        <Style TargetType="StackPanel">
+                            <Setter Property="Visibility" Value="Visible"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsCountMode}" Value="True">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </StackPanel.Style>
+                    <StackPanel Margin="0,0,40,0">
+                        <TextBlock Text="CAPACITY" FontSize="10" FontWeight="SemiBold" Foreground="#64748B"/>
+                        <TextBlock Text="{Binding CapacityText}" FontSize="15" FontWeight="SemiBold"
+                                   Foreground="#0F172A" Margin="0,2,0,0"/>
+                    </StackPanel>
+                    <StackPanel Margin="0,0,40,0">
+                        <TextBlock Text="IDEAL UTILIZATION" FontSize="10" FontWeight="SemiBold" Foreground="#64748B"/>
+                        <TextBlock Text="{Binding IdealText}" FontSize="15" FontWeight="SemiBold"
+                                   Foreground="#0F172A" Margin="0,2,0,0"/>
+                    </StackPanel>
+                    <StackPanel Margin="0,0,40,0">
+                        <TextBlock Text="CURRENT UTILIZATION" FontSize="10" FontWeight="SemiBold" Foreground="#64748B"/>
+                        <TextBlock Text="{Binding UtilizationText}" FontSize="15" FontWeight="SemiBold"
+                                   Foreground="#2563EB" Margin="0,2,0,0"/>
+                    </StackPanel>
+                    <StackPanel Margin="0,0,40,0">
+                        <TextBlock Text="PM MULTIPLIER" FontSize="10" FontWeight="SemiBold" Foreground="#64748B"
+                                   ToolTipService.ToolTip="Experience multiplier 1–10. Scales effective capacity in Score mode."/>
+                        <TextBlock Text="{Binding PmMultiplierText}" FontSize="15" FontWeight="SemiBold"
+                                   Foreground="#0F172A" Margin="0,2,0,0"/>
+                    </StackPanel>
+                    <StackPanel>
+                        <TextBlock Text="EFF. CAPACITY" FontSize="10" FontWeight="SemiBold" Foreground="#64748B"
+                                   ToolTipService.ToolTip="Effective capacity = Target Capacity × skill_factor (Score mode denominator)"/>
+                        <TextBlock Text="{Binding EffCapacityText}" FontSize="15" FontWeight="SemiBold"
+                                   Foreground="#0F172A" Margin="0,2,0,0"/>
+                    </StackPanel>
                 </StackPanel>
             </WrapPanel>
         </Border>
@@ -123,8 +137,18 @@
                     </StackPanel>
                 </Border>
 
-                <!-- PM Load / Availability -->
+                <!-- PM Load / Availability — hidden in Site Count Only mode -->
                 <Border Background="#FDF4FF" CornerRadius="8" Padding="20,12" Margin="0,0,0,8">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Visibility" Value="Visible"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsCountMode}" Value="True">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
                     <StackPanel>
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
                             <Ellipse Width="8" Height="8" Fill="#9333EA" VerticalAlignment="Center" Margin="0,0,6,0"/>
@@ -211,25 +235,44 @@
                                            FontSize="13" FontWeight="Bold" Foreground="#0F172A"
                                            VerticalAlignment="Center"/>
 
-                                <!-- Activity multiplier per ROMP -->
-                                <TextBlock Grid.Column="3" VerticalAlignment="Center"
-                                           FontSize="11" Foreground="#64748B" Margin="8,0,0,0">
-                                    <Run Text="×"/>
-                                    <Run Text="{Binding ScoreWeight, StringFormat={}{0:F1}}"/>
-                                </TextBlock>
-
-                                <!-- Total score contribution from this status group -->
-                                <TextBlock Grid.Column="4"
-                                           Text="{Binding StatusScore, StringFormat={}{0:F2}}"
-                                           FontSize="13" FontWeight="SemiBold" Foreground="#9333EA"
-                                           VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                <!-- Activity multiplier per ROMP + score contribution — hidden in Site Count Only mode -->
+                                <StackPanel Grid.Column="3" Grid.ColumnSpan="2" Orientation="Horizontal"
+                                            VerticalAlignment="Center" Margin="8,0,0,0">
+                                    <StackPanel.Style>
+                                        <Style TargetType="StackPanel">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding DataContext.IsCountMode, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="True">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </StackPanel.Style>
+                                    <TextBlock FontSize="11" Foreground="#64748B">
+                                        <Run Text="×"/>
+                                        <Run Text="{Binding ScoreWeight, StringFormat={}{0:F1}}"/>
+                                    </TextBlock>
+                                    <TextBlock Text="{Binding StatusScore, StringFormat={}{0:F2}}"
+                                               FontSize="13" FontWeight="SemiBold" Foreground="#9333EA"
+                                               Margin="8,0,0,0"/>
+                                </StackPanel>
                             </Grid>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
 
-                <!-- Score breakdown footer -->
+                <!-- Score breakdown footer — hidden in Site Count Only mode -->
                 <Border BorderBrush="#E2E8F0" BorderThickness="0,1,0,0" Margin="0,8,0,0" Padding="0,8,0,0">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Visibility" Value="Visible"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsCountMode}" Value="True">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Text="ROMP sum: " FontSize="12" Foreground="#64748B"/>
                         <TextBlock Text="{Binding RompScoreSum, StringFormat={}{0:F2}}" FontSize="12" FontWeight="Bold" Foreground="#9333EA" Margin="0,0,8,0"/>
@@ -351,7 +394,7 @@
                             <DataGridTextColumn Header="Status"   Binding="{Binding SiteStatus}" Width="90"/>
                             <DataGridTextColumn Header="ROMs"
                                                 Binding="{Binding ActiveRomps}" Width="70"/>
-                            <DataGridTextColumn Header="Score"
+                            <DataGridTextColumn x:Name="ColSiteScore" Header="Score"
                                                 Binding="{Binding SiteScore, StringFormat={}{0:F2}}"
                                                 Width="70"/>
 

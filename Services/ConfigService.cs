@@ -33,8 +33,15 @@ public static class ConfigKeys
     public const string ItemFilterPrefix  = "ItemFilterPrefix";    // Prefix on Item column (default "SOLI") — kept for import display purposes
     public const string PercentageCalculation = "PercentageCalculation"; // "Sites" | "Score"
 
+    // Custom Data grid column order, per mode. Suffixed with the ReportMode name
+    // ("CustomDataColumnOrder_Orders"), value is a JSON array of column keys.
+    public const string CustomDataColumnOrderPrefix = "CustomDataColumnOrder_";
+
     // Cloud background sync
     public const string CloudSyncInterval = "CloudSyncInterval";  // seconds between sync cycles (default 30)
+
+    // Cloud-mode-only best-effort import lock — see ImportLockService. JSON: who/machine/timestamp.
+    public const string ImportLock = "ImportLock";
 
     // Workload scoring parameters (Score mode)
     public const string SiteOverhead      = "SiteOverhead";       // site_factor overhead per distinct site (default 0.05)

@@ -73,16 +73,20 @@ public partial class WorkloadPage : UserControl
             BackgroundCanvas.Children.Add(line);
         }
 
-        // 100% capacity reference line — visible soft red
-        var refLine = new Rectangle
+        // 100% capacity reference line — visible soft red. Not meaningful in Site Count Only
+        // mode (no capacity figure to compare against), so it's skipped there.
+        if (!vm.IsCountMode)
         {
-            Width            = 2,
-            Height           = 10_000,
-            Fill             = new SolidColorBrush(Color.FromArgb(0xC0, 0xF8, 0x71, 0x71)),
-            IsHitTestVisible = false,
-        };
-        Canvas.SetLeft(refLine, vm.HundredPctX);
-        BackgroundCanvas.Children.Add(refLine);
+            var refLine = new Rectangle
+            {
+                Width            = 2,
+                Height           = 10_000,
+                Fill             = new SolidColorBrush(Color.FromArgb(0xC0, 0xF8, 0x71, 0x71)),
+                IsHitTestVisible = false,
+            };
+            Canvas.SetLeft(refLine, vm.HundredPctX);
+            BackgroundCanvas.Children.Add(refLine);
+        }
     }
 
 }

@@ -4,7 +4,7 @@
              xmlns:vm="clr-namespace:PMDashboard.ViewModels"
              xmlns:views="clr-namespace:PMDashboard.Views"
              xmlns:svc="clr-namespace:PMDashboard.Services"
-             StartupUri="MainWindow.xaml">
+             ShutdownMode="OnExplicitShutdown">
     <Application.Resources>
         <ResourceDictionary>
             <svc:NullToBoolConverter x:Key="NullToBoolConverter"/>
@@ -381,6 +381,27 @@
                         <Setter Property="Foreground" Value="#1E293B"/>
                     </Trigger>
                 </Style.Triggers>
+            </Style>
+
+            <!-- Custom Data's user-added columns: accent border down both sides of the cell,
+                 so an editable column reads as one bracketed band against the read-only ones. -->
+            <Style x:Key="DataGridEditableCellStyle" TargetType="DataGridCell"
+                   BasedOn="{StaticResource DataGridCellStyle}">
+                <Setter Property="BorderBrush" Value="#B91C1C"/>
+                <!-- Sides only: a top/bottom edge per cell would draw a grid, not a column band -->
+                <Setter Property="BorderThickness" Value="2,0,2,0"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="DataGridCell">
+                            <Border Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    Padding="{TemplateBinding Padding}">
+                                <ContentPresenter VerticalAlignment="Center"/>
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
             </Style>
 
             <!-- ── DataTemplate routing ── -->

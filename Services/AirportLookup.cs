@@ -2,8 +2,9 @@ namespace PMDashboard.Services;
 
 /// <summary>
 /// Static IATA airport code lookup.
-/// GeoRegion "East"  = Eastern + Central US time zones, South/Central America, Europe, Africa, Middle East.
-/// GeoRegion "West"  = Mountain + Pacific + Alaska + Hawaii, Asia, Pacific Rim, Oceania.
+/// GeoRegion "East"    = US Eastern time zone, Canada (east of Rockies), South/Central America, Europe, Africa, Middle East.
+/// GeoRegion "Central" = US Central time zone.
+/// GeoRegion "West"    = US Mountain + Pacific + Alaska + Hawaii time zones, Asia, Pacific Rim, Oceania.
 /// Returns null for unrecognised codes — callers should prompt the user.
 /// </summary>
 public static class AirportLookup
@@ -148,96 +149,96 @@ public static class AirportLookup
         { "CRW", new("Yeager Charleston WV",         "WV", "East") },
         { "MGW", new("Morgantown",                   "WV", "East") },
 
-        // ── US Central time zone → East ─────────────────────────────────────────
+        // ── US Central time zone → Central ──────────────────────────────────────
         // Alabama
-        { "BHM", new("Birmingham-Shuttlesworth",    "AL", "East") },
-        { "HSV", new("Huntsville",                   "AL", "East") },
-        { "MOB", new("Mobile Regional",              "AL", "East") },
-        { "MGM", new("Montgomery",                   "AL", "East") },
+        { "BHM", new("Birmingham-Shuttlesworth",    "AL", "Central") },
+        { "HSV", new("Huntsville",                   "AL", "Central") },
+        { "MOB", new("Mobile Regional",              "AL", "Central") },
+        { "MGM", new("Montgomery",                   "AL", "Central") },
         // Arkansas
-        { "BYH", new("Arkansas Intl",                "AR", "East") },
-        { "FSM", new("Fort Smith",                   "AR", "East") },
-        { "LIT", new("Bill & Hillary Clinton",       "AR", "East") },
-        { "XNA", new("Northwest Arkansas",           "AR", "East") },
+        { "BYH", new("Arkansas Intl",                "AR", "Central") },
+        { "FSM", new("Fort Smith",                   "AR", "Central") },
+        { "LIT", new("Bill & Hillary Clinton",       "AR", "Central") },
+        { "XNA", new("Northwest Arkansas",           "AR", "Central") },
         // Illinois
-        { "BMI", new("Central Illinois",             "IL", "East") },
-        { "CMI", new("University of Illinois",       "IL", "East") },
-        { "MDW", new("Midway Chicago",               "IL", "East") },
-        { "ORD", new("O'Hare Chicago",              "IL", "East") },
-        { "PIA", new("General Wayne Peoria",         "IL", "East") },
-        { "SPI", new("Abraham Lincoln Springfield",  "IL", "East") },
+        { "BMI", new("Central Illinois",             "IL", "Central") },
+        { "CMI", new("University of Illinois",       "IL", "Central") },
+        { "MDW", new("Midway Chicago",               "IL", "Central") },
+        { "ORD", new("O'Hare Chicago",              "IL", "Central") },
+        { "PIA", new("General Wayne Peoria",         "IL", "Central") },
+        { "SPI", new("Abraham Lincoln Springfield",  "IL", "Central") },
         // Iowa
-        { "CID", new("Eastern Iowa Cedar Rapids",    "IA", "East") },
-        { "DSM", new("Des Moines",                   "IA", "East") },
-        { "SUX", new("Sioux Gateway",                "IA", "East") },
+        { "CID", new("Eastern Iowa Cedar Rapids",    "IA", "Central") },
+        { "DSM", new("Des Moines",                   "IA", "Central") },
+        { "SUX", new("Sioux Gateway",                "IA", "Central") },
         // Kansas
-        { "ICT", new("Wichita Dwight Eisenhower",    "KS", "East") },
-        { "MHK", new("Manhattan Regional",           "KS", "East") },
-        { "TOP", new("Philip Billard Topeka",        "KS", "East") },
+        { "ICT", new("Wichita Dwight Eisenhower",    "KS", "Central") },
+        { "MHK", new("Manhattan Regional",           "KS", "Central") },
+        { "TOP", new("Philip Billard Topeka",        "KS", "Central") },
         // Louisiana
-        { "AEX", new("Alexandria",                   "LA", "East") },
-        { "BRO", new("Brownsville-South Padre",     "TX", "East") },
-        { "BTR", new("Baton Rouge",                  "LA", "East") },
-        { "LFT", new("Lafayette Regional",           "LA", "East") },
-        { "MSY", new("Louis Armstrong New Orleans",  "LA", "East") },
-        { "SHV", new("Shreveport",                   "LA", "East") },
+        { "AEX", new("Alexandria",                   "LA", "Central") },
+        { "BRO", new("Brownsville-South Padre",     "TX", "Central") },
+        { "BTR", new("Baton Rouge",                  "LA", "Central") },
+        { "LFT", new("Lafayette Regional",           "LA", "Central") },
+        { "MSY", new("Louis Armstrong New Orleans",  "LA", "Central") },
+        { "SHV", new("Shreveport",                   "LA", "Central") },
         // Minnesota
-        { "DLH", new("Duluth",                       "MN", "East") },
-        { "FAR", new("Hector Fargo",                 "ND", "East") },
-        { "MSP", new("Minneapolis-Saint Paul",       "MN", "East") },
-        { "RST", new("Rochester",                    "MN", "East") },
-        { "STC", new("St Cloud",                     "MN", "East") },
+        { "DLH", new("Duluth",                       "MN", "Central") },
+        { "FAR", new("Hector Fargo",                 "ND", "Central") },
+        { "MSP", new("Minneapolis-Saint Paul",       "MN", "Central") },
+        { "RST", new("Rochester",                    "MN", "Central") },
+        { "STC", new("St Cloud",                     "MN", "Central") },
         // Mississippi
-        { "GPT", new("Gulfport-Biloxi",             "MS", "East") },
-        { "JAN", new("Jackson-Medgar Wiley Evers",  "MS", "East") },
-        { "MEI", new("Key Field Meridian",           "MS", "East") },
+        { "GPT", new("Gulfport-Biloxi",             "MS", "Central") },
+        { "JAN", new("Jackson-Medgar Wiley Evers",  "MS", "Central") },
+        { "MEI", new("Key Field Meridian",           "MS", "Central") },
         // Missouri
-        { "COU", new("Columbia Regional",            "MO", "East") },
-        { "MCI", new("Kansas City",                  "MO", "East") },
-        { "SGF", new("Springfield-Branson",          "MO", "East") },
-        { "STL", new("St Louis Lambert",             "MO", "East") },
+        { "COU", new("Columbia Regional",            "MO", "Central") },
+        { "MCI", new("Kansas City",                  "MO", "Central") },
+        { "SGF", new("Springfield-Branson",          "MO", "Central") },
+        { "STL", new("St Louis Lambert",             "MO", "Central") },
         // Nebraska
-        { "LNK", new("Lincoln",                      "NE", "East") },
-        { "OMA", new("Omaha Eppley",                "NE", "East") },
+        { "LNK", new("Lincoln",                      "NE", "Central") },
+        { "OMA", new("Omaha Eppley",                "NE", "Central") },
         // North Dakota
-        { "BIS", new("Bismarck",                     "ND", "East") },
-        { "GFK", new("Grand Forks",                  "ND", "East") },
+        { "BIS", new("Bismarck",                     "ND", "Central") },
+        { "GFK", new("Grand Forks",                  "ND", "Central") },
         // Oklahoma
-        { "LAW", new("Lawton-Fort Sill",             "OK", "East") },
-        { "OKC", new("Will Rogers Oklahoma City",    "OK", "East") },
-        { "TUL", new("Tulsa",                        "OK", "East") },
+        { "LAW", new("Lawton-Fort Sill",             "OK", "Central") },
+        { "OKC", new("Will Rogers Oklahoma City",    "OK", "Central") },
+        { "TUL", new("Tulsa",                        "OK", "Central") },
         // South Dakota
-        { "ABR", new("Aberdeen",                     "SD", "East") },
-        { "FSD", new("Sioux Falls",                  "SD", "East") },
-        { "RAP", new("Rapid City Regional",          "SD", "East") },
+        { "ABR", new("Aberdeen",                     "SD", "Central") },
+        { "FSD", new("Sioux Falls",                  "SD", "Central") },
+        { "RAP", new("Rapid City Regional",          "SD", "Central") },
         // Texas (Central)
-        { "ABI", new("Abilene Regional",             "TX", "East") },
-        { "AMA", new("Rick Husband Amarillo",        "TX", "East") },
-        { "AUS", new("Austin-Bergstrom",             "TX", "East") },
-        { "BPT", new("Jack Brooks Beaumont",         "TX", "East") },
-        { "CLL", new("Easterwood College Station",   "TX", "East") },
-        { "CRP", new("Corpus Christi",               "TX", "East") },
-        { "DAL", new("Dallas Love Field",            "TX", "East") },
-        { "DFW", new("Dallas Fort Worth",            "TX", "East") },
-        { "ELP", new("El Paso",                      "TX", "East") }, // Mountain but TX = East for business
-        { "GGG", new("East Texas Regional",          "TX", "East") },
-        { "GRK", new("Robert Gray Killeen",          "TX", "East") },
-        { "HOU", new("Houston Hobby",                "TX", "East") },
-        { "IAH", new("Houston George Bush",          "TX", "East") },
-        { "LBB", new("Lubbock Preston Smith",        "TX", "East") },
-        { "LRD", new("Laredo",                       "TX", "East") },
-        { "MAF", new("Midland",                      "TX", "East") },
-        { "MFE", new("McAllen Miller",               "TX", "East") },
-        { "SAT", new("San Antonio",                  "TX", "East") },
-        { "SJT", new("San Angelo",                   "TX", "East") },
-        { "SPS", new("Wichita Falls",                "TX", "East") },
-        { "TYR", new("Tyler Pounds Regional",        "TX", "East") },
+        { "ABI", new("Abilene Regional",             "TX", "Central") },
+        { "AMA", new("Rick Husband Amarillo",        "TX", "Central") },
+        { "AUS", new("Austin-Bergstrom",             "TX", "Central") },
+        { "BPT", new("Jack Brooks Beaumont",         "TX", "Central") },
+        { "CLL", new("Easterwood College Station",   "TX", "Central") },
+        { "CRP", new("Corpus Christi",               "TX", "Central") },
+        { "DAL", new("Dallas Love Field",            "TX", "Central") },
+        { "DFW", new("Dallas Fort Worth",            "TX", "Central") },
+        { "ELP", new("El Paso",                      "TX", "Central") }, // Mountain but TX = Central for business consistency
+        { "GGG", new("East Texas Regional",          "TX", "Central") },
+        { "GRK", new("Robert Gray Killeen",          "TX", "Central") },
+        { "HOU", new("Houston Hobby",                "TX", "Central") },
+        { "IAH", new("Houston George Bush",          "TX", "Central") },
+        { "LBB", new("Lubbock Preston Smith",        "TX", "Central") },
+        { "LRD", new("Laredo",                       "TX", "Central") },
+        { "MAF", new("Midland",                      "TX", "Central") },
+        { "MFE", new("McAllen Miller",               "TX", "Central") },
+        { "SAT", new("San Antonio",                  "TX", "Central") },
+        { "SJT", new("San Angelo",                   "TX", "Central") },
+        { "SPS", new("Wichita Falls",                "TX", "Central") },
+        { "TYR", new("Tyler Pounds Regional",        "TX", "Central") },
         // Wisconsin
-        { "ATW", new("Appleton",                     "WI", "East") },
-        { "GRB", new("Green Bay Austin Straubel",    "WI", "East") },
-        { "LSE", new("La Crosse",                    "WI", "East") },
-        { "MKE", new("Milwaukee Mitchell",           "WI", "East") },
-        { "MSN", new("Dane County Madison",          "WI", "East") },
+        { "ATW", new("Appleton",                     "WI", "Central") },
+        { "GRB", new("Green Bay Austin Straubel",    "WI", "Central") },
+        { "LSE", new("La Crosse",                    "WI", "Central") },
+        { "MKE", new("Milwaukee Mitchell",           "WI", "Central") },
+        { "MSN", new("Dane County Madison",          "WI", "Central") },
 
         // ── US Mountain time zone → West ────────────────────────────────────────
         // Arizona

@@ -25,15 +25,28 @@ public partial class SitesViewModel : ObservableObject
     [ObservableProperty] private string _locationSearch       = "";
     [ObservableProperty] private string _locationRegionFilter = "All";
 
+    // Fully-closed locations (every site under them Complete) are hidden by default (see
+    // AddEditLocationDialog's "Close All Sites & This Location" checkbox) — this toggle brings
+    // them back into view.
+    [ObservableProperty] private bool _showCompletedLocations;
+
     // ── Site filters ──
     [ObservableProperty] private string _siteSearch       = "";
     [ObservableProperty] private string _siteStatusFilter = "All";
     [ObservableProperty] private string _sitePmFilter     = "All";
     [ObservableProperty] private ObservableCollection<string> _availablePmNames = new() { "All" };
 
+    // Completed sites are hidden by default (see AddEditSiteDialog's "Close All ROMPs & This
+    // Site" checkbox) — this toggle brings them back into view without disturbing SiteStatusFilter.
+    [ObservableProperty] private bool _showCompletedSites;
+
     // ── ROMP filters ──
     [ObservableProperty] private string _rompSearch       = "";
     [ObservableProperty] private string _rompStatusFilter = "All";
+
+    // Completed ROMPs are hidden by default (see AddEditRompDialog's "Mark Complete & Remove
+    // from List" checkbox) — this toggle brings them back into view without disturbing RompStatusFilter.
+    [ObservableProperty] private bool _showCompletedRomps;
 
     // Dynamic status lists driven by StatusConfig — used by SitesPage dropdowns
     public IReadOnlyList<string> AvailableRompStatusNames   => StatusConfig.All.ToList();
@@ -43,15 +56,18 @@ public partial class SitesViewModel : ObservableObject
     partial void OnLocationsChanged(ObservableCollection<Location> value) => ApplyLocationFilters();
     partial void OnLocationSearchChanged(string value)                    => ApplyLocationFilters();
     partial void OnLocationRegionFilterChanged(string value)              => ApplyLocationFilters();
+    partial void OnShowCompletedLocationsChanged(bool value)              => ApplyLocationFilters();
 
     partial void OnSitesChanged(ObservableCollection<Site> value) { RefreshAvailablePmNames(); ApplySiteFilters(); }
     partial void OnSiteSearchChanged(string value)                => ApplySiteFilters();
     partial void OnSiteStatusFilterChanged(string value)          => ApplySiteFilters();
     partial void OnSitePmFilterChanged(string value)              => ApplySiteFilters();
+    partial void OnShowCompletedSitesChanged(bool value)          => ApplySiteFilters();
 
     partial void OnRompsChanged(ObservableCollection<Romp> value) => ApplyRompFilters();
     partial void OnRompSearchChanged(string value)                => ApplyRompFilters();
     partial void OnRompStatusFilterChanged(string value)          => ApplyRompFilters();
+    partial void OnShowCompletedRompsChanged(bool value)          => ApplyRompFilters();
 
     private void ApplyLocationFilters()
     {
@@ -64,6 +80,8 @@ public partial class SitesViewModel : ObservableObject
         }
         if (LocationRegionFilter != "All")
             q = q.Where(l => l.GeographicalLocation == LocationRegionFilter);
+        if (!ShowCompletedLocations)
+            q = q.Where(l => !l.IsFullyClosed);
         FilteredLocations = new ObservableCollection<Location>(q);
     }
 
@@ -86,7 +104,11 @@ public partial class SitesViewModel : ObservableObject
                            || (s.AssignedPm?.FullName.ToLower().Contains(low) == true));
         }
         if (SiteStatusFilter != "All")
+            // An explicit status choice (including "Complete") always wins over the
+            // hide-completed default below — picking it is how you deliberately look at closed sites.
             q = q.Where(s => s.SiteStatus == SiteStatusFilter);
+        else if (!ShowCompletedSites)
+            q = q.Where(s => s.SiteStatus != "Complete");
         if (SitePmFilter != "All")
             q = q.Where(s => s.AssignedPm?.FullName == SitePmFilter);
         FilteredSites = new ObservableCollection<Site>(q);
@@ -103,7 +125,11 @@ public partial class SitesViewModel : ObservableObject
                            || (r.Site?.Name.ToLower().Contains(low) == true));
         }
         if (RompStatusFilter != "All")
+            // An explicit status choice (including a complete one) always wins over the
+            // hide-completed default below — picking it is how you deliberately look at closed ROMPs.
             q = q.Where(r => r.Status == RompStatusFilter);
+        else if (!ShowCompletedRomps)
+            q = q.Where(r => !StatusConfig.Complete.Contains(r.Status));
         FilteredRomps = new ObservableCollection<Romp>(q);
     }
 
@@ -244,6 +270,22 @@ public partial class SitesViewModel : ObservableObject
         Romps = new ObservableCollection<Romp>(query.OrderBy(r => r.Name).ToList());
     }
 
+    // ── Bulk import support ──
+
+    /// <summary>Every ROMP with its Site + Location — for the Sites/ROMPs import template.</summary>
+    public List<Romp> GetAllRompsForExport()
+    {
+        using var db = new AppDbContext();
+        return db.Romps.AsNoTracking()
+                       .Include(r => r.Site).ThenInclude(s => s.Location)
+                       .OrderBy(r => r.Site!.Location!.Name).ThenBy(r => r.Site!.Name).ThenBy(r => r.Name)
+                       .ToList();
+    }
+
+    /// <summary>Reloads from the top after a bulk import — safer than trying to preserve the
+    /// current drill-down level, since an import can touch many unrelated locations at once.</summary>
+    public void RefreshAfterImport() => LoadLocations();
+
     // ── PM assignment ──
 
     public List<PM> GetPms()
@@ -276,12 +318,36 @@ public partial class SitesViewModel : ObservableObject
         LoadLocations();
     }
 
-    public void UpdateLocation(Location updated)
+    // bulkRompStatus (e.g. the complete status) cascades to every ROMP at every Site under this
+    // Location — same "Close All ROMPs & This Site" mechanism as UpdateSite, one level up.
+    // closeAllSites additionally sets Site.IsClosed on every site here, same reason UpdateSite
+    // sets it directly rather than relying only on bulkRompStatus — a zero-ROMP site has no
+    // ROMPs for bulkRompStatus to touch, so without this a Location made up of empty sites could
+    // never actually reach IsFullyClosed.
+    public void UpdateLocation(Location updated, string? bulkRompStatus = null, bool closeAllSites = false)
     {
         using var db = new AppDbContext();
         var tracked = db.Locations.Find(updated.Id);
         if (tracked == null) return;
         db.Entry(tracked).CurrentValues.SetValues(updated);
+
+        var sites = closeAllSites
+            ? db.Sites.Where(s => s.LocationId == updated.Id).ToList()
+            : null;
+
+        if (closeAllSites && sites != null)
+            foreach (var site in sites)
+                site.IsClosed = true;
+
+        if (!string.IsNullOrEmpty(bulkRompStatus))
+        {
+            var siteIds = sites?.Select(s => s.Id).ToList()
+                       ?? db.Sites.Where(s => s.LocationId == updated.Id).Select(s => s.Id).ToList();
+            var romps   = db.Romps.Where(r => siteIds.Contains(r.SiteId)).ToList();
+            foreach (var romp in romps)
+                romp.Status = bulkRompStatus;
+        }
+
         db.SaveChanges();
         LoadLocations();
     }

@@ -11,7 +11,11 @@
 
         <!-- ── Page header: title + breadcrumb ── -->
         <Grid Grid.Row="0" Margin="0,0,0,20">
-            <StackPanel>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0">
 
                 <!-- Back-to-PM button — shown only when navigated from PM Detail -->
                 <Button Content="{Binding BackButtonLabel}"
@@ -77,6 +81,15 @@
                     </StackPanel>
                 </StackPanel>
             </StackPanel>
+
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
+                <Button Content="Download Sites Template" x:Name="BtnDownloadSitesTemplate"
+                        Style="{StaticResource SecondaryButtonStyle}"
+                        Click="BtnDownloadSitesTemplate_Click" Margin="0,0,10,0"/>
+                <Button Content="Import Sites" x:Name="BtnImportSites"
+                        Style="{StaticResource PrimaryButtonStyle}"
+                        Click="BtnImportSites_Click"/>
+            </StackPanel>
         </Grid>
 
         <!-- ════════════════════════════════════════════════════════
@@ -127,8 +140,13 @@
                               FontSize="12" Padding="4,0" Width="75" VerticalAlignment="Center">
                         <ComboBoxItem Content="All"/>
                         <ComboBoxItem Content="East"/>
+                        <ComboBoxItem Content="Central"/>
                         <ComboBoxItem Content="West"/>
                     </ComboBox>
+                    <Border Width="1" Background="#E2E8F0" Margin="10,6,10,6"/>
+                    <CheckBox Content="Show Completed"
+                              IsChecked="{Binding ShowCompletedLocations, Mode=TwoWay}"
+                              FontSize="12" Foreground="#374151" VerticalAlignment="Center"/>
                 </StackPanel>
             </Border>
 
@@ -236,6 +254,10 @@
                               SelectedItem="{Binding SitePmFilter, Mode=TwoWay}"
                               BorderThickness="0" Background="Transparent"
                               FontSize="12" Padding="4,0" Width="130" VerticalAlignment="Center"/>
+                    <Border Width="1" Background="#E2E8F0" Margin="10,6,10,6"/>
+                    <CheckBox Content="Show Completed"
+                              IsChecked="{Binding ShowCompletedSites, Mode=TwoWay}"
+                              FontSize="12" Foreground="#374151" VerticalAlignment="Center"/>
                 </StackPanel>
             </Border>
 
@@ -364,6 +386,10 @@
                               SelectedItem="{Binding RompStatusFilter, Mode=TwoWay}"
                               BorderThickness="0" Background="Transparent"
                               FontSize="12" Padding="4,0" Width="110" VerticalAlignment="Center"/>
+                    <Border Width="1" Background="#E2E8F0" Margin="10,6,10,6"/>
+                    <CheckBox Content="Show Completed"
+                              IsChecked="{Binding ShowCompletedRomps, Mode=TwoWay}"
+                              FontSize="12" Foreground="#374151" VerticalAlignment="Center"/>
                 </StackPanel>
             </Border>
 

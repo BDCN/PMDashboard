@@ -12,7 +12,6 @@ Windows desktop application for resource management — tracks Project Managers,
 - **Cloud/MySQL:** Pomelo.EntityFrameworkCore.MySql 8.0.2 + MySqlConnector 2.3.7
 - **Local DB file:** `%LOCALAPPDATA%\PMDashboard\data.db`
 - **DB config file:** `%APPDATA%\PMDashboard\dbconfig.json` (database mode, network path, cloud connection string)
-- **Admin config file:** `%APPDATA%\PMDashboard\adminconfig.json` (admin-gate password) — added 2026-08-27 when this project was first pushed to GitHub (`AdminConfig.cs`, mirrors `DatabaseConfig`'s pattern). `PasswordDialog.xaml.cs` used to have the real password as a hardcoded `const string` — that would have shipped straight into git history, so it was moved out of source into this per-machine file. **A fresh machine/clone has no admin password configured until this file is created there** (no default ships in source, and `TryConfirm()` deliberately never matches on an empty/unconfigured password) — there's currently no in-app "set admin password" UI, so seed it manually: write `{"Password": "<value>"}` to that path, or ask whoever set the original value.
 - **Favicon:** `favicon.ico` in project root (from iem.co), built as `<Resource>`
 - **IEM logo:** `Assets/iem-logo.png` in project root, built as `<Resource>` — displayed in app header
 
@@ -32,7 +31,7 @@ PMDashboard/
 │   └── Models/
 │       ├── PM.cs                   # PM entity + LastModified
 │       ├── Location.cs             # Grandparent entity (3-letter code, GeographicalLocation) + LastModified
-│       ├── Site.cs                 # FK → Location, FK? → PM, SiteStatus computed, LastModified
+│       ├── Site.cs                 # FK → Location, FK? → PM, IsClosed (persisted), SiteStatus computed (folds in IsClosed only when Romps is empty), LastModified
 │       ├── Romp.cs                 # FK → Site, Status, EquipmentTypes nav collection, LastModified
 │       ├── RompEquipmentType.cs    # Junction: Romp ↔ EquipmentCategory (many-to-many) + LastModified
 │       ├── RompStatus.cs           # Status config: IsComplete, CountsAsActive, ScoreWeight (double) + LastModified
@@ -44,28 +43,30 @@ PMDashboard/
 │       ├── AssignmentRule.cs       # PM assignment rules (IsBuiltIn, Weight, SortOrder, RuleKey) + LastModified
 │       ├── SavedReport.cs          # Report Builder preset: Mode, FilterJson, SelectedColumnsJson, chart config + LastModified
 │       ├── CustomColumn.cs         # Custom Data grid's user-defined column: Name, Key (stable, "col{Id}"), ColumnType + LastModified
-│       └── CustomRow.cs            # Custom Data grid row: ValuesJson (dict keyed by CustomColumn.Key) + LastModified
+│       ├── CustomRow.cs            # Custom Data grid row: ValuesJson (dict keyed by CustomColumn.Key) + LastModified
+│       ├── User.cs                 # Account: Email (username), PasswordHash, Role (SuperAdmin|User), IsActive, MustChangePassword + LastModified
+│       └── AuditEntry.cs           # Audit log row: TimestampUtc, UserEmail/UserName, Action, EntityType, EntityId?, Details, MachineName + LastModified
 ├── ViewModels/
 │   ├── MainViewModel.cs            # CurrentPage, GeoFilter, Navigate* methods incl. NavigateToPmDetail + NavigateToSiteRompsFromPm
 │   ├── PmMaintenanceViewModel.cs   # Live-edit grid, geo filter, BulkAddPms, GetAllPms
 │   ├── SitesViewModel.cs           # 3-level drill-down; NavigateDirectToSiteRomps; BackButtonLabel/NavigateBackAction
-│   ├── OrdersViewModel.cs          # UpsertOrders, site/ROMP auto-creation, LastUploadDate
+│   ├── OrdersViewModel.cs          # UpsertOrders + ImportWithLockAsync (import lock, local import, cloud push-and-wait), last-import summary properties
 │   ├── WorkloadViewModel.cs        # New multiplicative scoring formula, mode-aware KPI counts (Overloaded/NearFull/HasCapacity)
 │   ├── PmDetailViewModel.cs        # PM detail: BulkUnassignSites, NavigateToSiteRomps delegate, CurrentPmId
 │   ├── AssignmentViewModel.cs      # Multi-select site ListBox, SetSelectedSites, ComputeCandidates uses SelectedLocation
-│   ├── ConfigViewModel.cs          # All config: DB mode, workload params (double), IsAdminUnlocked, SyncEquipmentFromOrders
+│   ├── ConfigViewModel.cs          # All config: DB mode, workload params (double), IsSuperAdmin (gates the whole Configuration page), SyncEquipmentFromOrders, Delete Local Data
 │   ├── ReportBuilderViewModel.cs   # Mode (Orders/SitesRomps) toggle, filters, column picker, saved-report CRUD, chart config
-│   └── CustomDataViewModel.cs      # Custom Data: real Orders/Sites&ROMPs rows (reuses ReportQueryService) + attached dynamic columns; CustomDataRow (Static/DynamicValues), row CRUD, column CRUD (shared with ManageColumnsDialog)
+│   └── CustomDataViewModel.cs      # Custom Data: paginated real Orders/Sites&ROMPs rows (reuses ReportQueryService) + attached dynamic columns; CustomDataRow (Static/DynamicValues), row CRUD, column CRUD (shared with ManageColumnsDialog), Excel-style column filters, persistent column order
 ├── Views/
 │   ├── PmMaintenancePage.xaml/.cs  # Live-edit DataGrid — includes Score Cap column
 │   ├── SitesPage.xaml/.cs          # Drill-down: Locations → Sites → ROMPs; ← Back-to-PM button when navigated from PM Detail
-│   ├── OrdersPage.xaml/.cs         # Import routing by SourceDataType, last-upload stat
+│   ├── OrdersPage.xaml/.cs         # Import section only (no data grid) — Import Excel / Clear All, persistent "Last Import" results card, import-in-progress indicator
 │   ├── WorkloadPage.xaml/.cs       # Bar chart; mode-aware KPI cards; Score mode: Overloaded/Near Full/Has Capacity
 │   ├── PmDetailPage.xaml/.cs       # PM detail: checkbox bulk-unassign, Edit/Unassign per-site, clickable site name → ROMs
 │   ├── AssignmentPage.xaml/.cs     # Multi-select ListBox (Ctrl+Click/Shift+Click); All/Unassigned/Clear buttons; geo badge
-│   ├── ConfigPage.xaml/.cs         # Reordered cards; sliders on params/statuses/equipment; single admin lock
+│   ├── ConfigPage.xaml/.cs         # Reordered cards; sliders on params/statuses/equipment; single admin lock; Danger Zone (Delete Local Data); Manage Users card (SuperAdmin-gated)
 │   ├── ReportBuilderPage.xaml/.cs  # Filter panel + dynamic results grid + bar chart + saved-report strip; grid/picker columns built in code-behind, driven by VM PropertyChanged
-│   └── CustomDataPage.xaml/.cs     # Mode toggle + date-range filter over real Orders/Sites&ROMPs data, plus attached editable dynamic columns; DataGrid.Columns built in code-behind, driven by VM PropertyChanged
+│   └── CustomDataPage.xaml/.cs     # Mode toggle + date-range filter over real Orders/Sites&ROMPs data, paginated results, Excel-style column header filters, editable dynamic columns with accent styling, per-row History link; DataGrid.Columns built in code-behind, driven by VM PropertyChanged
 ├── Dialogs/
 │   ├── AddEditPmDialog.xaml/.cs
 │   ├── AddEditSiteDialog.xaml/.cs  # BulkRompStatus loaded from StatusConfig
@@ -75,26 +76,40 @@ PMDashboard/
 │   ├── AddEditStatusDialog.xaml/.cs
 │   ├── AddEquipmentWeightDialog.xaml/.cs
 │   ├── AssignPmDialog.xaml/.cs
-│   ├── PasswordDialog.xaml/.cs     # Admin password gate (password = RowanU)
-│   ├── TextInputDialog.xaml/.cs    # Generic single-line text prompt (Report Builder Save As / Rename)
-│   └── ManageColumnsDialog.xaml/.cs # Custom Data's column setup screen — add/rename/reorder/delete CustomColumns; shares the CustomDataViewModel instance passed in from CustomDataPage
+│   ├── TextInputDialog.xaml/.cs    # Generic single-line text prompt (Report Builder Save As / Rename, Delete Local Data's type-DELETE-to-confirm)
+│   ├── ManageColumnsDialog.xaml/.cs # Custom Data's column setup screen — add/rename/reorder/delete CustomColumns; shares the CustomDataViewModel instance passed in from CustomDataPage
+│   ├── RowHistoryDialog.xaml/.cs   # Custom Data's per-row "History" link — read-only DataGrid of AuditService.ForEntity(entityType, entityId)
+│   ├── LoginDialog.xaml/.cs        # Email + password sign-in; generic "incorrect" error (no user enumeration); forces ChangePasswordDialog when MustChangePassword
+│   ├── ChangePasswordDialog.xaml/.cs # Current + new + confirm password; "Sign Out" instead of "Cancel" when the change is mandatory
+│   ├── UserProfileDialog.xaml/.cs  # Signed-in user edits their own name/email, or changes their own password
+│   ├── CreateAdminAccountDialog.xaml/.cs # First-run only (Users table empty): the first real person sets their own email + password directly — no placeholder password ever in source
+│   ├── AddEditUserDialog.xaml/.cs  # Config → Manage Users → "+ Add User": creates an account via UserService.CreateUser (MustChangePassword defaults true)
+│   └── ResetUserPasswordDialog.xaml/.cs # Config → Manage Users → "Reset Password": admin sets a new password directly via UserService.AdminResetPassword (MustChangePassword forced true)
 └── Services/
     ├── ExcelImportService.cs       # ImportOrders (VADATA), ImportTableauOrders, ImportOpenLinesOrders
     ├── PmImportService.cs          # PM bulk template generate/parse
+    ├── SiteAssignmentImportService.cs # Bulk-assigns PMs to already-existing Sites from Excel (template generate/parse); skips+reports conflicts rather than overwriting
+    ├── SitesImportService.cs       # Bulk-creates/updates Sites+ROMPs (with Status) from Excel (template generate/parse); upserts — re-importing updates existing ROMPs' Status
     ├── ConfigService.cs            # Get/Set AppConfig rows; ConfigKeys constants
     ├── StatusConfig.cs             # App-lifetime cache: status lists + ScoreWeights (Dictionary<string,double>)
     ├── ScoreConfig.cs              # App-lifetime cache: CategoryRule (double Weight), WorkloadParams, EquipmentWeightSum
     ├── ScoringEngine.cs            # Pure stateless scoring logic (testable): RompScore, PmLoad, Availability, PmStatus
     ├── DatabaseConfig.cs           # Persistent DB mode config in %APPDATA%\PMDashboard\dbconfig.json
     ├── SyncService.cs              # Network travel sync (SQLite ATTACH bidirectional merge) + MariaDB DDL script
-    ├── CloudSyncService.cs         # Background cloud sync: initial pull + periodic push/pull via LastModified
-    ├── AutoImportService.cs        # Background timer, file polling, seen-file dedup, RunUpsert
-    ├── AirportLookup.cs            # Static IATA code → (Name, StateOrCountry, GeoRegion)
+    ├── CloudSyncService.cs         # Background cloud sync: initial pull + periodic push/pull via LastModified; PushNowAndWaitAsync (import-lock flow); DataChanged event (cross-user notifications)
+    ├── AutoImportService.cs        # Background timer, file polling, seen-file dedup, RunUpsert (shares OrderMerge with the manual import path); ImportCompleted event
+    ├── ImportLockService.cs        # Cloud-mode-only best-effort cross-user import lock, stored as an AppConfig row on the cloud DB directly (ForceCloud)
+    ├── OrderMerge.cs                # HasChanged/ApplyChanges field-by-field diff+copy for the Order upsert, shared by OrdersViewModel.UpsertOrders and AutoImportService.RunUpsert
+    ├── PasswordHasher.cs           # PBKDF2-SHA256, 100k iterations, per-password salt, constant-time compare; self-describing "pbkdf2$iter$salt$hash" format
+    ├── CurrentUser.cs              # Static holder for the signed-in User; Email/DisplayName/IsSuperAdmin; session-only (closing the app signs out)
+    ├── UserService.cs              # Account CRUD: FindByEmail, Authenticate, RecordLogin, UpdateProfile, ChangePassword, AllUsers, CreateUser, AdminResetPassword, SetActive
+    ├── AuditService.cs             # Best-effort audit log: Log(action, entityType, entityId, details), Recent, ForEntity — never throws, failures are swallowed and reported via LastError
+    ├── AirportLookup.cs            # Static IATA code → (Name, StateOrCountry, GeoRegion East|Central|West) — US split follows actual time zones; international entries stay on the coarser East/West split
     ├── ImportResult.cs             # Record: Added, Updated, Skipped, LocationsCreated, ...
     ├── NullToBoolConverter.cs      # IValueConverter: null → false
     ├── ReportFieldCatalog.cs       # ReportField/ReportFieldType, SiteRompFlatRow, ReportRow, curated Order/SiteRomp field catalogs + value getters
     ├── ReportFilterState.cs        # Serializable filter DTO (date range, multi-select IDs/statuses, text search)
-    ├── ReportQueryService.cs       # Builds/executes the two mode-specific query pipelines (Orders / Sites+ROMPs)
+    ├── ReportQueryService.cs       # Builds/executes the two mode-specific query pipelines (Orders / Sites+ROMPs); paginated (PagedResult<T>) overloads used by Custom Data
     ├── ReportExportService.cs      # ClosedXML export of report results, styled per PmImportService convention
     └── CustomCellValueConverter.cs # IValueConverter coercing a boxed Values[key] object to/from each ColumnType's editing control (stateless; ConverterParameter carries the type)
 
@@ -107,13 +122,13 @@ PMDashboard.Tests/                  # xUnit test project (26 tests); links Scori
 ### App Header (MainWindow.xaml)
 - **64px white header bar** spans the full window width above the sidebar and content area
 - **Left:** IEM logo (`Assets/iem-logo.png`) — white background blends seamlessly with the white header
-- **Right:** "PM Dashboard" + "Resource Management" subtitle
+- **Right:** "SAT" + "Site Assignment Tracker" subtitle (app display name — renamed from "PM Dashboard" / "Resource Management"; window title, login/first-run dialogs all use "SAT" the same way. The underlying project/namespace/assembly is still `PMDashboard` — only user-visible text changed)
 - Header background `White` with a `#E2E8F0` bottom border separates it from the sidebar/content
 
 ### Sidebar
 Sidebar order (top → bottom): **Workload → Assignment → Sites → PM Maintenance → Report Builder → Custom Data → Orders (Import)** then **CONFIG** section with **Configuration**.
 
-Geographic Location filter ComboBox (All / East / West) at the bottom of the sidebar — pushes filter to all relevant VMs via `MainViewModel.OnGeoFilterChanged`.
+Geographic Location filter ComboBox (All / East / Central / West) at the bottom of the sidebar — pushes filter to all relevant VMs via `MainViewModel.OnGeoFilterChanged`.
 
 Sidebar is **collapsible** via `«` / `»` toggle button (44 px when collapsed). The branding text that was previously in the sidebar has moved to the top header.
 
@@ -135,7 +150,7 @@ Site name in PmDetail → NavigateToSiteRompsFromPm(siteId, pmId) → SitesPage 
 ## Pages
 
 ### Workload
-- Horizontal bar chart — one row per active PM, sorted by utilisation ascending
+- Horizontal bar chart — one row per active PM, sorted by utilisation ascending (Site Count Only mode: sorted by assigned-site count ascending instead)
 - **Auto-scaling**: `ChartGrid.SizeChanged` → `WorkloadViewModel.ApplyScale(barWidth)`
 - **Inside label**: when utilization > 80%, label appears inside bar in white; otherwise outside
 - **Score mode label**: `Score: 11.77 ⚠  ·  65.4% util  ·  34.6% avail  ·  2 sites / 6 ROMPs`
@@ -144,7 +159,7 @@ Site name in PmDetail → NavigateToSiteRompsFromPm(siteId, pmId) → SitesPage 
 - **KPI cards (Sites mode)**: Over Capacity, On Target, Under Target, No Capacity Set, Avg Utilisation
 - **KPI cards (Score mode)**: Overloaded (util > threshold), Near Full (≥ nearfull), Has Capacity, No Capacity Set, Avg Utilisation
 - Cards switch via `IsScoreMode` DataTrigger
-
+- **Site Count Only mode** (`PercentageCalculation == "Count"`, set on the SuperAdmin-only Configuration page — see below): the entire KPI panel is hidden (`IsCountMode` DataTrigger collapses the whole `Border`, not just individual cards); bars are scaled by raw assigned-site count instead of a utilization percentage (`ApplyScale`'s `countMode` branch — `maxCount = max site count among PMs`, `scale = availableWidth / maxCount`); the bar-fill fraction relative to `maxCount` is written into `PmWorkloadRow.UtilizationPct` purely to drive the existing >80%-inside-label heuristic, not shown as a number anywhere; label reads `"{N} sites · {M} ROMPs"` with no score/percentage; the 100%-reference red line and percentage axis ticks are replaced with plain integer count ticks, and `WorkloadPage.xaml.cs.RebuildBackground` skips drawing the reference line (`HundredPctX` is set to `-1` as an off-screen sentinel in this mode) since there's no "100%" concept without a capacity figure.
 ### PM Detail
 - Navigated to by clicking a row in Workload; ← Back button returns to Workload
 - **Header**: PM name, office, region; info strip: Data Name, Site Cap, Ideal %, utilization %, **PM Multiplier**, **Eff. Capacity**
@@ -157,22 +172,32 @@ Site name in PmDetail → NavigateToSiteRompsFromPm(siteId, pmId) → SitesPage 
   - **Site Name link** → navigates to Sites page at Romps level for that site
   - **Edit button** → opens `AddEditSiteDialog`, saves + reloads
   - **Unassign button** → confirmation → removes PM, reloads
+- **Site Count Only mode** (`PmDetailViewModel.IsCountMode`, set in `Load()` from `ConfigService.Get(PercentageCalculation)`): info strip collapses to just Data Name (Capacity/Ideal Utilization/Current Utilization/PM Multiplier/Eff. Capacity all hidden as one `StackPanel`); the PM Load KPI card is hidden; ROMP Status Breakdown keeps its bars and raw per-status ROMP counts (still the same 6 categories — Ordered/OFCI/Construction/CX/Complete/Close Out) but hides the `×weight` and per-status score columns, and the "ROMP sum × site factor = PM Load" footer is hidden; the Assigned Sites table's Score column is hidden (`ColSiteScore`, collapsed in the page constructor, same pattern as `PmMaintenancePage`'s Site Cap/Score Cap/Multiplier/Ideal Util columns). The breakdown's per-row visibility trigger binds through `RelativeSource AncestorType=UserControl` + `DataContext.IsCountMode` since the `ItemsControl.ItemTemplate`'s own `DataContext` is a `PmStatusRow`, not the page's `PmDetailViewModel`.
 
 ### Assignment
-- Left panel: Location (ComboBox + geo badge East/West) → multi-select site ListBox → optional ROMP
+- Left panel: Location (ComboBox + geo badge East/Central/West) → multi-select site ListBox → optional ROMP
 - **Site ListBox**: `SelectionMode=Extended` (Ctrl+Click / Shift+Click); quick-select buttons **All / Unassigned / None**; selection counter below; ROMP section only visible when exactly 1 site selected
 - Right panel: ranked PM candidates via `AssignmentViewModel.ComputeCandidates()` using `SelectedLocation` region
 - Assign → assigns PM to ALL selected sites; confirmation dialog for 2+ sites
 - `RestoreListBoxSelection()` re-selects the same sites after assignment
+- **Site Count Only mode**: the `CapacityAvailability` rule's contribution is replaced with `1.0 / (1.0 + activeSiteCount)` — no `pm.Capacity`/`Utilization`/`EffectiveCapacity` call anywhere in the ranking — so candidates rank purely by fewest currently-assigned active sites (RegionMatch/LocationFamiliarity rules still apply normally, since neither uses capacity data). The "Util" column in the candidates grid is hidden (`ColUtil.Visibility`, set in the `AssignmentPage` constructor) since it would just show "—" for everyone.
+- **Site Assignments bulk import** (`SiteAssignmentImportService`, header buttons "Download Assignments Template" / "Import Assignments") — records assignments that are already in place, at scale, without visiting every site one at a time. **Does not create Sites** — a row's Location + Site Name must both match an existing Site exactly (Location is required specifically so a typo'd Site name under the wrong Location is caught as an error rather than silently matched to the wrong record); PM is matched by **Data Name**. If a Site in the sheet is already assigned to a *different* PM than the sheet says, that row is skipped and reported as a conflict rather than overwritten — reassignment has to be deliberate, not a side effect of a stale export. "Download Template" pre-populates every Site with its current PM Data Name (blank if unassigned), so the natural workflow is export → edit → re-import. `AssignmentViewModel.GetAllSitesForExport()`/`RefreshAfterImport()` support this from the page.
+- **PM Data Name dropdown**: the PM Data Name column gets an in-cell Excel dropdown of active PMs (`vm.AllPms`, already `IsActive`-filtered), built as a **range-reference validation against a hidden "Lists" helper sheet** — not the inline comma-string `.List("\"A,B,C\"")` technique used for Home Office/Region elsewhere in the app. Excel's inline dropdown list is capped at ~255 characters, which a real PM roster's Data Names concatenated together would likely exceed; a range reference has no such limit. The dropdown is a convenience only — free-text entry (an inactive or nonexistent PM's Data Name) still works and is still validated/reported at import time, same as before.
 
 ### Sites (3-level drill-down)
 - `SiteNavLevel` enum: Locations | Sites | Romps
 - **← Back to [PM Name]** button appears when navigated from PM Detail via `HasBackButton` / `BackButtonLabel` properties
 - ROMP status dropdowns driven by `StatusConfig`
+- **Sites/ROMPs bulk import** (`SitesImportService`, header buttons "Download Sites Template" / "Import Sites") — a direct setup/seeding tool for Sites+ROMPs with their actual current status, independent of Orders import's JobName-derived auto-creation. Template columns: Location, Region, Site Name, ROMP Name, Status (one row per ROMP). **Upsert semantics**: re-importing an already-existing (Site, ROMP) pair **updates its Status** rather than skipping it — the sheet is meant to be re-downloaded, edited, and re-uploaded to reflect status changes over time. Region is required only when the Location doesn't exist yet (used to create it); if the Location already exists, Region in the sheet is ignored, never used to update an existing Location's region. A Site that already exists under a *different* Location than the sheet states is an error (typo guard), not silently refiled. Status must match one of the **live** `StatusConfig.All` values — the template's Status dropdown is built from that live list at generation time, not hardcoded, since `RompStatus` is an admin-configurable table. `SitesViewModel.GetAllRompsForExport()`/`RefreshAfterImport()` (the latter just calls `LoadLocations()` — safer than trying to preserve the current drill-down level after an import that can touch many unrelated locations at once) support this from the page.
+- **Close & hide (complete-and-remove)**, all three drill-down levels — `AddEditRompDialog` has a "Mark Complete & Remove from List" checkbox; `AddEditSiteDialog` (edit only) has "Close All ROMPs & This Site"; `AddEditLocationDialog` (edit only) has "Close All Sites & This Location". Each level bulk-sets every ROMP underneath it to the complete status, cascading down through the existing "Set All ROMPs to Status" mechanism (`SitesViewModel.UpdateSite`'s `bulkRompStatus` param) one level further via `UpdateLocation`'s own `bulkRompStatus` param (looks up every Site under the Location, then every ROMP under those Sites). All three require a Yes/No confirmation (`MessageBox`) before saving; declining leaves the dialog open with nothing changed. None of this deletes anything — records stay in the database for reporting/scoring history, exactly like any other Complete-status row.
+  - **Hidden by default, not just filtered**: completed Locations/Sites/ROMPs now drop out of `FilteredLocations`/`FilteredSites`/`FilteredRomps` even when the (Site/ROMP) Status filter is set to "All" — a real behavior change from before this feature (previously "All" meant literally everything; Locations never had a status concept at all before this). `SitesViewModel.ShowCompletedLocations`/`ShowCompletedSites`/`ShowCompletedRomps` (new bools, default `false`) are separate "Show Completed" checkboxes on each list's filter bar that bring them back into view. For Sites/ROMPs, picking an explicit Status filter value (including "Complete" itself) always overrides the hide-by-default rule — the two controls don't fight each other, an explicit choice wins. Locations have no per-row status filter dropdown, so no such override exists there — just the one toggle.
+  - **`Location.IsFullyClosed`** (new computed property, EF-ignored like `Site.SiteStatus`) — `Sites.Any() && Sites.All(s => s.SiteStatus == "Complete")`. Depends on `Sites` (and each Site's `Romps`) being eager-loaded by the caller; defaults to `false` (don't hide it) when they aren't — `SitesViewModel.LoadLocations()` already does `.Include(l => l.Sites).ThenInclude(s => s.Romps)`, so this is accurate wherever the Sites page itself reads it.
+  - **`Site.IsClosed`** (new persisted column, `bool`, default `false`) — a **zero-ROMP site can never become "Complete" through ROMP data alone** (there's nothing to bulk-set), so `SiteStatus`'s zero-ROMP branch became `IsClosed ? "Complete" : "Ordered"` instead of an unconditional `"Ordered"`. Deliberately scoped to *only* that branch — once a site has real ROMPs, their actual statuses govern `SiteStatus` as before, so a later active ROMP added to a previously-closed-while-empty site (e.g. a fresh Orders import) makes the site reappear automatically rather than staying silently hidden behind a stale flag. `AddEditSiteDialog` pre-checks its checkbox from `existing.IsClosed` and treats it as a real toggle: checking it when not already closed asks for confirmation and bulk-completes ROMPs; unchecking an already-closed site reopens it (no confirmation, and doesn't touch ROMP statuses — the site only reappears via this flag when it truly has none). `AddEditLocationDialog`'s "Close All Sites & This Location" cascades `IsClosed = true` onto every Site under it the same way (`UpdateLocation`'s new `closeAllSites` param), so a Location made entirely of empty sites can actually be closed now too. Migration: `ALTER TABLE Sites ADD COLUMN IsClosed` in both `App.xaml.cs` (SQLite) and `SyncService.MariaDbDdlScript` (MariaDB) — a plain new scalar column on an already-synced entity, so no `CloudSyncService` changes were needed (its batch sync already copies every scalar property).
 
 ### PM Maintenance
 - **Live-edit DataGrid**: click a cell to edit inline; `RowEditEnding` → `UpdatePm(pm)` saves automatically
 - Columns: Active, First Name, Last Name, Home Office, Region, Data Name, **Site Cap**, **Score Cap**, **Multiplier**, Ideal Util (%)
+- **Site Count Only mode**: the last four columns (Site Cap/Score Cap/Multiplier/Ideal Util) are hidden — `ColSiteCap`/`ColScoreCap`/`ColMultiplier`/`ColIdealUtil` `x:Name`s on the `DataGridColumn`s, collapsed in the `PmMaintenancePage` constructor. Same fields are hidden in `AddEditPmDialog` (`CapacityRow`/`PmMultiplierPanel`) — the underlying `PM.Capacity`/`IdealUtilization`/`PmMultiplier`/`ScoreCapacity` values are untouched either way (controls are hidden, not removed, so a new PM still saves its default 0/80/blank values and an existing PM keeps whatever it already had).
 
 ### Report Builder
 Two independent report modes — not a unified cross-entity query builder, since `Orders` isn't FK'd to `Sites`/`Romps`/`PMs` (only loosely linked by `JobName`/`ProjectManagerDataName` text):
@@ -186,7 +211,7 @@ Two independent report modes — not a unified cross-entity query builder, since
 - New `SavedReports` table needs its own entry in **all four** `CloudSyncService` sync methods (`DoInitialPullAsync`/`DoPush`/`DoPull`/`DoForcePush`) to sync in Cloud mode — easy to add the `DbSet` and forget one of the four call sites.
 
 ### Custom Data
-Shows **every real Order or Site/ROMP already in the database** (mode toggle, same Orders/SitesRomps split and date-range filter as Report Builder — reuses `ReportFieldCatalog`/`ReportQueryService`/`ReportFilterState` directly rather than duplicating that logic), with a "Manage Columns" **setup screen** that lets any user layer their own extra columns (Text/Number/Date/Bool) on top and fill in values per row — shared across all users via the normal sync path, not per-user local state. Static columns (the real Order/ROMP fields) are read-only; only the dynamic columns are editable. This deliberately does **not** work like a blank standalone spreadsheet — every row is tied to a real `Order`/ROMP `Id`, not a freestanding record.
+Shows **every real Order or Site/ROMP already in the database**, paginated (mode toggle, same Orders/SitesRomps split and date-range filter as Report Builder — reuses `ReportFieldCatalog`/`ReportQueryService`/`ReportFilterState` directly rather than duplicating that logic), with a "Manage Columns" **setup screen** that lets any user layer their own extra columns (Text/Number/Date/Bool) on top and fill in values per row — shared across all users via the normal sync path, not per-user local state. Static columns (the real Order/ROMP fields) are read-only; only the dynamic columns are editable. This deliberately does **not** work like a blank standalone spreadsheet — every row is tied to a real `Order`/ROMP `Id`, not a freestanding record.
 - **Schema**: `CustomColumn` (`Mode`, `Name`, `Key`, `ColumnType`, `SortOrder`) + `CustomRow` (`Mode`, `EntityId`, `ValuesJson`). A `CustomRow` only exists once a user enters at least one dynamic value for that Order/ROMP — most rows have none. `EntityId` is that `Order.Id` or the flattened ROMP's `RompId`, **not** an independent identity; `SaveRow()` looks up by `(Mode, EntityId)` and inserts only if no row exists yet (no DB-level unique constraint — relies on this app's single-writer desktop usage pattern, same as elsewhere in the codebase). Both `CustomColumn` and `CustomRow` are scoped by `Mode` since Orders and Sites/ROMPs are unrelated row sets — one "Notes" column added while in Sites & ROMPs mode never appears in Orders mode.
 - **`Key` is generated once at creation** (`col{Id}`, set in a second `SaveChanges()` after the row gets its auto-increment `Id`) and never changes — renaming a column's display `Name` never orphans existing values. **`ColumnType` is immutable after creation** — changing it would make existing JSON values (stored per the old type) fail to parse; delete and re-add the column instead.
 - **`CustomRow.SortOrder` is vestigial** — kept in both the model and every `CREATE TABLE`/DDL statement (`DEFAULT 0`) purely because installs that had this table before the "attach to a real entity" redesign already have that column as `NOT NULL` with no default; dropping it from the C# model made EF's `INSERT` omit it and violate that constraint (`SQLite Error 19`), crashing on every first dynamic-cell edit — caught by actually editing a cell, not by the build or test suite.
@@ -194,30 +219,53 @@ Shows **every real Order or Site/ROMP already in the database** (mode toggle, sa
 - **`CustomCellValueConverter`** (stateless `IValueConverter`, `ConverterParameter` = `ColumnType`) is what makes a single dictionary-indexer binding (`DynamicValues[key]`) work across `DataGridTextColumn` (Text/Number), `DataGridCheckBoxColumn` (Bool), and a `DataGridTemplateColumn` wrapping a `DatePicker` (Date) — same "columns built in code-behind, driven by VM `PropertyChanged`" pattern as Report Builder (now firing off both `StaticFields` and `DynamicColumns` changing), but the dynamic half is editable (`Mode=TwoWay`) while the static half is read-only.
 - **Setup screen** (`ManageColumnsDialog`) is a modal `Window` that takes the *same* `CustomDataViewModel` instance the page uses (passed via constructor, not a separate ViewModel) — column CRUD lives on the shared VM (`AddColumn`/`RenameColumn`/`DeleteColumn`/`MoveColumnUp`/`MoveColumnDown`, mirroring `ConfigViewModel`'s `RompStatus`/`EquipmentCategory` reorder pattern), scoped to whichever `Mode` is currently active, so both surfaces always agree.
 - **Column CRUD calls `RefreshDynamicColumns()`, not a full `RunQuery()`** — it reloads `DynamicColumns` and resyncs already-loaded `Rows`' `DynamicValues` from the DB, without re-running the (unchanged, and for Orders mode potentially 100k+-row) static Orders/ROMPs query.
-- **Row edits commit via `DataGrid.RowEditEnding`** → `SaveRow()`, same as `PmMaintenancePage`'s inline-edit convention — but unlike `PmMaintenanceViewModel.UpdatePm()`, `SaveRow()` does **not** reload the grid afterward, so editing one cell doesn't reset scroll position/selection.
+- **Row edits commit via `DataGrid.RowEditEnding`** → `SaveRow()`, same as `PmMaintenancePage`'s inline-edit convention — but unlike `PmMaintenanceViewModel.UpdatePm()`, `SaveRow()` does **not** reload the grid afterward, so editing one cell doesn't reset scroll position/selection. `SaveRow()` also calls `TouchParentEntity` (bumps the underlying `Order`/`Romp`'s `LastModified` so sync/notifications pick up the change) and `AuditService.Log`.
+- **Pagination**: `ReportQueryService.RunOrdersQuery`/`RunSiteRompQuery` gained page-parameter overloads returning `PagedResult<T>` (`Rows`, `TotalCount`, `PageIndex`, `PageSize`, `TotalPages`), built with SQL `Skip`/`Take` and a deterministic `OrderBy...ThenBy(Id)`. Only one page of rows is ever materialized, so there is no "set a filter first" guard even on the 130k+-row Orders table.
+- **Excel-style column header filters**: each header carries a small filter-glyph `Button` (not the whole header, so `CanUserReorderColumns`'s drag gesture still works) opening a shared `Popup` — search box, select-all/none, a checkbox `ListBox` of that column's distinct values (capped at `CustomDataViewModel.MaxFilterValues`, with a "narrow the date range" hint past the cap). `_columnFilters: Dictionary<string, HashSet<string>>` is applied client-side over the already-paged rows via `FilteredRows`/`ApplyColumnFilters`.
+- **Persistent column order**: dragging a header (`DataGridCustom_ColumnReordered`) saves the new left-to-right key order into `AppConfig` as JSON (`ConfigKeys.CustomDataColumnOrderPrefix + Mode`); `RebuildColumnsCore` re-sequences newly-built columns against `vm.GetSavedColumnOrder()` (stable sort — a key absent from the saved order, e.g. a brand-new column, keeps its default position at the end).
+- **Editable-column styling**: dynamic (user-added) columns get a red-accent header and a 2px left/right cell border (`DataGridEditableCellStyle` in `App.xaml`, applied via `ApplyEditableStyling`) — the cell background itself is left alone since the grid already alternates row colours, so a tint would just read as normal banding.
+- **History column**: every row has a trailing "History" link opening `RowHistoryDialog`, which lists `AuditService.ForEntity(entityType, entityId)` — every change (bulk imports are logged once for the run, not per row, so they won't show up as row-level history entries).
 
 ### Orders (Import)
-- Routes to three parsers based on `ConfigService.Get(SourceDataType)`
-- Upsert by `(CustomerOrder, OrdLine)` key; auto-creates Locations/Sites/ROMPs from JobName
+Import-only page — no data grid or search bar (removed deliberately; see next paragraph). Header shows record count + last-uploaded stat; buttons are Clear All and Import Excel.
+- Import routes to one of three parsers based on `ConfigService.Get(SourceDataType)`; upsert by `(CustomerOrder, OrdLine)` key; auto-creates Locations/Sites/ROMPs from JobName.
+- **The grid was removed on purpose**: reviewing 100k+ raw order rows in-app added no value over reviewing the source spreadsheet, and rendering it was the single biggest cost on this page. In its place, a persistent **"Last Import" results card** (added/updated/unchanged counts, locations/sites/ROMPs created, timestamp, who ran it) stays visible until the next import — replacing the old one-shot `MessageBox` that disappeared as soon as you dismissed it. `OrdersViewModel.SetLastImportResult()` populates it; `HasLastImport` gates the empty state.
+- **Import lock** (`ImportLockService`, Cloud mode only — Local is single-machine and Network's manual Sync Before/After Travel already serializes access by nature): `OrdersViewModel.ImportWithLockAsync()` acquires a lock row (`AppConfig` key `ImportLock`, written directly to the cloud via `ForceCloud`) before importing, so two people can't import over each other. A lock older than 30 minutes is treated as abandoned and silently reclaimed, so a crashed import can't wedge the button forever. Local/Network mode: `TryAcquire`/`Release` are no-ops that always succeed.
+- **Local-first-then-background-push, unchanged import architecture**: the lock wraps around the *existing* fast local SQLite import (`UpsertOrders`, unchanged) — it does not route writes to the cloud directly. After the local import, `CloudSyncService.PushNowAndWaitAsync()` forces an immediate push and awaits it (bounded by a timeout, after which it just proceeds — the next regular sync tick picks up anything not yet pushed) before the lock is released. `OrdersViewModel.IsImporting`/`ImportingStatus` drive a small in-progress indicator and disable the Import button for the duration.
+- **`OrderMerge`** (`Services/OrderMerge.cs`) holds the field-by-field `HasChanged`/`ApplyChanges` comparison, shared by both `OrdersViewModel.UpsertOrders` (manual import) and `AutoImportService.RunUpsert` (semi-automatic import) — previously `AutoImportService` had its own "simplified" change check (`found.UploadDate != uploadTime`) that matched on every re-import but never actually copied the new field values onto the existing row, silently discarding every field change made in the source spreadsheet on a semi-automatic re-import. Both paths now use the same real diff+copy.
+- **`AutoImportService.ImportCompleted`** event (carries the `ImportResult`) lets `OrdersViewModel` refresh the Last Import card even when a semi-automatic import lands while the user is on a different page — subscribed idempotently (`-=`/`+=`) in `Load()`, same pattern as `ConfigViewModel`'s `CloudSyncService.StatusChanged` subscription.
 
 ### Configuration
-Cards in order (top → bottom):
+**The entire page requires `CurrentUser.IsSuperAdmin`** (see Access Gate below) — anyone else sees a plain "restricted" message instead of any of the cards. Cards in order (top → bottom):
 1. **Upload Method** — Manual or Semi-Automatic; import folder + poll interval when Semi-Auto
 2. **Assignment Rules** — enable/disable, weight, reorder, + Add Custom Rule
-3. **Percentage Calculation** — Sites (default) or Score mode radio buttons
-4. **Workload Scoring Parameters** — sliders + textboxes for SiteOverhead, TargetCapacity, NearFullThreshold, OverloadThreshold; "Save Parameters" + "Sync Equipment from Orders"
-5. **Site/ROMP Statuses** — status list with inline **score weight slider** (0–2.4; CX default 1.2 = 50%)
-6. **Equipment Score Categories** — categories DataGrid with inline **score weight slider** (0–3.2; PAX default 1.6 = 50%)
-7. **Source Data** — VADATA / Tableau / Open Lines (admin-locked, see below)
-8. **Database** — Local / Network / Cloud modes (admin-locked, see below)
+3. **Workload Scoring Parameters** — sliders + textboxes for SiteOverhead, TargetCapacity, NearFullThreshold, OverloadThreshold; "Save Parameters" + "Sync Equipment from Orders"
+4. **Site/ROMP Statuses** — status list with inline **score weight slider** (0–2.4; CX default 1.2 = 50%)
+5. **Equipment Score Categories** — categories DataGrid with inline **score weight slider** (0–3.2; PAX default 1.6 = 50%)
+6. **Percentage Calculation** — Sites / Score / **Site Count Only** radio buttons
+7. **Source Data** — VADATA / Tableau / Open Lines
+8. **Database** — Local / Network / Cloud modes; includes a **Danger Zone** ("Delete Local Database Data")
+9. **Manage Users** — see Accounts & Authentication
 
-#### Admin Lock (Source Data + Database)
-A single amber/green banner above the Source Data card controls both sections:
-- **Locked**: both cards are 40% opacity, disabled, single **Unlock** button visible
-- **Unlocked**: `ConfigViewModel.IsAdminUnlocked = true` → both cards fully interactive, banner turns green
-- One `PasswordDialog` (password = RowanU) unlocks both for the current session
-- `ConfigViewModel.IsAdminUnlocked` replaces the old `IsSourceDataUnlocked` / `IsDatabaseUnlocked` booleans
-- XAML still uses `IsSourceDataUnlocked` and `IsDatabaseUnlocked` as computed aliases → both return `IsAdminUnlocked`
+#### Percentage Calculation — Site Count Only mode
+Third `PercentageCalculation` value (`"Sites"` | `"Score"` | `"Count"`), set via `ConfigViewModel.SavePercentageCalculation("Count")` / `IsCountMode`. Unlike the other two, this mode strips capacity/utilization out of the app rather than just changing how it's computed:
+- **Workload** — KPI panel hidden entirely; PM bars scaled by assigned-site count, labelled `"{N} sites · {M} ROMPs"`; sorted by site count ascending. See the Workload page section above for the `ApplyScale` mechanics.
+- **Add/Edit PM** (`AddEditPmDialog`) and **PM Maintenance**'s grid — Capacity, Ideal Utilization, Score Cap, and PM Multiplier are hidden (not removed; see the PM Maintenance section above).
+- **Assignment** ranking — the `CapacityAvailability` rule ranks by fewest active assigned sites instead of any capacity/utilization figure; see the Assignment section above.
+- Every one of these checks `new ConfigService().Get(ConfigKeys.PercentageCalculation, "Sites") == "Count"` independently (in `WorkloadViewModel.Load()`, `AssignmentViewModel.ComputeCandidates()`, and the constructors of `AddEditPmDialog`/`PmMaintenancePage`/`AssignmentPage`) — there's no single `CurrentMode` static, so a new surface that should also respect Count mode has to add its own check the same way.
+- **PM Detail is NOT adapted** — deliberately out of scope for the original request; it still shows the full Score/Capacity breakdown in every mode.
+
+#### Danger Zone — Delete Local Database Data
+`ConfigViewModel.GetLocalDataCounts()`/`DeleteLocalData()` empty `RompEquipmentTypes/Romps/Sites/Locations/Orders/CustomRows/CustomColumns/SavedReports/EquipmentWeights` from **this machine's local SQLite only**, via raw `DELETE FROM` (not EF `RemoveRange`, so 100k+ Orders rows never get tracked) plus `DELETE FROM sqlite_sequence` to reset autoincrement counters. PMs and all configuration tables (`AppConfigs`, `RompStatuses`, `EquipmentCategories`, `EquipmentKeywords`, `AssignmentRules`, `Users`) are deliberately preserved. Since raw `DELETE` never runs through `SaveChanges()`, no cloud push is triggered — in Cloud mode the next sync simply pulls the cloud's copy back down, making the cloud authoritative for this machine; in Local mode the data is genuinely gone. Two confirmations: a `MessageBox` showing the per-table breakdown, then a `TextInputDialog` requiring the literal text `DELETE` to be typed.
+
+#### Manage Users
+`ConfigViewModel.Users` (`ObservableCollection<User>`, loaded via `UserService.AllUsers()`) bound to a `DataGrid` — Name, Email, Role, Last Login, Active. Actions per row: **Reset Password** (`ResetUserPasswordDialog` → `UserService.AdminResetPassword`) and **Activate/Deactivate** (`UserService.SetActive` — no hard delete, keeps audit history intact). **+ Add User** opens `AddEditUserDialog` → `UserService.CreateUser`. Every action logs via `AuditService.Log`. This card no longer carries its own visibility check — the whole page already requires `IsSuperAdmin`, so the card is simply always shown once you're on the page at all; the `Border.Style`/`DataTrigger` gating it individually is harmless leftover redundancy, not a second real gate.
+
+#### Access Gate — whole page requires Super Admin
+The entire Configuration page (`Views/ConfigPage.xaml`) is gated on `ConfigViewModel.IsSuperAdmin` (`CurrentUser.IsSuperAdmin`) — **not** a shared password. This replaced an earlier two-tier scheme: a per-person `IsSuperAdmin` check on just the Manage Users card, plus a separate shared "admin-gate password" (`AdminConfig`/`PasswordDialog`, stored per-machine in `%APPDATA%\PMDashboard\adminconfig.json`) that covered only Percentage Calculation/Source Data/Database and left the other six cards open to any signed-in user. Both `Dialogs/PasswordDialog.xaml(.cs)` and `Services/AdminConfig.cs` have been **deleted** — there is no more shared admin password anywhere in the app.
+- **Structure**: the page's outer `<Grid>` holds two overlapping siblings toggled by opposite `IsSuperAdmin` DataTriggers — a centered "Configuration is restricted to Super Admins" message, and the real content `Grid` (all 9 cards). Non-SuperAdmins never see any card, not even read-only.
+- `Source Data`'s per-click confirmation (`ConfigPage.xaml.cs`'s `TryChangeSourceType`) used to pop a fresh `PasswordDialog` on every VADATA/Tableau/OpenLines click, independent of the old Unlock banner — that's gone too; changing it now just saves directly, since getting onto the page at all already proved the SuperAdmin role.
+- `ConfigViewModel.IsAdminUnlocked`/`IsAdminLocked`/`UnlockAdmin()`/`LockAdmin()`/`IsSourceDataUnlocked`/`IsDatabaseUnlocked` are all gone — there's nothing left to unlock once the whole page is the gate.
 
 #### Workload Scoring Parameter Sliders
 Each parameter row: `Label (160px) | Slider (220px fixed) | Textbox (90px) | Hint (*)`.
@@ -236,10 +284,24 @@ Note: `TargetCapacity` default was updated from 18 → **259.2** based on actual
 
 Workload param ViewModel properties are now `double` (not string). `SaveWorkloadParams()` formats them to invariant-culture strings for AppConfig storage.
 
+## Accounts & Authentication
+
+Real per-person logins — the only access-control mechanism in the app now (the earlier separate shared admin-gate password has been removed; see Configuration's Access Gate). `CurrentUser` (static, session-only — closing the app signs out) holds who is signed in; `CurrentUser.IsSuperAdmin` gates the entire Configuration page.
+
+- **First run** (`Users` table empty): `App.xaml.cs` shows `CreateAdminAccountDialog` instead of `LoginDialog` — the first real person sets their own email + password directly (`UserService.CreateUser(..., "SuperAdmin", ..., requireChangeOnFirstLogin: false)`). No placeholder/seed password ever exists in source or git history — the same class of mistake the old shared admin-gate password used to have (fixed for that password earlier this session, before removing it entirely).
+- **Every other run**: `LoginDialog` (email + password). Deliberately generic "Email address or password is incorrect" error on failure — doesn't reveal whether the email exists, avoiding user enumeration. A successful sign-in with `MustChangePassword = true` (set on account creation and on any admin password reset) forces `ChangePasswordDialog` before the app continues; its Cancel button reads "Sign Out" in that mandatory case instead of "Cancel".
+- **`App.xaml.cs` startup sequencing**: `ShutdownMode="OnExplicitShutdown"` (not the default `StartupUri`-driven `OnMainWindowClose`) plus explicit `MainWindow` creation at the end of `OnStartup`, because the account/login dialogs run *before* `MainWindow` exists — without the explicit shutdown mode, closing `LoginDialog` (e.g. via the X button) before a successful sign-in would tear the whole app down with no window ever having been the "main" one.
+- **`PasswordHasher`**: PBKDF2-SHA256, 100k iterations, per-password random salt, constant-time comparison; hash format is self-describing (`pbkdf2$iterations$salt$hash`) so the work factor could be bumped later without invalidating existing hashes.
+- **`UserService`**: `CreateUser`/`AdminResetPassword` both set `MustChangePassword = true` except first-run self-creation — an admin-typed (or admin-reset) password must never stay live. `SetActive` deactivates rather than deletes, so `AuditEntry.UserEmail` (a plain string, not a `User` FK) keeps meaning after the account is gone.
+- **`AuditService.Log(action, entityType, entityId, details)`** is called from every mutating action across the app (user CRUD, Custom Data row/column CRUD, Orders import/clear, local-data delete) — best-effort: a logging failure is caught and never breaks the action being logged. `AuditService.ForEntity(entityType, entityId)` powers Custom Data's per-row History dialog; `AuditService.Recent()` is the general activity feed.
+- **`Users`/`AuditEntries` sync like every other table** — both are in all four `CloudSyncService` sync methods and `SyncService._intPkTables`/`MariaDbDdlScript`, and both got `CREATE TABLE IF NOT EXISTS` blocks in `App.xaml.cs`. There is no separate "auth server" — accounts and the audit log are just more rows that flow through the same local-first sync path as Orders or Sites.
+- **Non-distracting cross-user notifications** (`CloudSyncService.DataChanged` event): raised from a periodic (never the initial startup) pull that brought in rows someone else changed, built from the newly-added `LastModifiedBy` column on `Order`/`Site`/`Romp` (excludes this machine's own changes, and excludes `Users`/`AuditEntries` — those aren't "news" in the same sense). `MainWindow` subscribes once at construction and shows a small auto-dismissing (5s) toast (`ShowToast`) — non-modal, doesn't steal focus.
+- **Shared "last updated" indicator**: `MainWindow.SetLastUpdated()` is driven off `CloudSyncService.StatusChanged`, but only actually updates the label when `LastSyncTime` is set — that happens solely on `SyncTick`'s and `PushNowAndWaitAsync`'s success paths, not on the per-save "Pushed N record(s)" notice or on error/connecting messages, so the label reflects genuine sync completions (including this machine's own import push) rather than every intermediate status string.
+
 ## Data Hierarchy
 
 ```
-Location (3-letter airport code, GeographicalLocation East|West)
+Location (3-letter airport code, GeographicalLocation East|Central|West)
   └── Site (Name, AssignedPmId? FK → PM, SiteStatus computed, LastModified)
         └── Romp (Name, Status, LastModified)
               └── RompEquipmentType (junction → EquipmentCategory)
@@ -260,7 +322,7 @@ Location (3-letter airport code, GeographicalLocation East|West)
 | Id | int | PK |
 | FirstName, LastName | string | |
 | HomeOffice | string | FRE, VAN, JAX, Remote |
-| GeographicalLocation | string | East, West |
+| GeographicalLocation | string | East, Central, West |
 | DataName | string | |
 | Capacity | double | Site Cap |
 | IdealUtilization | double | Target % |
@@ -303,6 +365,32 @@ Location (3-letter airport code, GeographicalLocation East|West)
 
 Equipment types assigned directly to ROMPs via `AddEditRompDialog` checkboxes. `MigrateEquipmentTypesFromOrders()` auto-populates on first launch from order data.
 
+### User
+| Field | Type | Notes |
+|---|---|---|
+| Id | int | PK |
+| Email | string | Username; compared case-insensitively; unique |
+| FirstName, LastName | string | |
+| PasswordHash | string | `PasswordHasher` format; never the plaintext |
+| Role | string | `"SuperAdmin"` \| `"User"` — SuperAdmin can manage other accounts |
+| IsActive | bool | Deactivated, not deleted, on removal |
+| MustChangePassword | bool | Set on creation/admin-reset; login flow forces a change before continuing |
+| LastLoginUtc | DateTime? | |
+| LastModified | DateTime | |
+
+### AuditEntry
+| Field | Type | Notes |
+|---|---|---|
+| Id | int | PK |
+| TimestampUtc | DateTime | |
+| UserEmail, UserName | string | Plain strings, not a `User` FK — stays meaningful after the account is deactivated |
+| Action | string | e.g. "Create", "Import", "ResetPassword", "Delete" |
+| EntityType | string | e.g. "Order", "Romp", "User", "LocalDatabase" |
+| EntityId | int? | Null for actions with no single row (e.g. bulk import, local-data delete) |
+| Details | string | Free-text summary |
+| MachineName | string | |
+| LastModified | DateTime | |
+
 ### AppConfig (known keys)
 | Key | Default | Notes |
 |---|---|---|
@@ -319,6 +407,8 @@ Equipment types assigned directly to ROMPs via `AddEditRompDialog` checkboxes. `
 | SkillBase | "0.40" | skill_factor intercept (multiplier=10 → factor=1.0) |
 | SkillPerPoint | "0.06" | skill_factor slope per multiplier point |
 | CloudSyncInterval | "30" | Background cloud sync interval in seconds |
+| CustomDataColumnOrder_{Mode} | (none) | JSON array of Custom Data column keys, per mode — saved column drag order |
+| ImportLock | (none) | Cloud-mode-only, JSON `{HeldBy, Machine, AcquiredUtc}` — written directly to the cloud DB, not synced like other rows |
 
 ## Difficulty Scoring (Score mode)
 
@@ -385,9 +475,11 @@ PM status thresholds: utilization > OverloadThreshold → "Overloaded"; ≥ Near
 - **Batch queries**: `BatchPush` loads matching destination records in a single `WHERE Id IN (...)` query instead of one `Find()` per record (avoids N+1 round-trips to MariaDB)
 - **`RompEquipmentTypes` initial pull** uses natural key `(RompId, EquipmentCategoryId)` to avoid unique-constraint conflicts when both sides have the same pair under different auto-increment IDs
 - **`TriggerForcePush()`** — public method; overwrites every cloud record with local data unconditionally (bypasses `LastModified` check); exposed as "Force Push All Data to Cloud" button in Config → Database; use after schema changes or when sync is stuck
+- **`PushNowAndWaitAsync(TimeSpan? timeout = null)`** — public, awaitable; forces an immediate push and waits for it (default 60s timeout, after which it just returns — the next regular tick picks up anything unpushed), used by the Orders import-lock flow so a lock isn't released until changes actually reached the cloud. No-op when sync isn't running or the initial pull hasn't completed (Local/Network mode, or Cloud mode still starting up).
+- **`DataChanged` event** — raised only from a periodic (not the initial) `DoPull` that brought in rows someone else changed; built by re-querying `Orders`/`Sites`/`Romps` for `LastModified > since`, grouped by `LastModifiedBy` (excluding this machine's own email) into a short summary like `"3 orders updated by Sarah Chen"`. Best-effort — wrapped in try/catch so a failure here can never break the sync cycle itself. `MainWindow` subscribes once and shows it as an auto-dismissing toast.
 
 ### LastModified Column
-All 11 tables have `LastModified TEXT NOT NULL DEFAULT '2000-01-01 00:00:00'`. Migration via `ALTER TABLE ... ADD COLUMN` (try/catch). **Must run before any EF Core query** — placed immediately after other ALTER TABLE blocks in `App.OnStartup`.
+16 tables (`PMs`, `Locations`, `Sites`, `Romps`, `RompEquipmentTypes`, `Orders`, `RompStatuses`, `EquipmentCategories`, `EquipmentKeywords`, `AssignmentRules`, `AppConfigs`, `SavedReports`, `CustomColumns`, `CustomRows`, `Users`, `AuditEntries`) have `LastModified TEXT NOT NULL DEFAULT '2000-01-01 00:00:00'`. Migration via `ALTER TABLE ... ADD COLUMN` (try/catch). **Must run before any EF Core query** — placed immediately after other ALTER TABLE blocks in `App.OnStartup`. `Order`/`Site`/`Romp` additionally have a `LastModifiedBy TEXT` column (same migration pattern), auto-stamped from `CurrentUser.Email` by `AppDbContext.StampLastModified()` whenever the entity has that property — powers both Report Builder's "Last Changed By" field and the cross-user `DataChanged` notification summary above.
 
 ### MariaDB Setup
 Run `SyncService.MariaDbDdlScript` (Config → Database → phpMyAdmin Setup Script → Copy Script) in phpMyAdmin.
@@ -435,8 +527,8 @@ Workload params (`SiteOverhead`, `TargetCapacity`, `NearFullThreshold`, `Overloa
 ### PasswordBox Persistence
 `PasswordBox` controls do not support WPF data binding. The cloud DB password is saved as part of the full connection string in `dbconfig.json`. On `ConfigPage` load, `ConfigViewModel.LoadDatabaseSettings()` parses the password back from the connection string, and the `Loaded` event in `ConfigPage.xaml.cs` pushes `vm.CloudPassword` to `TxtCloudPassword.Password` explicitly.
 
-### Admin Lock Pattern
-`ConfigViewModel.IsAdminUnlocked` (single bool) controls both Source Data and Database sections. `IsSourceDataUnlocked` and `IsDatabaseUnlocked` are computed aliases. One `PasswordDialog` call sets all. Lock resets on app restart.
+### Configuration Access Pattern
+The whole Configuration page is gated on `ConfigViewModel.IsSuperAdmin` (`CurrentUser.IsSuperAdmin`) — see Configuration's Access Gate section. There is no separate per-card lock or shared password anymore; a role check at the page level is the only gate.
 
 ### ViewModel Navigation
 `MainViewModel` holds all page VMs as private fields. `NavigateToXxx()` applies geo filter then sets `CurrentPage`. `NavigateToPmDetail(int pmId)` sets `NavigateBack` AND `NavigateToSiteRomps` delegates. `NavigateToSiteRompsFromPm(siteId, pmId)` pre-drills the Sites page and sets a ← back button.

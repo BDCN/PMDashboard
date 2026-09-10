@@ -41,6 +41,10 @@ public partial class PmMaintenanceViewModel : ObservableObject
         db.PMs.Add(pm);
         db.SaveChanges();
         Load();
+        // Load() reloads via AsNoTracking(), so the new row is a different object instance
+        // than `pm` — re-find it by the Id SaveChanges just assigned so the grid can select/
+        // scroll to it, instead of the new PM silently landing wherever it sorts in the list.
+        SelectedPm = Pms.FirstOrDefault(p => p.Id == pm.Id);
     }
 
     public void UpdatePm(PM updated)

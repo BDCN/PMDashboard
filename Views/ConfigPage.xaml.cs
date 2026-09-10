@@ -35,21 +35,8 @@ public partial class ConfigPage : UserControl
     private void BtnPctScore_Click(object sender, RoutedEventArgs e) =>
         Vm?.SavePercentageCalculation("Score");
 
-    // ── Single admin unlock — opens Source Data AND Database ────────────────
-
-    private void BtnUnlockAdmin_Click(object sender, RoutedEventArgs e)
-    {
-        if (Vm is not { } vm) return;
-        if (vm.IsAdminUnlocked) return;
-        var dlg = new PasswordDialog { Owner = Window.GetWindow(this) };
-        if (dlg.ShowDialog() == true) vm.UnlockAdmin();
-    }
-
-    // Keep old names as aliases so any stale XAML Click= bindings don't break at runtime
-    private void BtnUnlockSourceData_Click(object sender, RoutedEventArgs e) =>
-        BtnUnlockAdmin_Click(sender, e);
-    private void BtnUnlockDatabase_Click(object sender, RoutedEventArgs e) =>
-        BtnUnlockAdmin_Click(sender, e);
+    private void BtnPctCount_Click(object sender, RoutedEventArgs e) =>
+        Vm?.SavePercentageCalculation("Count");
 
     // ── Workload Scoring Parameters ──
 
@@ -68,7 +55,7 @@ public partial class ConfigPage : UserControl
         });
     }
 
-    // ── Source Data type (password-protected) ──
+    // ── Source Data type ──
 
     private void BtnVadata_Click(object sender, RoutedEventArgs e)    => TryChangeSourceType("VADATA");
     private void BtnTableau_Click(object sender, RoutedEventArgs e)   => TryChangeSourceType("Tableau");
@@ -79,14 +66,8 @@ public partial class ConfigPage : UserControl
         if (Vm is not { } vm) return;
         if (vm.SourceDataType == newType) return; // no change — radio button will revert via OneWay binding
 
-        var dlg = new PasswordDialog { Owner = Window.GetWindow(this) };
-        if (dlg.ShowDialog() == true)
-        {
-            vm.SaveSourceDataType(newType);
-            vm.StatusMessage = $"Source data type changed to {newType}.";
-        }
-        // If cancelled / wrong password, the OneWay bindings on IsVadata/IsTableau/IsOpenLines
-        // force the radio buttons back to the current (unchanged) SourceDataType.
+        vm.SaveSourceDataType(newType);
+        vm.StatusMessage = $"Source data type changed to {newType}.";
     }
 
     // ── Upload method ──
@@ -447,6 +428,94 @@ public partial class ConfigPage : UserControl
 
     private void BtnRefreshSyncStatus_Click(object sender, RoutedEventArgs e) =>
         Vm?.RefreshCloudSyncStatus();
+
+    // ── Danger zone — delete this machine's local data ───────────────────────
+
+    private void BtnDeleteLocalData_Click(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm) return;
+
+        var counts = vm.GetLocalDataCounts();
+        int total  = counts.Values.Sum();
+
+        if (total == 0)
+        {
+            ShowDeleteLocalStatus("Local database is already empty — nothing to delete.");
+            return;
+        }
+
+        var breakdown = string.Join(
+            Environment.NewLine,
+            counts.Where(c => c.Value > 0).Select(c => $"    {c.Key}: {c.Value:N0}"));
+
+        var mode = DatabaseConfig.IsCloud
+            ? "You are in Cloud mode, so the next sync will pull the cloud's copy back down. Nothing is deleted from the cloud."
+            : "You are in Local mode, so this data is NOT stored anywhere else. It cannot be recovered.";
+
+        var first = MessageBox.Show(
+            $"Delete all data from this computer's local database?\n\n{breakdown}\n\n" +
+            $"Total: {total:N0} record(s).\n\n" +
+            $"Your PM roster, settings, statuses, equipment categories and the admin password are kept.\n\n{mode}",
+            "Delete Local Data", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (first != MessageBoxResult.Yes) return;
+
+        // Second gate: irreversible, so require the word to be typed rather than a stray double-click.
+        var dlg = new TextInputDialog(
+            "Confirm Delete",
+            $"This permanently deletes {total:N0} record(s) from this computer and cannot be undone.\n\nType DELETE to confirm:")
+        { Owner = Window.GetWindow(this) };
+
+        if (dlg.ShowDialog() != true) return;
+        if (!string.Equals(dlg.Value, "DELETE", StringComparison.Ordinal))
+        {
+            ShowDeleteLocalStatus("Cancelled — confirmation text did not match.");
+            return;
+        }
+
+        var result = vm.DeleteLocalData();
+        ShowDeleteLocalStatus(result + "  Restart the app to reload from an empty state.");
+        vm.RefreshCloudSyncStatus();
+    }
+
+    private void ShowDeleteLocalStatus(string message)
+    {
+        TxtDeleteLocalStatus.Text       = message;
+        TxtDeleteLocalStatus.Visibility = Visibility.Visible;
+    }
+
+    // ── Manage users ─────────────────────────────────────────────────────────
+
+    private void BtnAddUser_Click(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm) return;
+        var dlg = new AddEditUserDialog { Owner = Window.GetWindow(this) };
+        if (dlg.ShowDialog() == true) vm.LoadUsers();
+    }
+
+    private void BtnResetUserPassword_Click(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm) return;
+        if (sender is not FrameworkElement { DataContext: User user }) return;
+
+        var dlg = new ResetUserPasswordDialog(user.Id, user.DisplayName) { Owner = Window.GetWindow(this) };
+        dlg.ShowDialog();
+    }
+
+    private void BtnToggleUserActive_Click(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm) return;
+        if (sender is not FrameworkElement { DataContext: User user }) return;
+
+        if (user.IsActive)
+        {
+            var confirm = MessageBox.Show(
+                $"Deactivate {user.DisplayName}? They will no longer be able to sign in.",
+                "Deactivate User", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            if (confirm != MessageBoxResult.Yes) return;
+        }
+
+        vm.SetUserActive(user, !user.IsActive);
+    }
 
     private void BtnForcePush_Click(object sender, RoutedEventArgs e)
     {

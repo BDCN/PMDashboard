@@ -35,7 +35,19 @@ public partial class AssignmentViewModel : ObservableObject
 
     partial void OnShowUnassignedOnlyChanged(bool value)
     {
-        if (SelectedLocation != null) LoadSites();
+        // The Location list itself needs to be re-filtered too — a location with every site
+        // already assigned should drop out of the dropdown entirely, not just show an empty
+        // site list once picked.
+        var previouslySelectedId = SelectedLocation?.Id;
+        LoadLocations();
+
+        if (previouslySelectedId.HasValue)
+        {
+            var stillThere = Locations.FirstOrDefault(l => l.Id == previouslySelectedId.Value);
+            // Re-pointing to the freshly-loaded instance (or clearing to null) triggers
+            // OnSelectedLocationChanged, which reloads Sites under the new filter state.
+            SelectedLocation = stillThere;
+        }
     }
 
     // ── Multi-select site tracking ──
@@ -142,10 +154,32 @@ public partial class AssignmentViewModel : ObservableObject
         ActiveRuleCount = db.AssignmentRules.Count(r => r.IsActive);
     }
 
+    /// <summary>Every Site with its Location + current PM assignment — for the Site Assignments import template.</summary>
+    public List<Site> GetAllSitesForExport()
+    {
+        using var db = new AppDbContext();
+        return db.Sites.AsNoTracking()
+                       .Include(s => s.Location)
+                       .Include(s => s.AssignedPm)
+                       .OrderBy(s => s.Location!.Name).ThenBy(s => s.Name)
+                       .ToList();
+    }
+
+    /// <summary>Refreshes locations/PMs/rule count and whatever's currently on screen after a bulk import.</summary>
+    public void RefreshAfterImport()
+    {
+        Load();
+        if (SelectedLocation != null) LoadSites();
+        ComputeCandidates();
+    }
+
     private void LoadLocations()
     {
         using var db = new AppDbContext();
-        var list = db.Locations.AsNoTracking().OrderBy(l => l.Name).ToList();
+        IQueryable<Location> query = db.Locations.AsNoTracking();
+        if (ShowUnassignedOnly)
+            query = query.Where(l => l.Sites.Any(s => s.AssignedPmId == null));
+        var list = query.OrderBy(l => l.Name).ToList();
         Locations = new ObservableCollection<Location>(list);
     }
 
@@ -219,7 +253,9 @@ public partial class AssignmentViewModel : ObservableObject
         var locationGeo = SelectedLocation.GeographicalLocation;
         var locationId  = SelectedLocation.Id;
 
-        bool useScore   = new ConfigService().Get(ConfigKeys.PercentageCalculation, "Sites") == "Score";
+        var  pctMode    = new ConfigService().Get(ConfigKeys.PercentageCalculation, "Sites");
+        bool useScore   = pctMode == "Score";
+        bool useCount   = pctMode == "Count";
         var  p          = ScoreConfig.WorkloadParams;
         var  completeSet = StatusConfig.Complete.ToHashSet(StringComparer.OrdinalIgnoreCase);
 
@@ -255,7 +291,18 @@ public partial class AssignmentViewModel : ObservableObject
                         break;
 
                     case "CapacityAvailability":
-                        if (useScore)
+                        if (useCount)
+                        {
+                            // No capacity/utilization data exists in this mode — rank purely by
+                            // how few active sites this PM already carries, so assignment work
+                            // spreads evenly rather than piling onto whoever has spare capacity
+                            // on paper.
+                            var activeSiteCount = pmSites.Count(s => s.SiteStatus != "Complete");
+                            var avail = 1.0 / (1.0 + activeSiteCount);
+                            score += rule.Weight * avail * 5.0;
+                            reasons.Add($"{activeSiteCount} active site(s) currently assigned");
+                        }
+                        else if (useScore)
                         {
                             // Score mode: compare pm_load against this PM's effective capacity
                             var activeSiteList = pmSites.Where(s => s.SiteStatus != "Complete").ToList();

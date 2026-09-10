@@ -12,6 +12,9 @@ public class Romp
     public string   Status       { get; set; } = "Ordered";
     public DateTime LastModified { get; set; }
 
+    /// <summary>Email of whoever last wrote this row; stamped by AppDbContext.SaveChanges.</summary>
+    public string LastModifiedBy { get; set; } = "";
+
     // Equipment types directly assigned to this ROMP (many-to-many via RompEquipmentType).
     public ICollection<RompEquipmentType> EquipmentTypes { get; set; } = new List<RompEquipmentType>();
 
