@@ -2,9 +2,17 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.EntityFrameworkCore;
 using PMDashboard.Data;
 using PMDashboard.Data.Models;
+using PMDashboard.Services;
 using System.Collections.ObjectModel;
 
 namespace PMDashboard.ViewModels;
+
+/// <summary>How many campuses and individual ROMP overrides a PM currently holds — used to
+/// decide whether deactivating/deleting them needs to ask what happens to those assignments.</summary>
+public record PmAssignmentSummary(int CampusCount, int RompOverrideCount)
+{
+    public int Total => CampusCount + RompOverrideCount;
+}
 
 public partial class PmMaintenanceViewModel : ObservableObject
 {
@@ -62,7 +70,85 @@ public partial class PmMaintenanceViewModel : ObservableObject
         using var db = new AppDbContext();
         db.PMs.Remove(pm);
         db.SaveChanges();
+
+        // A local-only delete doesn't propagate — CloudSyncService only ever compares
+        // LastModified on rows that exist on both sides; it has no concept of "this row should
+        // be removed", so it can't detect a deletion at all. Without also deleting from the
+        // cloud directly here, the very next full pull (which runs on EVERY app launch, not
+        // just once — see DoInitialPullAsync) would silently re-insert this PM right back into
+        // local, since from the sync's point of view a row missing locally just looks like a
+        // row that needs to be (re)created. This is what caused deleted PMs to "come back".
+        if (DatabaseConfig.IsCloud)
+        {
+            try
+            {
+                using var cloud = new AppDbContext(forceCloud: true);
+                var cloudPm = cloud.PMs.Find(pm.Id);
+                if (cloudPm != null)
+                {
+                    cloud.PMs.Remove(cloudPm);
+                    cloud.SaveChanges();
+                }
+            }
+            catch
+            {
+                // Best-effort — if the cloud delete fails (offline, etc.) the PM may still
+                // reappear on a future pull; the local delete above has still succeeded.
+            }
+        }
+
         Load();
+    }
+
+    /// <summary>How many campuses and individual ROMP overrides this PM currently holds.</summary>
+    public PmAssignmentSummary GetAssignmentSummary(int pmId)
+    {
+        using var db = new AppDbContext();
+        int campusCount = db.Sites.Count(s => s.AssignedPmId == pmId);
+        int rompCount   = db.Romps.Count(r => r.AssignedPmId == pmId);
+        return new PmAssignmentSummary(campusCount, rompCount);
+    }
+
+    /// <summary>
+    /// Moves every campus assignment and individual ROMP override currently held by fromPmId
+    /// over to toPmId (or clears them if toPmId is null), preserving assignment history on both
+    /// sides via AssignmentHistoryService — used when deactivating or deleting a PM that still
+    /// has active assignments.
+    /// </summary>
+    public void ReassignAll(int fromPmId, int? toPmId)
+    {
+        using var db = new AppDbContext();
+
+        // Team boundary: all or nothing — name every cluster the new PM can't take.
+        var sites = db.Sites.Include(s => s.Campus).Where(s => s.AssignedPmId == fromPmId).ToList();
+        var romps = db.Romps.Include(r => r.Site).Where(r => r.AssignedPmId == fromPmId).ToList();
+        if (toPmId is { } to)
+        {
+            var rules = TeamRules.For(db);
+            var places = sites.Select(s => (Loc: s.LocationId, Campus: s.CampusId))
+                              .Concat(romps.Select(r => (Loc: r.Site!.LocationId, Campus: r.Site.CampusId)))
+                              .Distinct().Where(x => !rules.Allows(to, x.Loc, x.Campus)).ToList();
+            var blocked = places.Select(x => x.Loc).Distinct().ToList();
+            if (places.Count > 0)
+            {
+                var names = db.Locations.Where(l => blocked.Contains(l.Id)).Select(l => l.Name).OrderBy(n => n).ToList();
+                throw new TeamRuleException(
+                    $"{rules.Reason(to, places[0].Loc, places[0].Campus)}\n\nThe new PM can't take {names.Count} of this PM's clusters ({string.Join(", ", names)}). " +
+                    "Nothing was changed — choose a PM on the same team, or unassign instead.");
+            }
+        }
+
+        // Campuses this PM held move too, so their sites don't all turn into site overrides.
+        foreach (var campus in db.Campuses.Where(c => c.AssignedPmId == fromPmId).ToList())
+            campus.AssignedPmId = toPmId;
+
+        foreach (var site in sites)
+            AssignmentHistoryService.RecordChange(db, site, toPmId);
+
+        foreach (var romp in romps)
+            AssignmentHistoryService.RecordRompChange(db, romp, toPmId);
+
+        db.SaveChanges();
     }
 
     public int BulkAddPms(IEnumerable<PM> pms)

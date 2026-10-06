@@ -114,6 +114,7 @@ public static class ReportQueryService
         IQueryable<Romp> q = db.Romps.AsNoTracking()
             .Include(r => r.Site).ThenInclude(s => s.Location)
             .Include(r => r.Site).ThenInclude(s => s.AssignedPm)
+            .Include(r => r.Site).ThenInclude(s => s.Campus)
             .Include(r => r.EquipmentTypes).ThenInclude(et => et.Category);
 
         if (f.LocationIds is { Count: > 0 })
@@ -136,7 +137,8 @@ public static class ReportQueryService
         if (!string.IsNullOrWhiteSpace(f.TextSearch))
         {
             var lower = f.TextSearch.ToLower();
-            q = q.Where(r => r.Name.ToLower().Contains(lower) || r.Site.Name.ToLower().Contains(lower));
+            q = q.Where(r => r.Name.ToLower().Contains(lower) || r.Site.Name.ToLower().Contains(lower)
+                          || (r.Site.Campus != null && r.Site.Campus.Name.ToLower().Contains(lower)));
         }
 
         return q;
@@ -162,6 +164,7 @@ public static class ReportQueryService
             RompId               = r.Id,
             LocationName         = r.Site?.Location?.Name ?? "",
             GeographicalLocation = r.Site?.Location?.GeographicalLocation ?? "",
+            CampusName           = r.Site?.Campus?.Name ?? "",
             SiteName             = r.Site?.Name ?? "",
             SiteStatus           = siteStatuses.GetValueOrDefault(r.SiteId, ""),
             AssignedPmName       = r.Site?.AssignedPm?.FullName ?? "",

@@ -6,7 +6,9 @@
     <Grid>
         <!-- Access restricted — the entire Configuration page requires Super Admin (replaces
              the old shared admin-gate password that used to cover only Percentage Calculation/
-             Source Data/Database). Shown instead of the page for anyone else. -->
+             Source Data/Database). Shown instead of the page for anyone else. Manage Users has
+             moved to its own page (see UserManagementPage) so a Director can reach that without
+             also getting access here. -->
         <StackPanel Margin="32,28,32,28" HorizontalAlignment="Center" VerticalAlignment="Center">
             <StackPanel.Style>
                 <Style TargetType="StackPanel">
@@ -48,7 +50,8 @@
             <RowDefinition Height="Auto"/>  <!-- Percentage Calculation card -->
             <RowDefinition Height="Auto"/>  <!-- Source Data card -->
             <RowDefinition Height="Auto"/>  <!-- Database card -->
-            <RowDefinition Height="Auto"/>  <!-- Manage Users card -->
+            <RowDefinition Height="Auto"/>  <!-- Forecast Schedule Conflicts card -->
+            <RowDefinition Height="Auto"/>  <!-- Coverage Planning card -->
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
@@ -63,6 +66,16 @@
         <!-- ── Workload Scoring Parameters card ── -->
         <Border Grid.Row="4" Background="White" CornerRadius="10"
                 BorderBrush="#E2E8F0" BorderThickness="1" Padding="24,20" Margin="0,0,0,16">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsSuperAdmin}" Value="True">
+                            <Setter Property="Visibility" Value="Visible"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
             <StackPanel>
                 <TextBlock Text="Workload Scoring Parameters" FontSize="16" FontWeight="SemiBold"
                            Foreground="#0F172A" Margin="0,0,0,4"/>
@@ -206,6 +219,16 @@
         <!-- ── Percentage Calculation card ── -->
         <Border Grid.Row="7" Background="White" CornerRadius="10"
                 BorderBrush="#E2E8F0" BorderThickness="1" Padding="24,20" Margin="0,0,0,16">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsSuperAdmin}" Value="True">
+                            <Setter Property="Visibility" Value="Visible"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
             <StackPanel>
                 <TextBlock Text="Percentage Calculation" FontSize="16" FontWeight="SemiBold"
                            Foreground="#0F172A" Margin="0,0,0,4"/>
@@ -304,6 +327,16 @@
         <!-- ── Source Data card ── -->
         <Border Grid.Row="8" Background="White" CornerRadius="10"
                 BorderBrush="#E2E8F0" BorderThickness="1" Padding="24,20" Margin="0,0,0,16">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsSuperAdmin}" Value="True">
+                            <Setter Property="Visibility" Value="Visible"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
             <StackPanel>
                 <TextBlock Text="Source Data" FontSize="16" FontWeight="SemiBold"
                            Foreground="#0F172A" Margin="0,0,0,4"/>
@@ -402,6 +435,16 @@
         <!-- ── Upload Method card ── -->
         <Border Grid.Row="1" Background="White" CornerRadius="10"
                 BorderBrush="#E2E8F0" BorderThickness="1" Padding="24,20" Margin="0,0,0,16">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsSuperAdmin}" Value="True">
+                            <Setter Property="Visibility" Value="Visible"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
             <StackPanel>
                 <TextBlock Text="Upload Method" FontSize="16" FontWeight="SemiBold"
                            Foreground="#0F172A" Margin="0,0,0,4"/>
@@ -474,9 +517,13 @@
                 <Style TargetType="Border">
                     <Setter Property="Visibility" Value="Collapsed"/>
                     <Style.Triggers>
-                        <DataTrigger Binding="{Binding IsSemiAutomatic}" Value="True">
+                        <MultiDataTrigger>
+                            <MultiDataTrigger.Conditions>
+                                <Condition Binding="{Binding IsSemiAutomatic}" Value="True"/>
+                                <Condition Binding="{Binding IsSuperAdmin}" Value="True"/>
+                            </MultiDataTrigger.Conditions>
                             <Setter Property="Visibility" Value="Visible"/>
-                        </DataTrigger>
+                        </MultiDataTrigger>
                     </Style.Triggers>
                 </Style>
             </Border.Style>
@@ -574,6 +621,16 @@
         <!-- ── Assignment Rules card ── -->
         <Border Grid.Row="3" Background="White" CornerRadius="10"
                 BorderBrush="#E2E8F0" BorderThickness="1" Padding="24,20" Margin="0,0,0,16">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsSuperAdmin}" Value="True">
+                            <Setter Property="Visibility" Value="Visible"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
             <StackPanel>
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
                     <TextBlock Text="Assignment Rules" FontSize="16" FontWeight="SemiBold" Foreground="#0F172A"/>
@@ -695,6 +752,16 @@
         <!-- ── Site/ROMP Statuses card ── -->
         <Border Grid.Row="5" Background="White" CornerRadius="10"
                 BorderBrush="#E2E8F0" BorderThickness="1" Padding="24,20" Margin="0,0,0,16">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsSuperAdmin}" Value="True">
+                            <Setter Property="Visibility" Value="Visible"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
             <StackPanel>
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
                     <TextBlock Text="Site / ROMP Statuses" FontSize="16" FontWeight="SemiBold" Foreground="#0F172A"/>
@@ -709,7 +776,9 @@
                     <Run Text="&quot;Excluded from workload&quot;" FontWeight="SemiBold"/>
                     <Run Text=" statuses (e.g. Complete) are ignored when calculating a PM's site count and utilization. "/>
                     <Run Text="&quot;Counts as Active&quot;" FontWeight="SemiBold"/>
-                    <Run Text=" statuses turn a site's indicator yellow."/>
+                    <Run Text=" statuses turn a site's indicator yellow. "/>
+                    <Run Text="&quot;Disabled&quot;" FontWeight="SemiBold"/>
+                    <Run Text=" hides a status from every &quot;set status&quot; picker going forward, without touching ROMPs already on it — they keep scoring and counting exactly as before."/>
                 </TextBlock>
 
                 <!-- Statuses DataGrid -->
@@ -723,12 +792,24 @@
                               RowEditEnding="StatusGrid_RowEditEnding">
                         <DataGrid.Columns>
 
-                            <!-- Name (read-only for built-in) -->
+                            <!-- Name — editable for every status, built-in included; double-click to edit -->
                             <DataGridTemplateColumn Header="Status Name" Width="140" SortMemberPath="Name">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <StackPanel VerticalAlignment="Center" Margin="4,0">
-                                            <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold" Foreground="#0F172A"/>
+                                            <TextBlock FontSize="12" FontWeight="SemiBold">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Text" Value="{Binding Name}"/>
+                                                        <Setter Property="Foreground" Value="#0F172A"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsDisabled}" Value="True">
+                                                                <Setter Property="Foreground" Value="#94A3B8"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
                                             <TextBlock FontSize="10" Foreground="#94A3B8">
                                                 <TextBlock.Style>
                                                     <Style TargetType="TextBlock">
@@ -736,6 +817,10 @@
                                                         <Style.Triggers>
                                                             <DataTrigger Binding="{Binding IsBuiltIn}" Value="True">
                                                                 <Setter Property="Text" Value="Built-in"/>
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding IsDisabled}" Value="True">
+                                                                <Setter Property="Text" Value="Disabled — hidden from new assignments"/>
+                                                                <Setter Property="Foreground" Value="#CA8A04"/>
                                                             </DataTrigger>
                                                         </Style.Triggers>
                                                     </Style>
@@ -747,10 +832,37 @@
                                 <DataGridTemplateColumn.CellEditingTemplate>
                                     <DataTemplate>
                                         <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
-                                                 BorderThickness="0" FontSize="12" Padding="4,0"
-                                                 IsReadOnly="{Binding IsBuiltIn}"/>
+                                                 BorderThickness="0" FontSize="12" Padding="4,0"/>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellEditingTemplate>
+                            </DataGridTemplateColumn>
+
+                            <!-- Color — indicator-dot color shown on the Campuses and ROMPs lists
+                                 (Romp.StatusColor / Site.StatusColor). Click the swatch to open
+                                 the native Windows color picker. -->
+                            <DataGridTemplateColumn Header="Color" Width="70">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Border Width="26" Height="26" CornerRadius="5"
+                                                BorderBrush="#CBD5E1" BorderThickness="1"
+                                                Background="{Binding Color, Converter={StaticResource HexColorToBrushConverter}}"
+                                                Tag="{Binding}" Cursor="Hand"
+                                                ToolTipService.ToolTip="{Binding Color}"
+                                                MouseLeftButtonUp="StatusColorSwatch_MouseLeftButtonUp"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <!-- Disabled — hides this status from "assign a status" pickers only;
+                                 ROMPs already on it are untouched and keep scoring normally -->
+                            <DataGridTemplateColumn Header="Disabled" Width="80">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <CheckBox IsChecked="{Binding IsDisabled, UpdateSourceTrigger=PropertyChanged}"
+                                                  HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                  Click="ChkStatusDisabled_Click"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
 
                             <!-- Excluded from workload (IsComplete) -->
@@ -818,7 +930,8 @@
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
 
-                            <!-- Delete (custom statuses only) -->
+                            <!-- Delete — allowed for any status, built-in included; blocked server-side
+                                 (with an explanatory message) if ROMPs still use it -->
                             <DataGridTemplateColumn Header="" Width="75">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
@@ -828,11 +941,6 @@
                                                 <Style TargetType="Button" BasedOn="{StaticResource DangerButtonStyle}">
                                                     <Setter Property="Padding" Value="8,4"/>
                                                     <Setter Property="FontSize" Value="11"/>
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding IsBuiltIn}" Value="True">
-                                                            <Setter Property="Visibility" Value="Collapsed"/>
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
                                                 </Style>
                                             </Button.Style>
                                         </Button>
@@ -852,6 +960,16 @@
         <!-- ── Equipment Score Categories card ── -->
         <Border Grid.Row="6" Background="White" CornerRadius="10"
                 BorderBrush="#E2E8F0" BorderThickness="1" Padding="24,20" Margin="0,0,0,16">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsSuperAdmin}" Value="True">
+                            <Setter Property="Visibility" Value="Visible"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
             <StackPanel>
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
                     <TextBlock Text="Equipment Score Categories" FontSize="16" FontWeight="SemiBold" Foreground="#0F172A"/>
@@ -1026,6 +1144,16 @@
         <!-- ── Database card ── -->
         <Border Grid.Row="9" Background="White" CornerRadius="10"
                 BorderBrush="#E2E8F0" BorderThickness="1" Padding="24,20" Margin="0,0,0,16">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsSuperAdmin}" Value="True">
+                            <Setter Property="Visibility" Value="Visible"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
             <StackPanel>
                 <!-- Title + travel mode badge (no unlock button here — shared bar above Source Data handles it) -->
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
@@ -1338,6 +1466,61 @@
                                 </StackPanel>
                             </Border>
 
+                            <!-- Versions in use — each Cloud-mode machine reports its build at startup
+                                 (CloudSyncService.ReportVersionToCloud) -->
+                            <Border BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8"
+                                    Padding="14,12" Margin="0,0,0,12">
+                                <StackPanel>
+                                    <TextBlock FontSize="13" FontWeight="SemiBold" Foreground="#0F172A">
+                                        <Run Text="Versions in use"/>
+                                        <Run Text="{Binding ThisVersion, Mode=OneWay, StringFormat='  —  this computer: {0}'}"
+                                             FontWeight="Normal" FontSize="11" Foreground="#64748B"/>
+                                    </TextBlock>
+                                    <TextBlock Text="Each computer in Cloud mode reports its version when it starts. Everyone should be on the same (latest) version."
+                                               FontSize="11" Foreground="#64748B" TextWrapping="Wrap" Margin="0,2,0,8"/>
+                                    <ItemsControl ItemsSource="{Binding ClientVersions}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="0,2">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="180"/>
+                                                        <ColumnDefinition Width="70"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Grid.Column="0" Text="{Binding Machine}" FontSize="12" Foreground="#0F172A"/>
+                                                    <TextBlock Grid.Column="1" Text="{Binding Version}" FontSize="12" FontWeight="SemiBold">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock">
+                                                                <Setter Property="Foreground" Value="#15803D"/>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsOutdated}" Value="True">
+                                                                        <Setter Property="Foreground" Value="#B45309"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
+                                                    <TextBlock Grid.Column="2" Text="{Binding Details}" FontSize="11" Foreground="#64748B"
+                                                               TextTrimming="CharacterEllipsis"/>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <TextBlock Text="No versions reported yet (Cloud mode only)." FontSize="11" Foreground="#94A3B8">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding ClientVersions.Count}" Value="0">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </StackPanel>
+                            </Border>
+
                             <!-- DDL Script -->
                             <Border BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="0">
                                 <StackPanel>
@@ -1369,7 +1552,7 @@
                                                Foreground="#991B1B" Margin="0,0,0,4"/>
                                     <TextBlock FontSize="11" Foreground="#7F1D1D" TextWrapping="Wrap"
                                                Margin="0,0,0,10"
-                                               Text="Deletes every Order, Location, Site, ROMP, saved report and custom column from THIS computer's local database. Your PM roster is kept, along with settings, statuses, and equipment categories. In Cloud mode the next sync pulls the cloud's copy back down — nothing is deleted from the cloud."/>
+                                               Text="Deletes every Order, Cluster, Site, ROMP, saved report and custom column from THIS computer's local database. Your PM roster is kept, along with settings, statuses, and equipment categories. In Cloud mode the next sync pulls the cloud's copy back down — nothing is deleted from the cloud."/>
                                     <Button Content="Delete Local Database Data"
                                             Click="BtnDeleteLocalData_Click"
                                             Padding="12,6" FontSize="12"
@@ -1377,6 +1560,26 @@
                                             Style="{StaticResource DangerButtonStyle}"
                                             ToolTipService.ToolTip="Empties this machine's local data so the cloud copy becomes authoritative. Cannot be undone."/>
                                     <TextBlock x:Name="TxtDeleteLocalStatus" FontSize="11" Foreground="#7F1D1D"
+                                               TextWrapping="Wrap" Margin="0,8,0,0" Visibility="Collapsed"/>
+
+                                    <!-- Clear ALL Data — the one above only ever touches this machine and
+                                         self-heals from the cloud on the next sync; this one does not.
+                                         Solid (not outline) button deliberately looks more alarming than
+                                         Delete Local Data — it is a strictly more destructive action. -->
+                                    <Separator Background="#FECACA" Margin="0,14,0,12"/>
+                                    <TextBlock Text="Clear ALL Data" FontSize="13" FontWeight="SemiBold"
+                                               Foreground="#991B1B" Margin="0,0,0,4"/>
+                                    <TextBlock FontSize="11" Foreground="#7F1D1D" TextWrapping="Wrap"
+                                               Margin="0,0,0,10"
+                                               Text="Permanently deletes EVERYTHING — every PM, Cluster, Site, ROMP, Order, saved report, custom column, user account, and setting — from both this computer AND the shared cloud database, if Cloud mode is active. This affects every machine and every user, not just this one, and there is no cloud copy left to recover from afterward. Only a Super Admin can do this."/>
+                                    <Button Content="Clear ALL Data (Cloud + Local)"
+                                            Click="BtnClearAllData_Click"
+                                            Padding="12,6" FontSize="12" FontWeight="SemiBold"
+                                            HorizontalAlignment="Left"
+                                            Style="{StaticResource DangerButtonStyle}"
+                                            Background="#DC2626" Foreground="White" BorderBrush="#DC2626"
+                                            ToolTipService.ToolTip="Wipes every table, cloud included. Permanent. Every machine and user is affected."/>
+                                    <TextBlock x:Name="TxtClearAllStatus" FontSize="11" Foreground="#7F1D1D"
                                                TextWrapping="Wrap" Margin="0,8,0,0" Visibility="Collapsed"/>
                                 </StackPanel>
                             </Border>
@@ -1391,8 +1594,7 @@
             </StackPanel>
         </Border>
 
-        <!-- ── Manage Users card — this whole page already requires SuperAdmin, so this
-             section header exists purely for visual grouping, not an additional gate ── -->
+        <!-- ── Forecast Schedule Conflicts card ── -->
         <Border Grid.Row="10" Background="White" CornerRadius="10"
                 BorderBrush="#E2E8F0" BorderThickness="1" Padding="24,20" Margin="0,0,0,16">
             <Border.Style>
@@ -1406,66 +1608,124 @@
                 </Style>
             </Border.Style>
             <StackPanel>
-                <Grid Margin="0,0,0,4">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="Manage Users" FontSize="16" FontWeight="SemiBold" Foreground="#0F172A"/>
-                    <Button Grid.Column="1" Content="+ Add User" Click="BtnAddUser_Click"
-                            Style="{StaticResource PrimaryButtonStyle}" Padding="12,6" FontSize="12"/>
-                </Grid>
-                <TextBlock Text="Create logins for team members and reset passwords. Visible only to Super Admins."
-                           FontSize="13" Foreground="#64748B" Margin="0,0,0,16"/>
+                <TextBlock Text="Forecast Schedule Conflicts" FontSize="16" FontWeight="SemiBold"
+                           Foreground="#0F172A" Margin="0,0,0,4"/>
+                <TextBlock FontSize="13" Foreground="#64748B" TextWrapping="Wrap" Margin="0,0,0,20">
+                    <Run Text="A ROMP's CX (cutover) phase has a daily standup at a fixed local time, so one PM can't realistically cover two CX-phase sites in the same region at once. The Forecast Timeline approximates a bar's CX window as the days immediately before its PFHO (hand-off date), and flags a PM whose same-region CX windows overlap more than the allowed amount."/>
+                </TextBlock>
 
-                <Border BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" ClipToBounds="True">
-                    <DataGrid x:Name="UsersGrid"
-                              Style="{StaticResource AppDataGridStyle}"
-                              CellStyle="{StaticResource DataGridCellStyle}"
-                              ColumnHeaderStyle="{StaticResource DataGridColumnHeaderStyle}"
-                              ItemsSource="{Binding Users}"
-                              AutoGenerateColumns="False" IsReadOnly="True" BorderThickness="0">
-                        <DataGrid.Columns>
-                            <DataGridTextColumn Header="Name"  Width="180" Binding="{Binding DisplayName}"/>
-                            <DataGridTextColumn Header="Email" Width="220" Binding="{Binding Email}"/>
-                            <DataGridTextColumn Header="Role"  Width="110" Binding="{Binding Role}"/>
-                            <DataGridTextColumn Header="Last Login" Width="140"
-                                                Binding="{Binding LastLoginUtc, StringFormat='yyyy-MM-dd HH:mm'}"/>
-                            <DataGridTemplateColumn Header="Active" Width="80">
-                                <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <CheckBox IsChecked="{Binding IsActive, Mode=OneWay}"
-                                                  IsHitTestVisible="False" HorizontalAlignment="Center"/>
-                                    </DataTemplate>
-                                </DataGridTemplateColumn.CellTemplate>
-                            </DataGridTemplateColumn>
-                            <DataGridTemplateColumn Header="" Width="*">
-                                <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,2">
-                                            <Button Content="Reset Password" Click="BtnResetUserPassword_Click"
-                                                    Style="{StaticResource SecondaryButtonStyle}"
-                                                    Padding="8,3" FontSize="11" Margin="0,0,8,0"/>
-                                            <Button Click="BtnToggleUserActive_Click"
-                                                    Padding="8,3" FontSize="11">
-                                                <Button.Style>
-                                                    <Style TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
-                                                        <Setter Property="Content" Value="Deactivate"/>
-                                                        <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding IsActive}" Value="False">
-                                                                <Setter Property="Content" Value="Activate"/>
-                                                            </DataTrigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </Button.Style>
-                                            </Button>
-                                        </StackPanel>
-                                    </DataTemplate>
-                                </DataGridTemplateColumn.CellTemplate>
-                            </DataGridTemplateColumn>
-                        </DataGrid.Columns>
-                    </DataGrid>
-                </Border>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="220"/>
+                        <ColumnDefinition Width="90"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="CX Window (days before PFHO):"
+                               FontSize="12" FontWeight="SemiBold" Foreground="#374151"
+                               VerticalAlignment="Center" Margin="0,0,10,10"/>
+                    <TextBox   Grid.Row="0" Grid.Column="1"
+                               Text="{Binding CxWindowDays, UpdateSourceTrigger=PropertyChanged}"
+                               Style="{StaticResource FormTextBoxStyle}" Margin="0,0,10,10"/>
+                    <TextBlock Grid.Row="0" Grid.Column="2" Text="Default 14 — how many days before PFHO count as the cutover window"
+                               FontSize="11" Foreground="#94A3B8" VerticalAlignment="Center" Margin="0,0,0,10" TextWrapping="Wrap"/>
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Max Concurrent Per Region:"
+                               FontSize="12" FontWeight="SemiBold" Foreground="#374151"
+                               VerticalAlignment="Center" Margin="0,0,10,0"/>
+                    <TextBox   Grid.Row="1" Grid.Column="1"
+                               Text="{Binding MaxConcurrentCxPerRegion, UpdateSourceTrigger=PropertyChanged}"
+                               Style="{StaticResource FormTextBoxStyle}" Margin="0,0,10,0"/>
+                    <TextBlock Grid.Row="1" Grid.Column="2" Text="Default 1 — sites one PM may have in the same region's CX window at once before it's flagged ('some overlap' tolerance)"
+                               FontSize="11" Foreground="#94A3B8" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                </Grid>
+
+                <Button Content="Save" Style="{StaticResource PrimaryButtonStyle}"
+                        Click="BtnSaveScheduleConflict_Click" Margin="0,16,0,0" HorizontalAlignment="Left"/>
+            </StackPanel>
+        </Border>
+
+        <!-- ── Coverage Planning card — every variable of the Coverage Planner model
+             (Services/CoveragePlanner.cs). "Reset to defaults" restores CoverageDefaults. The
+             Coverage Planner page's "Model settings" button scrolls here (PendingScrollTarget). ── -->
+        <Border x:Name="CoverageCard" Grid.Row="11" Background="White" CornerRadius="10"
+                BorderBrush="#E2E8F0" BorderThickness="1" Padding="24,20" Margin="0,0,0,16">
+            <StackPanel>
+                <TextBlock Text="Coverage Planning Model" FontSize="16" FontWeight="SemiBold"
+                           Foreground="#0F172A" Margin="0,0,0,4"/>
+                <TextBlock FontSize="13" Foreground="#64748B" TextWrapping="Wrap" Margin="0,0,0,20"
+                           Text="The variables behind the Coverage Planner page. Each forecast site adds a light load per day while it's being built (NBD → CX) and a heavy load per day during its CX window; a PM is over capacity when their sites add up to more than the capacity. Hiring need per region = busiest week's total load ÷ capacity, rounded up, minus the PMs that region has."/>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="220"/>
+                        <ColumnDefinition Width="90"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Capacity per PM:"
+                               FontSize="12" FontWeight="SemiBold" Foreground="#374151"
+                               VerticalAlignment="Center" Margin="0,0,10,10"/>
+                    <TextBox   Grid.Row="0" Grid.Column="1"
+                               Text="{Binding CoverageCapacityPerPm, UpdateSourceTrigger=PropertyChanged}"
+                               Style="{StaticResource FormTextBoxStyle}" Margin="0,0,10,10"/>
+                    <TextBlock Grid.Row="0" Grid.Column="2" Text="Total load one PM can carry at once. With the default weights: 12 sites in build, or 3 in CX, or a mix. The main lever — lower = more hiring."
+                               FontSize="11" Foreground="#94A3B8" VerticalAlignment="Center" Margin="0,0,0,10" TextWrapping="Wrap"/>
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Build-phase weight (per day):"
+                               FontSize="12" FontWeight="SemiBold" Foreground="#374151"
+                               VerticalAlignment="Center" Margin="0,0,10,10"/>
+                    <TextBox   Grid.Row="1" Grid.Column="1"
+                               Text="{Binding CoverageBuildWeight, UpdateSourceTrigger=PropertyChanged}"
+                               Style="{StaticResource FormTextBoxStyle}" Margin="0,0,10,10"/>
+                    <TextBlock Grid.Row="1" Grid.Column="2" Text="Load a site adds each day from NBD until its CX window starts"
+                               FontSize="11" Foreground="#94A3B8" VerticalAlignment="Center" Margin="0,0,0,10" TextWrapping="Wrap"/>
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="CX-window weight (per day):"
+                               FontSize="12" FontWeight="SemiBold" Foreground="#374151"
+                               VerticalAlignment="Center" Margin="0,0,10,10"/>
+                    <TextBox   Grid.Row="2" Grid.Column="1"
+                               Text="{Binding CoverageCxWeight, UpdateSourceTrigger=PropertyChanged}"
+                               Style="{StaticResource FormTextBoxStyle}" Margin="0,0,10,10"/>
+                    <TextBlock Grid.Row="2" Grid.Column="2" Text="Load a site adds each day during its CX window"
+                               FontSize="11" Foreground="#94A3B8" VerticalAlignment="Center" Margin="0,0,0,10" TextWrapping="Wrap"/>
+                    <TextBlock Grid.Row="3" Grid.Column="0" Text="CX window (days before PFHO):"
+                               FontSize="12" FontWeight="SemiBold" Foreground="#374151"
+                               VerticalAlignment="Center" Margin="0,0,10,10"/>
+                    <TextBox   Grid.Row="3" Grid.Column="1"
+                               Text="{Binding CxWindowDays, UpdateSourceTrigger=PropertyChanged}"
+                               Style="{StaticResource FormTextBoxStyle}" Margin="0,0,10,10"/>
+                    <TextBlock Grid.Row="3" Grid.Column="2" Text="Length of the CX window. Shared with Forecast Schedule Conflicts above — changing it here changes it there too"
+                               FontSize="11" Foreground="#94A3B8" VerticalAlignment="Center" Margin="0,0,0,10" TextWrapping="Wrap"/>
+                    <TextBlock Grid.Row="4" Grid.Column="0" Text="Hiring lead time (days):"
+                               FontSize="12" FontWeight="SemiBold" Foreground="#374151"
+                               VerticalAlignment="Center" Margin="0,0,10,10"/>
+                    <TextBox   Grid.Row="4" Grid.Column="1"
+                               Text="{Binding CoverageHireLeadDays, UpdateSourceTrigger=PropertyChanged}"
+                               Style="{StaticResource FormTextBoxStyle}" Margin="0,0,10,10"/>
+                    <TextBlock Grid.Row="4" Grid.Column="2" Text="How far before a shortfall the plan says to hire"
+                               FontSize="11" Foreground="#94A3B8" VerticalAlignment="Center" Margin="0,0,0,10" TextWrapping="Wrap"/>
+                    <TextBlock Grid.Row="5" Grid.Column="0" Text="Planning horizon (weeks):"
+                               FontSize="12" FontWeight="SemiBold" Foreground="#374151"
+                               VerticalAlignment="Center" Margin="0,0,10,10"/>
+                    <TextBox   Grid.Row="5" Grid.Column="1"
+                               Text="{Binding CoverageHorizonWeeks, UpdateSourceTrigger=PropertyChanged}"
+                               Style="{StaticResource FormTextBoxStyle}" Margin="0,0,10,10"/>
+                    <TextBlock Grid.Row="5" Grid.Column="2" Text="How far ahead to plan (4–520)"
+                               FontSize="11" Foreground="#94A3B8" VerticalAlignment="Center" Margin="0,0,0,10" TextWrapping="Wrap"/>
+                </Grid>
+                <TextBlock Text="{Binding CoverageDefaultsText, Mode=OneWay}" FontSize="11" Foreground="#94A3B8"
+                           TextWrapping="Wrap" Margin="0,4,0,0"/>
+                <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                    <Button Content="Save" Style="{StaticResource PrimaryButtonStyle}"
+                            Click="BtnSaveCoverage_Click"/>
+                    <Button Content="Reset to defaults" Style="{StaticResource SecondaryButtonStyle}"
+                            Click="BtnResetCoverage_Click" Margin="10,0,0,0"
+                            ToolTip="Put every variable above back to its default value and save"/>
+                </StackPanel>
             </StackPanel>
         </Border>
 

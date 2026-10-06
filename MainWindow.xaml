@@ -64,6 +64,10 @@
                     <TextBlock Text="Site Assignment Tracker"
                                FontSize="10" Foreground="#94A3B8"
                                HorizontalAlignment="Right" Margin="0,3,0,0"/>
+                    <!-- Version (Services/AppVersion.cs) — set in MainWindow.xaml.cs; tooltip has the build time -->
+                    <TextBlock x:Name="TxtAppVersion"
+                               FontSize="10" Foreground="#94A3B8"
+                               HorizontalAlignment="Right" Margin="0,1,0,0"/>
                 </StackPanel>
             </Grid>
         </Border>
@@ -142,6 +146,10 @@
                                          GroupName="Nav"
                                          Style="{StaticResource NavButtonStyle}"
                                          Click="NavPm_Click"/>
+                            <RadioButton x:Name="NavTeams" Content="⬤  Teams"
+                                         GroupName="Nav"
+                                         Style="{StaticResource NavButtonStyle}"
+                                         Click="NavTeams_Click"/>
                             <RadioButton x:Name="NavReportBuilder" Content="⬤  Report Builder"
                                          GroupName="Nav"
                                          Style="{StaticResource NavButtonStyle}"
@@ -154,6 +162,18 @@
                                          GroupName="Nav"
                                          Style="{StaticResource NavButtonStyle}"
                                          Click="NavOrders_Click"/>
+                            <RadioButton x:Name="NavForecastPlanning" Content="⬤  Forecast Planning"
+                                         GroupName="Nav"
+                                         Style="{StaticResource NavButtonStyle}"
+                                         Click="NavForecastPlanning_Click"/>
+                            <RadioButton x:Name="NavForecastTimeline" Content="⬤  Forecast Timeline"
+                                         GroupName="Nav"
+                                         Style="{StaticResource NavButtonStyle}"
+                                         Click="NavForecastTimeline_Click"/>
+                            <RadioButton x:Name="NavCoveragePlanner" Content="⬤  Coverage Planner"
+                                         GroupName="Nav"
+                                         Style="{StaticResource NavButtonStyle}"
+                                         Click="NavCoveragePlanner_Click"/>
                         </StackPanel>
 
                         <!-- Config separator + item -->
@@ -162,6 +182,10 @@
                                    Foreground="#475569" FontWeight="SemiBold"
                                    Margin="20,12,0,6"/>
                         <StackPanel DockPanel.Dock="Top" Margin="10,0">
+                            <RadioButton x:Name="NavUserManagement" Content="⬤  User Management"
+                                         GroupName="Nav"
+                                         Style="{StaticResource NavButtonStyle}"
+                                         Click="NavUserManagement_Click"/>
                             <RadioButton x:Name="NavConfig" Content="⬤  Configuration"
                                          GroupName="Nav"
                                          Style="{StaticResource NavButtonStyle}"
@@ -185,6 +209,66 @@
                             </ComboBox>
                         </StackPanel>
 
+                        <!-- ── Cloud sync indicator — pinned to the bottom of the sidebar via
+                             DockPanel.Dock="Bottom" (everything else above is "Top", so this is
+                             the only element anchored to the bottom edge regardless of how much
+                             nav content there is). Hidden entirely outside Cloud mode — Local
+                             and Network modes have nothing here to report on. Driven from
+                             code-behind (UpdateSyncIndicator) off CloudSyncService's
+                             ProgressChanged/StatusChanged events, same pattern as TxtLastUpdated
+                             in the header. ── -->
+                        <StackPanel x:Name="SyncIndicator" DockPanel.Dock="Bottom"
+                                    Margin="16,12,16,16" Visibility="Collapsed">
+                            <Separator Background="#334155" Margin="0,0,0,12"/>
+
+                            <!-- Actively syncing: label + percent + bar + ETA -->
+                            <StackPanel x:Name="SyncActivePanel" Visibility="Collapsed">
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="☁" FontSize="11" Foreground="#60A5FA" Margin="0,0,6,0"/>
+                                        <TextBlock Text="Syncing…" FontSize="11" FontWeight="SemiBold" Foreground="#CBD5E1"/>
+                                    </StackPanel>
+                                    <TextBlock x:Name="TxtSyncPercent" Grid.Column="1" Text="0%"
+                                               FontSize="11" Foreground="#94A3B8"/>
+                                </Grid>
+                                <!-- Fill width via star-sized Grid columns (ColFill/ColRest), not a fixed-pixel
+                                     Border — lets WPF's layout engine handle proportional sizing natively
+                                     instead of hand-tracking the container's pixel width on every resize. -->
+                                <Border Background="#334155" CornerRadius="3" Height="6" Margin="0,0,0,6" ClipToBounds="True">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition x:Name="ColFill" Width="0*"/>
+                                            <ColumnDefinition x:Name="ColRest" Width="100*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Border Grid.Column="0" Background="#3B82F6"/>
+                                    </Grid>
+                                </Border>
+                                <TextBlock x:Name="TxtSyncEta" Text="" FontSize="10" Foreground="#64748B"/>
+                            </StackPanel>
+
+                            <!-- Idle: compact "last synced" line + manual sync-now button —
+                                 for exactly this kind of "has it actually pushed yet?"
+                                 troubleshooting, instead of waiting out the ~30s periodic tick. -->
+                            <Grid x:Name="SyncIdlePanel">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Orientation="Horizontal">
+                                    <TextBlock Text="☁" FontSize="11" Foreground="#4ADE80" Margin="0,0,6,0"/>
+                                    <TextBlock x:Name="TxtSyncIdle" Text="Synced" FontSize="11" Foreground="#94A3B8"/>
+                                </StackPanel>
+                                <Button x:Name="BtnSyncNow" Grid.Column="1" Content="⟳ Sync Now"
+                                        FontSize="10" Foreground="#93C5FD" Background="Transparent"
+                                        BorderThickness="0" Padding="0" Cursor="Hand"
+                                        Click="BtnSyncNow_Click" ToolTip="Sync with the cloud right now"/>
+                            </Grid>
+                        </StackPanel>
+
                     </DockPanel>
                 </Grid>
             </Border>
@@ -193,6 +277,23 @@
             <ContentControl Grid.Column="1" x:Name="MainContent"
                             Content="{Binding CurrentPage}"
                             Background="{StaticResource ContentBgBrush}"/>
+
+            <!-- ── Outdated-version banner — shown when another machine reported a newer version
+                 (CloudSyncService.NewerVersionInUse). Persistent until dismissed, unlike the toast. ── -->
+            <Border x:Name="UpdateBanner" Grid.Column="1"
+                    Background="#FEF3C7" BorderBrush="#F59E0B" BorderThickness="1"
+                    CornerRadius="8" Padding="14,10"
+                    HorizontalAlignment="Right" VerticalAlignment="Top"
+                    Margin="0,16,24,0" MaxWidth="460" Visibility="Collapsed">
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Content="✕" Click="BtnDismissUpdateBanner_Click"
+                            Background="Transparent" BorderThickness="0" Foreground="#92400E"
+                            Cursor="Hand" Padding="6,0" Margin="10,0,0,0" VerticalAlignment="Top"
+                            ToolTip="Dismiss"/>
+                    <TextBlock x:Name="TxtUpdateBanner" Foreground="#92400E" FontSize="12"
+                               TextWrapping="Wrap"/>
+                </DockPanel>
+            </Border>
 
             <!-- ── Notification toast — non-modal, auto-dismisses; see MainWindow.xaml.cs ── -->
             <Border x:Name="ToastBorder" Grid.Column="1"

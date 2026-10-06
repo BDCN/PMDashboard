@@ -29,7 +29,7 @@ public static class ImportLockService
 
         try
         {
-            using var db = new AppDbContext { ForceCloud = true };
+            using var db = new AppDbContext(forceCloud: true);
             var row = db.AppConfigs.Find(ConfigKeys.ImportLock);
 
             if (row != null && !string.IsNullOrWhiteSpace(row.Value))
@@ -66,7 +66,7 @@ public static class ImportLockService
 
         try
         {
-            using var db = new AppDbContext { ForceCloud = true };
+            using var db = new AppDbContext(forceCloud: true);
             var row = db.AppConfigs.Find(ConfigKeys.ImportLock);
             if (row == null) return;
 

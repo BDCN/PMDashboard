@@ -9,9 +9,10 @@ public class AppDbContext : DbContext
 {
     /// <summary>
     /// When true, connect to the MariaDB cloud database instead of local SQLite.
-    /// Only CloudSyncService should set this; all other callers use local SQLite.
+    /// Only CloudSyncService (and ImportLockService/IdAllocator) should set this; all other
+    /// callers use local SQLite. Constructor-only on purpose — see the constructor.
     /// </summary>
-    public bool ForceCloud { get; init; }
+    public bool ForceCloud { get; }
 
     /// <summary>
     /// Set to true by CloudSyncService when writing data pulled from the cloud so that
@@ -25,6 +26,23 @@ public class AppDbContext : DbContext
     /// </summary>
     public static event Action? LocalSaved;
 
+    /// <param name="forceCloud">True → the MariaDB cloud database (see <see cref="ForceCloud"/>).</param>
+    public AppDbContext(bool forceCloud = false)
+    {
+        // ForceCloud MUST be assigned before anything below touches ChangeTracker: that access
+        // initializes the context, which runs OnConfiguring and permanently picks the database
+        // right then. It used to be an `init` property (set by `new AppDbContext { ForceCloud =
+        // true }`, i.e. AFTER this constructor) — once this constructor started touching
+        // ChangeTracker, every "cloud" context silently connected to local SQLite instead, and
+        // all cloud sync quietly stopped (2026-10-05). Hence a constructor argument.
+        ForceCloud = forceCloud;
+
+        // Per-machine Id ranges for new rows in Cloud mode — see IdAllocator. Local contexts
+        // only: rows written to the cloud by CloudSyncService always carry their own Ids.
+        if (!ForceCloud)
+            ChangeTracker.Tracked += (_, e) => IdAllocator.OnTracked(this, e);
+    }
+
     public DbSet<PM>                 PMs                  => Set<PM>();
     public DbSet<AssignmentRule>     AssignmentRules      => Set<AssignmentRule>();
     public DbSet<AppConfig>          AppConfigs           => Set<AppConfig>();
@@ -34,6 +52,9 @@ public class AppDbContext : DbContext
     public DbSet<EquipmentKeyword>   EquipmentKeywords    => Set<EquipmentKeyword>();
     public DbSet<Location>           Locations            => Set<Location>();
     public DbSet<Site>               Sites                => Set<Site>();
+    public DbSet<Campus>             Campuses             => Set<Campus>();
+    public DbSet<SubRegion>          SubRegions           => Set<SubRegion>();
+    public DbSet<TeamMember>         TeamMembers          => Set<TeamMember>();
     public DbSet<Romp>               Romps                => Set<Romp>();
     public DbSet<RompEquipmentType>  RompEquipmentTypes   => Set<RompEquipmentType>();
     public DbSet<Order>              Orders               => Set<Order>();
@@ -42,6 +63,12 @@ public class AppDbContext : DbContext
     public DbSet<CustomRow>          CustomRows           => Set<CustomRow>();
     public DbSet<User>               Users                => Set<User>();
     public DbSet<AuditEntry>         AuditEntries         => Set<AuditEntry>();
+    public DbSet<ForecastType>           ForecastTypes           => Set<ForecastType>();
+    public DbSet<ForecastField>          ForecastFields          => Set<ForecastField>();
+    public DbSet<ForecastHeaderMapping>  ForecastHeaderMappings  => Set<ForecastHeaderMapping>();
+    public DbSet<ForecastImport>         ForecastImports         => Set<ForecastImport>();
+    public DbSet<ForecastRow>            ForecastRows            => Set<ForecastRow>();
+    public DbSet<AssignmentHistory>  AssignmentHistories  => Set<AssignmentHistory>();
 
     protected override void OnConfiguring(DbContextOptionsBuilder options)
     {
@@ -95,7 +122,19 @@ public class AppDbContext : DbContext
                      .Where(e => e.State is EntityState.Added or EntityState.Modified))
         {
             var prop = entry.Properties.FirstOrDefault(p => p.Metadata.Name == "LastModified");
-            if (prop != null) prop.CurrentValue = now;
+            if (prop != null)
+            {
+                // Never move a row's timestamp backwards. Since pushes restamp rows with the
+                // cloud SERVER's clock (CloudSyncService._lastPullServerUtc), a row's current
+                // value can be a little ahead of this machine's clock; an edit stamped plain
+                // "now" right after a push would then look OLDER than the pushed copy and lose
+                // the last-writer-wins comparison — the edit would never upload.
+                var stamp = now;
+                if (entry.State == EntityState.Modified
+                    && prop.OriginalValue is DateTime prev && prev >= stamp)
+                    stamp = prev.AddMilliseconds(1);
+                prop.CurrentValue = stamp;
+            }
 
             // Same treatment for the "who" half, on the entities that carry it (Order/Romp/Site).
             var byProp = entry.Properties.FirstOrDefault(p => p.Metadata.Name == "LastModifiedBy");
@@ -111,6 +150,59 @@ public class AppDbContext : DbContext
             .HasForeignKey(s => s.LocationId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        // Cluster → Campus → Site. Deleting a cluster deletes its campuses (as it does its sites);
+        // deleting a campus only detaches its sites (SetNull) — they're re-placed, never lost.
+        modelBuilder.Entity<Campus>()
+            .HasOne(c => c.Location)
+            .WithMany(l => l.Campuses)
+            .HasForeignKey(c => c.LocationId)
+            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<Campus>()
+            .HasOne(c => c.AssignedPm)
+            .WithMany()
+            .HasForeignKey(c => c.AssignedPmId)
+            .OnDelete(DeleteBehavior.SetNull)
+            .IsRequired(false);
+        modelBuilder.Entity<Site>()
+            .HasOne(s => s.Campus)
+            .WithMany(c => c.Sites)
+            .HasForeignKey(s => s.CampusId)
+            .OnDelete(DeleteBehavior.SetNull)
+            .IsRequired(false);
+
+        // Teams: Director › PE (sub-region) › PM (PMs.PeId) › PA (TeamMembers.PmId). Removing a
+        // sub-region or person only unlinks what pointed at it (SetNull) — nothing is deleted.
+        modelBuilder.Entity<TeamMember>()
+            .HasOne(t => t.SubRegion)
+            .WithMany()
+            .HasForeignKey(t => t.SubRegionId)
+            .OnDelete(DeleteBehavior.SetNull)
+            .IsRequired(false);
+        modelBuilder.Entity<TeamMember>()
+            .HasOne(t => t.Pm)
+            .WithMany()
+            .HasForeignKey(t => t.PmId)
+            .OnDelete(DeleteBehavior.SetNull)
+            .IsRequired(false);
+        modelBuilder.Entity<PM>()
+            .HasOne(p => p.Pe)
+            .WithMany()
+            .HasForeignKey(p => p.PeId)
+            .OnDelete(DeleteBehavior.SetNull)
+            .IsRequired(false);
+        modelBuilder.Entity<Campus>()
+            .HasOne(c => c.SubRegion)
+            .WithMany()
+            .HasForeignKey(c => c.SubRegionId)
+            .OnDelete(DeleteBehavior.SetNull)
+            .IsRequired(false);
+        modelBuilder.Entity<Location>()
+            .HasOne(l => l.SubRegion)
+            .WithMany()
+            .HasForeignKey(l => l.SubRegionId)
+            .OnDelete(DeleteBehavior.SetNull)
+            .IsRequired(false);
+
         modelBuilder.Entity<Romp>()
             .HasOne(r => r.Site)
             .WithMany(s => s.Romps)
@@ -121,6 +213,13 @@ public class AppDbContext : DbContext
             .HasOne(s => s.AssignedPm)
             .WithMany()
             .HasForeignKey(s => s.AssignedPmId)
+            .OnDelete(DeleteBehavior.SetNull)
+            .IsRequired(false);
+
+        modelBuilder.Entity<Location>()
+            .HasOne(l => l.AssignedPm)
+            .WithMany()
+            .HasForeignKey(l => l.AssignedPmId)
             .OnDelete(DeleteBehavior.SetNull)
             .IsRequired(false);
 
@@ -154,8 +253,96 @@ public class AppDbContext : DbContext
 
         modelBuilder.Entity<Site>()
             .Ignore(s => s.SiteStatus);
+        modelBuilder.Entity<Site>()
+            .Ignore(s => s.PmDisplay);
+        modelBuilder.Entity<Campus>().Ignore(c => c.SiteCount);
+        modelBuilder.Entity<Campus>().Ignore(c => c.RompCount);
+        modelBuilder.Entity<Campus>().Ignore(c => c.OverrideCount);
+        modelBuilder.Entity<Campus>().Ignore(c => c.CampusStatus);
+        modelBuilder.Entity<Campus>().Ignore(c => c.PmDisplay);
+        modelBuilder.Entity<Campus>().Ignore(c => c.SubRegionDisplay);
 
         modelBuilder.Entity<Location>()
             .Ignore(l => l.IsFullyClosed);
+        modelBuilder.Entity<Location>()
+            .Ignore(l => l.AssignedPmDisplay);
+
+        modelBuilder.Entity<AssignmentHistory>()
+            .HasOne(h => h.Site)
+            .WithMany()
+            .HasForeignKey(h => h.SiteId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<AssignmentHistory>()
+            .HasOne(h => h.Pm)
+            .WithMany()
+            .HasForeignKey(h => h.PmId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<AssignmentHistory>()
+            .HasOne(h => h.Romp)
+            .WithMany()
+            .HasForeignKey(h => h.RompId)
+            .OnDelete(DeleteBehavior.Cascade)
+            .IsRequired(false);
+
+        modelBuilder.Entity<Romp>()
+            .HasOne(r => r.AssignedPm)
+            .WithMany()
+            .HasForeignKey(r => r.AssignedPmId)
+            .OnDelete(DeleteBehavior.SetNull)
+            .IsRequired(false);
+
+        // ── Forecast Planning ────────────────────────────────────────────────
+
+        modelBuilder.Entity<ForecastField>()
+            .HasOne(f => f.ForecastType)
+            .WithMany()
+            .HasForeignKey(f => f.ForecastTypeId)
+            .OnDelete(DeleteBehavior.Restrict)
+            .IsRequired(false);
+
+        modelBuilder.Entity<ForecastHeaderMapping>()
+            .HasOne(m => m.ForecastType)
+            .WithMany()
+            .HasForeignKey(m => m.ForecastTypeId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<ForecastHeaderMapping>()
+            .HasOne(m => m.ForecastField)
+            .WithMany()
+            .HasForeignKey(m => m.ForecastFieldId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<ForecastImport>()
+            .HasOne(i => i.ForecastType)
+            .WithMany()
+            .HasForeignKey(i => i.ForecastTypeId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<ForecastRow>()
+            .HasOne(r => r.ForecastImport)
+            .WithMany()
+            .HasForeignKey(r => r.ForecastImportId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<ForecastRow>()
+            .HasOne(r => r.ForecastType)
+            .WithMany()
+            .HasForeignKey(r => r.ForecastTypeId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<ForecastRow>()
+            .HasOne(r => r.Site)
+            .WithMany()
+            .HasForeignKey(r => r.SiteId)
+            .OnDelete(DeleteBehavior.SetNull)
+            .IsRequired(false);
+
+        modelBuilder.Entity<ForecastField>()
+            .Ignore(f => f.ScopeLabel);
+
+        modelBuilder.Entity<ForecastField>()
+            .Ignore(f => f.ExcelColumn);
     }
 }

@@ -44,7 +44,7 @@ public partial class OrdersPage : UserControl
             }
 
             var confirm = MessageBox.Show(
-                $"Found {orders.Count} rows. New rows will be added; changed rows will be updated; unchanged rows will be skipped.\n\nLocations, Sites, and ROMPs will be created automatically from Job Name.",
+                $"Found {orders.Count} rows. New rows will be added; changed rows will be updated; unchanged rows will be skipped.\n\nClusters, Sites, and ROMPs will be created automatically from Job Name.",
                 "Confirm Import", MessageBoxButton.YesNo, MessageBoxImage.Question);
             if (confirm != MessageBoxResult.Yes) return;
 

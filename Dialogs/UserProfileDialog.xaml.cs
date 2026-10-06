@@ -17,13 +17,22 @@ public partial class UserProfileDialog : Window
         TxtFirstName.Text = u.FirstName;
         TxtLastName.Text  = u.LastName;
         TxtEmail.Text     = u.Email;
-        TxtRole.Text      = u.IsSuperAdmin ? "Super Admin" : "User";
+        TxtRole.Text      = u.IsSuperAdmin ? "Super Admin" : u.IsDirector ? "Director" : "User";
         TxtLastLogin.Text = u.LastLoginUtc.HasValue
             ? $"Last sign-in: {u.LastLoginUtc.Value.ToLocalTime():yyyy-MM-dd HH:mm}"
             : "First sign-in";
+
+        BtnForgetDevice.Visibility = DevAutoLogin.IsEnabled ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void BtnClose_Click(object sender, RoutedEventArgs e) => Close();
+
+    private void BtnForgetDevice_Click(object sender, RoutedEventArgs e)
+    {
+        DevAutoLogin.Disable();
+        BtnForgetDevice.Visibility = Visibility.Collapsed;
+        ShowStatus("Auto-login disabled on this computer — you'll need to sign in next time.", isError: false);
+    }
 
     private void BtnSave_Click(object sender, RoutedEventArgs e)
     {

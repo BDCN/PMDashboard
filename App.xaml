@@ -8,6 +8,7 @@
     <Application.Resources>
         <ResourceDictionary>
             <svc:NullToBoolConverter x:Key="NullToBoolConverter"/>
+            <svc:HexColorToBrushConverter x:Key="HexColorToBrushConverter"/>
 
             <!-- ── Colors ── -->
             <Color x:Key="SidebarColor">#1E293B</Color>
@@ -335,6 +336,12 @@
                 <Setter Property="ColumnHeaderHeight" Value="40"/>
                 <!-- AlternationCount enables the AlternationIndex trigger on each row -->
                 <Setter Property="AlternationCount" Value="2"/>
+                <!-- Select the existing text the moment a cell enters edit mode, app-wide, via
+                     this one shared style rather than wiring it into every grid individually.
+                     PreparingCellForEdit is a plain CLR event (not a RoutedEvent), so EventSetter
+                     can't target it directly — GridBehavior is an attached-property wrapper that
+                     subscribes to it in code instead. See Services/GridBehavior.cs. -->
+                <Setter Property="svc:GridBehavior.AutoSelectOnEdit" Value="True"/>
                 <Setter Property="RowStyle">
                     <Setter.Value>
                         <Style TargetType="DataGridRow">
@@ -408,6 +415,9 @@
             <DataTemplate DataType="{x:Type vm:PmMaintenanceViewModel}">
                 <views:PmMaintenancePage/>
             </DataTemplate>
+            <DataTemplate DataType="{x:Type vm:TeamsViewModel}">
+                <views:TeamsPage/>
+            </DataTemplate>
             <DataTemplate DataType="{x:Type vm:SitesViewModel}">
                 <views:SitesPage/>
             </DataTemplate>
@@ -419,6 +429,18 @@
             </DataTemplate>
             <DataTemplate DataType="{x:Type vm:ConfigViewModel}">
                 <views:ConfigPage/>
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type vm:UserManagementViewModel}">
+                <views:UserManagementPage/>
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type vm:ForecastPlanningViewModel}">
+                <views:ForecastPlanningPage/>
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type vm:ForecastTimelineViewModel}">
+                <views:ForecastTimelinePage/>
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type vm:CoveragePlannerViewModel}">
+                <views:CoveragePlannerPage/>
             </DataTemplate>
             <DataTemplate DataType="{x:Type vm:AssignmentViewModel}">
                 <views:AssignmentPage/>

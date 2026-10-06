@@ -104,7 +104,7 @@
                         </Border.Style>
                         <StackPanel>
                             <Grid Margin="0,0,0,6">
-                                <TextBlock Text="Locations" FontSize="12" FontWeight="SemiBold"
+                                <TextBlock Text="Clusters" FontSize="12" FontWeight="SemiBold"
                                            Foreground="#374151" HorizontalAlignment="Left"/>
                                 <Button Content="Clear" HorizontalAlignment="Right"
                                         Style="{StaticResource SecondaryButtonStyle}"

@@ -12,6 +12,11 @@ public static class CurrentUser
 
     public static bool   IsSignedIn   => User != null;
     public static bool   IsSuperAdmin => User?.IsSuperAdmin == true;
+    public static bool   IsDirector   => User?.IsDirector   == true;
+
+    /// <summary>SuperAdmin or Director — either can reach Manage Users (Director sees only that card).</summary>
+    public static bool   CanManageUsers => IsSuperAdmin || IsDirector;
+
     public static string Email        => User?.Email ?? "Unknown";
     public static string DisplayName  => User?.DisplayName ?? "Unknown";
 

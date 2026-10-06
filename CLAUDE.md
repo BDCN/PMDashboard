@@ -31,7 +31,10 @@ PMDashboard/
 │   └── Models/
 │       ├── PM.cs                   # PM entity + LastModified
 │       ├── Location.cs             # Grandparent entity (3-letter code, GeographicalLocation) + LastModified
-│       ├── Site.cs                 # FK → Location, FK? → PM, IsClosed (persisted), SiteStatus computed (folds in IsClosed only when Romps is empty), LastModified
+│       ├── Campus.cs               # Cluster → Campus → Site level: FK → Location, FK? → PM (campus PM, cascades to sites), SiteCount/OverrideCount/CampusStatus/PmDisplay computed
+│       ├── SubRegion.cs            # Team sub-region (e.g. "East 1") in a Region; clusters map to one via Location.SubRegionId
+│       ├── TeamMember.cs           # Director (Region) / PE (SubRegionId) / PA (PmId) + TeamRoles constants; PMs join via PM.PeId
+│       ├── Site.cs                 # FK → Location, FK? → Campus, FK? → PM, CampusManual, PmOverride, IsClosed (persisted), SiteStatus computed (folds in IsClosed only when Romps is empty), LastModified
 │       ├── Romp.cs                 # FK → Site, Status, EquipmentTypes nav collection, LastModified
 │       ├── RompEquipmentType.cs    # Junction: Romp ↔ EquipmentCategory (many-to-many) + LastModified
 │       ├── RompStatus.cs           # Status config: IsComplete, CountsAsActive, ScoreWeight (double) + LastModified
@@ -76,6 +79,9 @@ PMDashboard/
 │   ├── AddEditStatusDialog.xaml/.cs
 │   ├── AddEquipmentWeightDialog.xaml/.cs
 │   ├── AssignPmDialog.xaml/.cs
+│   ├── MoveSiteDialog.xaml/.cs     # Sites page "Move…": re-associate a site (and its ROMPs) to an existing or new campus in its cluster
+│   ├── TeamMemberDialog.xaml/.cs   # Teams page: add/edit Director/PE/PA, or (PM mode) pick the PE a Platform Manager reports to
+│   ├── SubRegionDialog.xaml/.cs    # Teams page: add/rename a sub-region (name + region)
 │   ├── TextInputDialog.xaml/.cs    # Generic single-line text prompt (Report Builder Save As / Rename, Delete Local Data's type-DELETE-to-confirm)
 │   ├── ManageColumnsDialog.xaml/.cs # Custom Data's column setup screen — add/rename/reorder/delete CustomColumns; shares the CustomDataViewModel instance passed in from CustomDataPage
 │   ├── RowHistoryDialog.xaml/.cs   # Custom Data's per-row "History" link — read-only DataGrid of AuditService.ForEntity(entityType, entityId)
@@ -99,6 +105,11 @@ PMDashboard/
     ├── CloudSyncService.cs         # Background cloud sync: initial pull + periodic push/pull via LastModified; PushNowAndWaitAsync (import-lock flow); DataChanged event (cross-user notifications)
     ├── AutoImportService.cs        # Background timer, file polling, seen-file dedup, RunUpsert (shares OrderMerge with the manual import path); ImportCompleted event
     ├── ImportLockService.cs        # Cloud-mode-only best-effort cross-user import lock, stored as an AppConfig row on the cloud DB directly (ForceCloud)
+    ├── AppVersion.cs               # Running build's version (<Version> in PMDashboard.csproj) + build time; Short "v1.2.3" / Full "v1.2.3 (built …)"
+    ├── CampusService.cs            # Campus PM assign (cascades to non-override sites), ClearOverride, MoveSite, GetOrCreate
+    ├── CampusArrangementService.cs # Places sites into campuses from forecast campus fields (az); idempotent; see Data Hierarchy
+    ├── TeamRules.cs                # Team boundary for assignments (hard rule) + TeamRuleException; snapshot cached per DbContext
+    ├── IdAllocator.cs              # Cloud mode: per-machine primary-key Id ranges (slot × 20M) so two machines never create the same Id; slot claimed via cloud AppConfig "IdSlot.N"
     ├── OrderMerge.cs                # HasChanged/ApplyChanges field-by-field diff+copy for the Order upsert, shared by OrdersViewModel.UpsertOrders and AutoImportService.RunUpsert
     ├── PasswordHasher.cs           # PBKDF2-SHA256, 100k iterations, per-password salt, constant-time compare; self-describing "pbkdf2$iter$salt$hash" format
     ├── CurrentUser.cs              # Static holder for the signed-in User; Email/DisplayName/IsSuperAdmin; session-only (closing the app signs out)
@@ -110,11 +121,14 @@ PMDashboard/
     ├── ReportFieldCatalog.cs       # ReportField/ReportFieldType, SiteRompFlatRow, ReportRow, curated Order/SiteRomp field catalogs + value getters
     ├── ReportFilterState.cs        # Serializable filter DTO (date range, multi-select IDs/statuses, text search)
     ├── ReportQueryService.cs       # Builds/executes the two mode-specific query pipelines (Orders / Sites+ROMPs); paginated (PagedResult<T>) overloads used by Custom Data
+    ├── CoveragePlanner.cs          # Pure, stateless coverage/hiring model (no EF/WPF) — work packages, weekly load, overlaps, gap fits, hiring steps; unit-tested
+    ├── CoverageDataService.cs      # Builds CoveragePlanner inputs from forecast rows + PMs + AppConfig settings
     ├── ReportExportService.cs      # ClosedXML export of report results, styled per PmImportService convention
     └── CustomCellValueConverter.cs # IValueConverter coercing a boxed Values[key] object to/from each ColumnType's editing control (stateless; ConverterParameter carries the type)
 
-PMDashboard.Tests/                  # xUnit test project (26 tests); links ScoringEngine.cs directly
-└── ScoringTests.cs
+PMDashboard.Tests/                  # xUnit test project (42 tests); links ScoringEngine.cs + CoveragePlanner.cs directly
+├── ScoringTests.cs
+└── CoveragePlannerTests.cs
 ```
 
 ## Layout
@@ -126,7 +140,7 @@ PMDashboard.Tests/                  # xUnit test project (26 tests); links Scori
 - Header background `White` with a `#E2E8F0` bottom border separates it from the sidebar/content
 
 ### Sidebar
-Sidebar order (top → bottom): **Workload → Assignment → Sites → PM Maintenance → Report Builder → Custom Data → Orders (Import)** then **CONFIG** section with **Configuration**.
+Sidebar order (top → bottom): **Workload → Assignment → Sites → PM Maintenance → Teams → Report Builder → Custom Data → Orders (Import) → Forecast Planning → Forecast Timeline → Coverage Planner** then **CONFIG** section with **User Management** / **Configuration**.
 
 Geographic Location filter ComboBox (All / East / Central / West) at the bottom of the sidebar — pushes filter to all relevant VMs via `MainViewModel.OnGeoFilterChanged`.
 
@@ -175,17 +189,20 @@ Site name in PmDetail → NavigateToSiteRompsFromPm(siteId, pmId) → SitesPage 
 - **Site Count Only mode** (`PmDetailViewModel.IsCountMode`, set in `Load()` from `ConfigService.Get(PercentageCalculation)`): info strip collapses to just Data Name (Capacity/Ideal Utilization/Current Utilization/PM Multiplier/Eff. Capacity all hidden as one `StackPanel`); the PM Load KPI card is hidden; ROMP Status Breakdown keeps its bars and raw per-status ROMP counts (still the same 6 categories — Ordered/OFCI/Construction/CX/Complete/Close Out) but hides the `×weight` and per-status score columns, and the "ROMP sum × site factor = PM Load" footer is hidden; the Assigned Sites table's Score column is hidden (`ColSiteScore`, collapsed in the page constructor, same pattern as `PmMaintenancePage`'s Site Cap/Score Cap/Multiplier/Ideal Util columns). The breakdown's per-row visibility trigger binds through `RelativeSource AncestorType=UserControl` + `DataContext.IsCountMode` since the `ItemsControl.ItemTemplate`'s own `DataContext` is a `PmStatusRow`, not the page's `PmDetailViewModel`.
 
 ### Assignment
-- Left panel: Location (ComboBox + geo badge East/Central/West) → multi-select site ListBox → optional ROMP
-- **Site ListBox**: `SelectionMode=Extended` (Ctrl+Click / Shift+Click); quick-select buttons **All / Unassigned / None**; selection counter below; ROMP section only visible when exactly 1 site selected
-- Right panel: ranked PM candidates via `AssignmentViewModel.ComputeCandidates()` using `SelectedLocation` region
-- Assign → assigns PM to ALL selected sites; confirmation dialog for 2+ sites
-- `RestoreListBoxSelection()` re-selects the same sites after assignment
+- **Assigns per campus** (see Data Hierarchy). Left panel: Cluster (ComboBox + geo badge) → multi-select **campus** ListBox (name · site count · `Campus.PmDisplay`) → with exactly one campus selected, an optional **Site** picker (for a site override) → optional **ROMP** picker (ROMP override, as before)
+- **Campus ListBox**: `SelectionMode=Extended`; quick-select **All / Unassigned / None** (Unassigned = campus has no PM); "+ New" creates a campus by exact name (`CampusService.GetOrCreate`)
+- Right panel: ranked PM candidates via `AssignmentViewModel.ComputeCandidates()` using `SelectedLocation` region (counts in the grid are sites)
+- Assign → `CampusService.AssignCampus` for every selected campus (cascades to each site without its own PM); confirmation for 2+ campuses
+- **Site override panel** (a site picked): "Assign to This Site Only" → `AssignSiteOverride` (`AssignmentHistoryService.RecordChange`, which sets `PmOverride` when the PM differs from the campus's); "Use Campus PM" → `CampusService.ClearOverride`
+- Every assignment reloads the campus list and raises `SelectionNeedsRestore` so the page re-selects the same campuses (the ListBox multi-selection isn't bindable); the VM then re-picks the same site/ROMP by Id — reloading `Campuses` clears the ListBox selection, which nulls `SelectedCampus`/`SelectedSite` before the restore, so Ids must be captured first
 - **Site Count Only mode**: the `CapacityAvailability` rule's contribution is replaced with `1.0 / (1.0 + activeSiteCount)` — no `pm.Capacity`/`Utilization`/`EffectiveCapacity` call anywhere in the ranking — so candidates rank purely by fewest currently-assigned active sites (RegionMatch/LocationFamiliarity rules still apply normally, since neither uses capacity data). The "Util" column in the candidates grid is hidden (`ColUtil.Visibility`, set in the `AssignmentPage` constructor) since it would just show "—" for everyone.
 - **Site Assignments bulk import** (`SiteAssignmentImportService`, header buttons "Download Assignments Template" / "Import Assignments") — records assignments that are already in place, at scale, without visiting every site one at a time. **Does not create Sites** — a row's Location + Site Name must both match an existing Site exactly (Location is required specifically so a typo'd Site name under the wrong Location is caught as an error rather than silently matched to the wrong record); PM is matched by **Data Name**. If a Site in the sheet is already assigned to a *different* PM than the sheet says, that row is skipped and reported as a conflict rather than overwritten — reassignment has to be deliberate, not a side effect of a stale export. "Download Template" pre-populates every Site with its current PM Data Name (blank if unassigned), so the natural workflow is export → edit → re-import. `AssignmentViewModel.GetAllSitesForExport()`/`RefreshAfterImport()` support this from the page.
 - **PM Data Name dropdown**: the PM Data Name column gets an in-cell Excel dropdown of active PMs (`vm.AllPms`, already `IsActive`-filtered), built as a **range-reference validation against a hidden "Lists" helper sheet** — not the inline comma-string `.List("\"A,B,C\"")` technique used for Home Office/Region elsewhere in the app. Excel's inline dropdown list is capped at ~255 characters, which a real PM roster's Data Names concatenated together would likely exceed; a range reference has no such limit. The dropdown is a convenience only — free-text entry (an inactive or nonexistent PM's Data Name) still works and is still validated/reported at import time, same as before.
 
-### Sites (3-level drill-down)
-- `SiteNavLevel` enum: Locations | Sites | Romps
+### Sites (4-level drill-down: Clusters › Campuses › Sites › ROMPs)
+- `SiteNavLevel` enum: Locations | Campuses | Sites | Romps; breadcrumb crumbs jump straight to their level
+- **Campuses level**: Campus link, Assigned PM (`PmDisplay`, e.g. "Name (+2 sites with own PM)"), Sites, ROMPs, Status; Assign PM (`CampusService.AssignCampus`, warns about overrides) / Rename / Delete (only when empty); "+ Add Campus"
+- **Sites level** (inside a campus): Edit / Assign (asks before creating a site override) / **Move…** (`MoveSiteDialog` — pick a campus in the same cluster or type a new name; `CampusService.MoveSite` sets `CampusManual` so forecast re-arrangement never moves it back; ROMPs move with the site; the site takes the new campus's PM unless it has its own) / Delete. "+ Add Site" inside a campus puts the site there (manual) with the campus's PM
 - **← Back to [PM Name]** button appears when navigated from PM Detail via `HasBackButton` / `BackButtonLabel` properties
 - ROMP status dropdowns driven by `StatusConfig`
 - **Sites/ROMPs bulk import** (`SitesImportService`, header buttons "Download Sites Template" / "Import Sites") — a direct setup/seeding tool for Sites+ROMPs with their actual current status, independent of Orders import's JobName-derived auto-creation. Template columns: Location, Region, Site Name, ROMP Name, Status (one row per ROMP). **Upsert semantics**: re-importing an already-existing (Site, ROMP) pair **updates its Status** rather than skipping it — the sheet is meant to be re-downloaded, edited, and re-uploaded to reflect status changes over time. Region is required only when the Location doesn't exist yet (used to create it); if the Location already exists, Region in the sheet is ignored, never used to update an existing Location's region. A Site that already exists under a *different* Location than the sheet states is an error (typo guard), not silently refiled. Status must match one of the **live** `StatusConfig.All` values — the template's Status dropdown is built from that live list at generation time, not hardcoded, since `RompStatus` is an admin-configurable table. `SitesViewModel.GetAllRompsForExport()`/`RefreshAfterImport()` (the latter just calls `LoadLocations()` — safer than trying to preserve the current drill-down level after an import that can touch many unrelated locations at once) support this from the page.
@@ -198,6 +215,16 @@ Site name in PmDetail → NavigateToSiteRompsFromPm(siteId, pmId) → SitesPage 
 - **Live-edit DataGrid**: click a cell to edit inline; `RowEditEnding` → `UpdatePm(pm)` saves automatically
 - Columns: Active, First Name, Last Name, Home Office, Region, Data Name, **Site Cap**, **Score Cap**, **Multiplier**, Ideal Util (%)
 - **Site Count Only mode**: the last four columns (Site Cap/Score Cap/Multiplier/Ideal Util) are hidden — `ColSiteCap`/`ColScoreCap`/`ColMultiplier`/`ColIdealUtil` `x:Name`s on the `DataGridColumn`s, collapsed in the `PmMaintenancePage` constructor. Same fields are hidden in `AddEditPmDialog` (`CapacityRow`/`PmMultiplierPanel`) — the underlying `PM.Capacity`/`IdealUtilization`/`PmMultiplier`/`ScoreCapacity` values are untouched either way (controls are hidden, not removed, so a new PM still saves its default 0/80/blank values and an existing PM keeps whatever it already had).
+
+### Teams
+`Views/TeamsPage` + `ViewModels/TeamsViewModel`. Hierarchy **Director (region) › Project Executive / PE (sub-region) › Platform Manager / PM › Project Administrator / PA**; any number of people per role.
+- **Data**: `TeamMember` (Role `Director`|`PE`|`PA`; Director → `Region`, PE → `SubRegionId`, PA → `PmId`), `SubRegion` (Name, Region), `PM.PeId` (PM → their PE), `Location.SubRegionId` (cluster → sub-region), `Campus.SubRegionId` (campus override). PMs stay in `PMs` — everything assigns to them. Synced like other tables (all four `CloudSyncService` methods + `EnsureCloudSchema`, `SyncService` table list/DDL).
+- **Tabs**: Org Chart (read-only tree per region), People (all roles incl. PMs; PM "Edit" = choose PE), Sub-regions & Clusters (sub-region CRUD; per-cluster sub-region dropdown + multi-select "Set selected to"), Conflicts (existing assignments that break the rule).
+- **Who can edit**: `CurrentUser.IsSuperAdmin || IsDirector` (Director *account* role); everyone else views.
+- **Split clusters**: a campus can have its own sub-region (`Campus.SubRegionId`, any region), overriding its cluster's — set per campus on Sub-regions & Clusters (select a cluster → "Campuses in …" panel; "same as cluster" = null). The governing area for a site is **campus's own sub-region → else cluster's sub-region → else cluster's region** (`TeamRules.AreaOf`/`EffectiveArea`), so **every rule check must pass the campus** (`Allows/Reason/Ensure(pm, locationId, campusId)`); whole-cluster or multi-campus actions use `EligibleForAll` (intersection — empty for a split cluster spanning two teams, by design). Sites page campus grid shows `Campus.SubRegionDisplay`; the Assignment page's `TeamScopeInfo`/`EligiblePms` follow the selected campuses. Coverage packages take the campus's area (forecast sites not in the system via `CampusArrangementService.BuildSiteCampusMap` → campus name).
+- **The rule** (`Services/TeamRules.cs`, hard block everywhere — user's decision, Oct 2026): a cluster/campus with a sub-region → only PMs whose PE controls that sub-region; a cluster with no sub-region → any PM in the same region (PM's region = their sub-region's region if on a team, else `PM.GeographicalLocation`); no region either → unrestricted. A PM with no team can only take unmapped clusters.
+- **Enforcement**: `AssignmentHistoryService.RecordChange`/`RecordRompChange`, `CampusService.AssignCampus`, `SitesViewModel.AssignPmToLocation`, `AssignmentViewModel.AssignPmToCluster` call `TeamRules.For(db).Ensure(...)`, which throws `TeamRuleException` **before** anything changes. `App.OnDispatcherUnhandledException` shows a `TeamRuleException` as a warning (no crash/shutdown), so single UI actions need no try/catch. Bulk paths check per row instead: Site Assignments import (skips + reports), PM deactivation `ReassignAll` (all-or-nothing, names the blocked clusters; also moves the PM's campuses so sites don't become overrides). Pickers only list eligible PMs: Assignment page (`EligiblePms`, candidates, `TeamScopeInfo`), Sites page (`GetPms(locationId)`), Forecast Timeline Suggest PM, Coverage Planner gap fill. Sync, campus arrangement and startup never go through the rule.
+- Changing a cluster's sub-region or a PM's PE never moves existing assignments — the ones now outside the team show on Conflicts (and status text). On the real data (Oct 2026) 121 site assignments already crossed regions before any teams existed (APA/Gina Davis, EFD/Kaylee Smith, JAN/Cindy Noi, SBN/Dabrielle Smith, SHV/Chace Adkins).
 
 ### Report Builder
 Two independent report modes — not a unified cross-entity query builder, since `Orders` isn't FK'd to `Sites`/`Romps`/`PMs` (only loosely linked by `JobName`/`ProjectManagerDataName` text):
@@ -234,6 +261,21 @@ Import-only page — no data grid or search bar (removed deliberately; see next 
 - **Local-first-then-background-push, unchanged import architecture**: the lock wraps around the *existing* fast local SQLite import (`UpsertOrders`, unchanged) — it does not route writes to the cloud directly. After the local import, `CloudSyncService.PushNowAndWaitAsync()` forces an immediate push and awaits it (bounded by a timeout, after which it just proceeds — the next regular sync tick picks up anything not yet pushed) before the lock is released. `OrdersViewModel.IsImporting`/`ImportingStatus` drive a small in-progress indicator and disable the Import button for the duration.
 - **`OrderMerge`** (`Services/OrderMerge.cs`) holds the field-by-field `HasChanged`/`ApplyChanges` comparison, shared by both `OrdersViewModel.UpsertOrders` (manual import) and `AutoImportService.RunUpsert` (semi-automatic import) — previously `AutoImportService` had its own "simplified" change check (`found.UploadDate != uploadTime`) that matched on every re-import but never actually copied the new field values onto the existing row, silently discarding every field change made in the source spreadsheet on a semi-automatic re-import. Both paths now use the same real diff+copy.
 - **`AutoImportService.ImportCompleted`** event (carries the `ImportResult`) lets `OrdersViewModel` refresh the Last Import card even when a semi-automatic import lands while the user is on a different page — subscribed idempotently (`-=`/`+=`) in `Load()`, same pattern as `ConfigViewModel`'s `CloudSyncService.StatusChanged` subscription.
+
+### Forecast Timeline — sort
+Filter bar **Sort: NBD / PFHO** buttons (`ForecastTimelineViewModel.Sort`, `TimelineSort` enum). First click on a date = earliest → latest, next click flips it; switching buttons starts that date ascending; ✕ (visible only while sorted) returns to Default = load order (cluster → campus → room type). NBD sorts on the bar's `StartDate` (earliest NBD of its rows), PFHO on `EndDate` (latest PFHO); ties → the other date, then cluster/campus/room. Sorting is applied in `ApplyScale` after `FilterRows`, so it composes with every filter; Clear Filters deliberately leaves the sort alone.
+
+### Coverage Planner
+`Views/CoveragePlannerPage` + `ViewModels/CoveragePlannerViewModel`, logic in `Services/CoveragePlanner.cs` (pure, unit-tested in `CoveragePlannerTests`), inputs from `Services/CoverageDataService.cs`. Answers: who is assigned to what, what's unassigned, where PMs are overloaded, which unassigned campuses fit into a PM's breaks, and when/how many PMs to hire.
+- **Work package** = one forecast campus + room type, window = earliest NBD → latest PFHO of its forecast rows (same grouping/skip rules as the Forecast Timeline). Fallback NBD: when a row has no global "NBD", the first of its forecast type's own NBD-named Date fields is used (the LV sheet's "NBD _EDD" — without it ~half the forecast was invisible). EDD is never used as a start date. Forecast campuses not in the system are included as unassigned (region from `AirportLookup`). A package's owner = its campus's PM, else the cluster's direct PM (`Location.AssignedPmId`); a package owned by an inactive/missing PM counts as unassigned.
+- **Load** (per day, averaged per Monday-start week): `CoverageBuildWeight` during the build phase (NBD → CX start) + `CoverageCxWeight` during the CX window (last `CxWindowDays` before PFHO — shared with the Timeline's conflict rule). A PM is **over capacity** in a week when their packages' load > `CoverageCapacityPerPm`.
+- **Team boundary**: packages carry their cluster's sub-region and PMs their team's (`WorkPackage.SubRegion`, `PlannerPm.SubRegion`, filled by `CoverageDataService` from `TeamRules`); `CoveragePlanner.CanTake` is the same rule as `TeamRules`. Hiring is per **area**: each sub-region (its packages vs its team's PMs), plus "{Region} (no sub-region)" for unmapped clusters vs PMs not on a team — exactly the old per-region view while no teams exist. `HiringStep`/`RegionMonth.ParentRegion` drives the region filter; `CoveragePlan.PmAreas` maps PMs to areas.
+- **Gap fit**: an unassigned package fits a PM (same team area only — `CanTake`) if adding it never pushes them over capacity in any week of its window. The Gap Fill tab's Assign button assigns the **whole campus** via `AssignmentHistoryService.RecordChange` + audit, then recalculates.
+- **Hiring**: per region per week, PMs needed = ⌈total load ÷ capacity⌉ (a lower bound — perfect packing); each time the shortfall vs. the region's active PM count grows, a hiring step is emitted with Hire-by = that week − `CoverageHireLeadDays` (shown as overdue when past). "Unassigned campuses to cover" = unassigned packages active that week. The month grid shows peak need per region per month.
+- Recalculates on every visit, on Recalculate, and on background-sync `DataChanged` while open (`MainViewModel`). Region filter = the sidebar geo filter.
+- Defaults were calibrated on real data (Oct 2026): capacity 3.0 ≈ today's East/Central headcount just covering their average load; peaks still show shortfalls. Capacity is the main lever — lowering it raises the hiring numbers.
+- **Settings**: Configuration → **Coverage Planning Model** card (`x:Name="CoverageCard"`) edits all six variables — capacity, build weight, CX weight, CX window (the same `CxWindowDays` setting as the Forecast Schedule Conflicts card, so editing either changes both), hire lead, horizon. **Reset to defaults** restores `CoverageDefaults` (in `CoverageDataService.cs` — the single source also used for first-run seeding and unreadable-value fallbacks) and saves. The planner page's **Model settings** button (Super Admin only, since Configuration is) opens Configuration scrolled to that card via `ConfigViewModel.PendingScrollTarget`.
+- `MainWindow` keeps the sidebar highlight in sync with `MainViewModel.CurrentPage` (type → RadioButton map), so pages reached from another page (not the sidebar) still highlight correctly; add new pages to that map.
 
 ### Configuration
 **The entire page requires `CurrentUser.IsSuperAdmin`** (see Access Gate below) — anyone else sees a plain "restricted" message instead of any of the cards. Cards in order (top → bottom):
@@ -301,11 +343,19 @@ Real per-person logins — the only access-control mechanism in the app now (the
 ## Data Hierarchy
 
 ```
-Location (3-letter airport code, GeographicalLocation East|Central|West)
-  └── Site (Name, AssignedPmId? FK → PM, SiteStatus computed, LastModified)
-        └── Romp (Name, Status, LastModified)
-              └── RompEquipmentType (junction → EquipmentCategory)
+Location = Cluster (3-letter airport code, e.g. ATL; GeographicalLocation East|Central|West)
+  └── Campus (Name e.g. ATL089, AssignedPmId? — the campus PM)
+        └── Site (Name e.g. ATL085, CampusId?, AssignedPmId? FK → PM, PmOverride, CampusManual, SiteStatus computed)
+              └── Romp (Name e.g. ATL085ROMP06, Status, AssignedPmId? ROMP override)
+                    └── RompEquipmentType (junction → EquipmentCategory)
 ```
+`Site.LocationId` is kept alongside `CampusId` (a campus belongs to one cluster; moving a site to a campus also sets its `LocationId`).
+
+**Terminology**: before Oct 2026 the UI called a `Site` row a "campus"; the real Campus level was added later. User-visible text now says Site for `Site` rows; many identifiers still say Campus for sites (e.g. `PmCardRow.CampusCount`, `CampusName` on Workload/Coverage/Timeline rows, `AddForecastCampusesDialog`) — read those as *site*. The real campus is `Campus`/`CampusId`/`RealCampusCount`.
+
+**Campus PM is materialised onto sites**: `Campus.AssignedPmId` is copied to every site in the campus that isn't `PmOverride`, so all workload/report/planner code keeps reading `Site.AssignedPmId` unchanged. `AssignmentHistoryService.RecordChange` is the single place a site's PM changes and recomputes `PmOverride` (= campus has a PM and the site's PM differs). A user's move or override always wins over the forecast.
+
+**Campus arrangement** (`CampusArrangementService.Arrange()`, idempotent, locked): builds a site → campus map from forecast rows using fields flagged `ForecastField.IsCampusField` (Type O "az", Type L's type-specific "Cluster"; Forecast Planning → Fields → "Campus (az)" checkbox — toggling it re-arranges), majority value per site, names kept exactly as written (IAD12 ≠ IAD012). Then: merges duplicate campuses (same cluster + name), skips `CampusManual` sites, places each site in its forecast campus, else keeps its current campus, else a campus of its own name; a new campus takes its sites' majority PM. Runs at startup (Local/Network), after the cloud initial pull, after forecast uploads, and after Orders/auto/Sites imports and Forecast Timeline "Add New Sites" when sites were created.
 
 **SiteStatus** (computed, EF-ignored):
 - `"Active"` (yellow) — any ROMP in a `CountsAsActive` status
@@ -407,6 +457,12 @@ Equipment types assigned directly to ROMPs via `AddEditRompDialog` checkboxes. `
 | SkillBase | "0.40" | skill_factor intercept (multiplier=10 → factor=1.0) |
 | SkillPerPoint | "0.06" | skill_factor slope per multiplier point |
 | CloudSyncInterval | "30" | Background cloud sync interval in seconds |
+| CoverageCapacityPerPm | "3.0" | Coverage Planner: load one PM can carry at once |
+| CoverageBuildWeight | "0.25" | Coverage Planner: load per day during a campus's build phase |
+| CoverageCxWeight | "1.0" | Coverage Planner: load per day during the CX window |
+| CoverageHireLeadDays | "90" | Coverage Planner: hire this many days before a shortfall |
+| CoverageHorizonWeeks | "104" | Coverage Planner: planning horizon |
+| ClientVersion.{Machine} / IdSlot.{N} | (none) | Per-machine version reports / Id-range claims — written straight to the cloud, see Versioning and IdAllocator |
 | CustomDataColumnOrder_{Mode} | (none) | JSON array of Custom Data column keys, per mode — saved column drag order |
 | ImportLock | (none) | Cloud-mode-only, JSON `{HeldBy, Machine, AcquiredUtc}` — written directly to the cloud DB, not synced like other rows |
 
@@ -456,8 +512,9 @@ PM status thresholds: utilization > OverloadThreshold → "Overloaded"; ≥ Near
 
 ### AppDbContext Connection Logic
 - `new AppDbContext()` — ALWAYS uses local SQLite, even in Cloud mode (speed)
-- `new AppDbContext { ForceCloud = true }` — uses MariaDB; used exclusively by `CloudSyncService`
-- **Never** use `ForceCloud = true` in ViewModels or other app code
+- `new AppDbContext(forceCloud: true)` — uses MariaDB; used only by `CloudSyncService`, `ImportLockService` and `IdAllocator`
+- **Never** use `forceCloud: true` in ViewModels or other app code
+- **`ForceCloud` is a constructor argument, not an initializer, on purpose.** The constructor touches `ChangeTracker` (IdAllocator hook), which initializes the context and runs `OnConfiguring` immediately — an object-initializer `{ ForceCloud = true }` runs *after* that, so every "cloud" context silently connected to local SQLite and all cloud sync stopped with no error (2026-10-05, v1.0.0). Anything `OnConfiguring` reads must be set before the constructor touches `ChangeTracker`/`Database`/`Model`.
 
 ### Network Travel Sync (`SyncService`)
 - **Sync Before Travel**: copy network DB → local, enable travel mode
@@ -476,7 +533,10 @@ PM status thresholds: utilization > OverloadThreshold → "Overloaded"; ≥ Near
 - **`RompEquipmentTypes` initial pull** uses natural key `(RompId, EquipmentCategoryId)` to avoid unique-constraint conflicts when both sides have the same pair under different auto-increment IDs
 - **`TriggerForcePush()`** — public method; overwrites every cloud record with local data unconditionally (bypasses `LastModified` check); exposed as "Force Push All Data to Cloud" button in Config → Database; use after schema changes or when sync is stuck
 - **`PushNowAndWaitAsync(TimeSpan? timeout = null)`** — public, awaitable; forces an immediate push and waits for it (default 60s timeout, after which it just returns — the next regular tick picks up anything unpushed), used by the Orders import-lock flow so a lock isn't released until changes actually reached the cloud. No-op when sync isn't running or the initial pull hasn't completed (Local/Network mode, or Cloud mode still starting up).
-- **`DataChanged` event** — raised only from a periodic (not the initial) `DoPull` that brought in rows someone else changed; built by re-querying `Orders`/`Sites`/`Romps` for `LastModified > since`, grouped by `LastModifiedBy` (excluding this machine's own email) into a short summary like `"3 orders updated by Sarah Chen"`. Best-effort — wrapped in try/catch so a failure here can never break the sync cycle itself. `MainWindow` subscribes once and shows it as an auto-dismissing toast.
+- **`DataChanged` event** — raised from a periodic (not the initial) `DoPull` whenever it pulled **any** rows. The summary is built by re-querying `Orders`/`Sites`/`Romps` for `LastModified > since`, grouped by `LastModifiedBy` (excluding this machine's own email) into e.g. `"3 orders updated by Sarah Chen"`; when nothing is attributable (same account on both machines, or a table without `LastModifiedBy` like `Locations`/`AssignmentHistories`) it falls back to `"N changes synced from another computer"` — it used to stay silent then, which also meant pages never refreshed. Subscribers: `MainWindow` (toast), `WorkloadViewModel` (reload), `MainViewModel` (reloads the current page if it's Sites/Assignment/PM Detail via their `RefreshFromSync()`/`Load()`; edit-heavy pages are deliberately skipped).
+- **Two clocks, two cursors** (each rule below was a real lost-update bug): `_lastPushUtc` is on **this machine's** clock (local rows are stamped locally); `_lastPullServerUtc` is on the **cloud server's** clock (`CloudNowUtc()` = `SELECT UTC_TIMESTAMP(6)`). Every push **restamps** the rows it writes with the server's time (`BatchPush`/`BatchPushConfigs` `stamp`) — the last-writer-wins comparison still uses the original *edit* time, only the stored value changes — and `RestampLocal` copies that stamp back onto the local row unless it was edited again meanwhile. So a cloud row's `LastModified` means "arrived at", on one clock for all machines: an edit made long before its upload (a long full push, an offline laptop) or on a PC with a skewed clock can no longer slip behind other machines' pull cursors. (Before this, 2 campus unassignments made during a 5-minute full push were skipped forever.) Pulls still re-read `PullOverlap` (2 min) to cover in-flight commits. `PushNowAndWaitAsync` advances neither cursor; the initial pull sets both to when it *started*. `AppDbContext.StampLastModified` never moves a row's timestamp backwards (server-stamped values can be slightly ahead of local time). `RompEquipmentTypes` (natural-key sync) is not restamped. Direct cloud writes that others should pull (`ClientVersion.*`) use `CloudNowUtc()` too.
+- **Startup pull re-applies equal-timestamp rows** (`BatchPush(..., applyOnEqual: true)`, `InitialPullTable` only): an older build that predates a column pulls a row, copies `LastModified`, and drops the unknown column — after which "newer only" skips it forever (happened to `Locations.AssignedPmId` and `RompStatuses.Color`). EF only UPDATEs rows whose values really differ, so this is free for normal rows. Corollary: **startup seeding of a newly added column must not stamp `LastModified`** (`SkipLastModifiedStamp`), or the seed looks newer than the cloud and gets pushed over real values.
+- **Per-machine Id ranges** (`IdAllocator`): local SQLite autoincrement gives every in-sync machine the same "max + 1", and sync matches rows by `Id`, so concurrent creates on two machines collided (one silently overwrote/skipped the other). In Cloud mode each machine claims slot N once (atomic insert of cloud `AppConfig` key `IdSlot.N`, value starting with the machine name; saved as `IdSlot`/`IdSlotCloud` in `dbconfig.json`). A saved slot is only used after `EnsureSlotClaimed` confirms the cloud row names this machine — otherwise it re-claims (preferring the saved number) and, if it lost that number, `RenumberUnsyncedRows` moves its local-only rows from the old range to the new one, FKs included and new rows get Ids in `[N×20M, (N+1)×20M)`, assigned in `AppDbContext`'s `ChangeTracker.Tracked` hook (before navigation fix-up, so child FKs follow). Rows with an explicit Id (pulled copies) keep it. Before a slot is claimed, Cloud mode allocates from the legacy range `< 20M` (re-read every time, since older builds still write there). Local/Network modes keep plain autoincrement — Network shares one SQLite file, where an in-memory counter would itself collide. `RompEquipmentType` is excluded (synced by natural key).
 
 ### LastModified Column
 16 tables (`PMs`, `Locations`, `Sites`, `Romps`, `RompEquipmentTypes`, `Orders`, `RompStatuses`, `EquipmentCategories`, `EquipmentKeywords`, `AssignmentRules`, `AppConfigs`, `SavedReports`, `CustomColumns`, `CustomRows`, `Users`, `AuditEntries`) have `LastModified TEXT NOT NULL DEFAULT '2000-01-01 00:00:00'`. Migration via `ALTER TABLE ... ADD COLUMN` (try/catch). **Must run before any EF Core query** — placed immediately after other ALTER TABLE blocks in `App.OnStartup`. `Order`/`Site`/`Romp` additionally have a `LastModifiedBy TEXT` column (same migration pattern), auto-stamped from `CurrentUser.Email` by `AppDbContext.StampLastModified()` whenever the entity has that property — powers both Report Builder's "Last Changed By" field and the cross-user `DataChanged` notification summary above.
@@ -507,7 +567,7 @@ Background timer; polls configured folder; routes to correct parser; deduplicate
 ## Coding Conventions
 
 ### DbContext Pattern
-**Every method creates its own `using var db = new AppDbContext()`** — no shared long-lived context. In Cloud mode, regular contexts use local SQLite. Only `CloudSyncService` uses `ForceCloud = true`.
+**Every method creates its own `using var db = new AppDbContext()`** — no shared long-lived context. In Cloud mode, regular contexts use local SQLite. Only the sync/lock/Id-slot services use `forceCloud: true`.
 
 **A no-tracking query with an `Include` path that loops back to the root entity type throws `InvalidOperationException: ... results in a cycle`, not a silent wrong result.** E.g. querying `Romps` with `.Include(r => r.Site).ThenInclude(s => s.Romps)` fails, since `Site.Romps` re-enters the `Romp` type already at the root of the query. When a related aggregate (like `Site.SiteStatus`, which reads `Site.Romps`) is needed alongside a query rooted on one of that aggregate's children, compute it via a second, separately-rooted query instead of extending the `Include` chain.
 
@@ -556,6 +616,20 @@ Equipment score weight: same pattern with `Maximum=3.2`. Save handlers in `Confi
 4. Add `private readonly XxxViewModel _xxxVm = new();` in `MainViewModel`
 5. Add `NavigateToXxx()` method in `MainViewModel`
 6. Add `RadioButton` in `MainWindow.xaml` sidebar + handler
+
+## Versioning & Publishing
+
+The app version is `<Version>` in `PMDashboard.csproj` (plus a `BuildDateUtc` assembly-metadata stamp). **Every build that gets installed anywhere must have its own number** — publish with the script, which bumps it first:
+
+```
+.\publish.ps1                 # patch: bug fixes      1.0.0 -> 1.0.1
+.\publish.ps1 -Bump minor     # new features          1.0.1 -> 1.1.0
+.\publish.ps1 -Bump major     # big/breaking changes  1.1.0 -> 2.0.0
+.\publish.ps1 -Bump none      # rebuild same version
+```
+(wraps `dotnet publish -c Release -r win-x64 --self-contained true`; output in `bin\Release\net8.0-windows\win-x64\publish`. If PowerShell blocks scripts: `powershell -ExecutionPolicy Bypass -File .\publish.ps1`.) Commit the bump afterwards so source matches what's installed.
+
+Where the version shows up: header (under "Site Assignment Tracker", tooltip = build time), window title, login dialog, `sync-debug.log` "Connecting to cloud" line, every `crash.log` entry, and Login/AutoLogin audit details. In Cloud mode each machine writes `AppConfig` `ClientVersion.{MachineName}` (JSON: Version, BuildDateUtc, User, LastSeenUtc) straight to the cloud at startup; those rows sync to everyone, feeding Configuration → Database → **Versions in use** and an amber header banner on any machine whose version is older than another machine's (`CloudSyncService.NewerVersionInUse`, rechecked every ~10 min). An outdated build silently drops columns it doesn't know about when it syncs, so the banner matters.
 
 ## Running / Building
 

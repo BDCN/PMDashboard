@@ -50,17 +50,30 @@ public sealed class AutoImportService : IDisposable
 
     private void Poll()
     {
-        if (string.IsNullOrEmpty(_folder) || !Directory.Exists(_folder)) return;
-
-        var files = Directory.GetFiles(_folder, "*.xlsx")
-                     .Concat(Directory.GetFiles(_folder, "*.xls"))
-                     .OrderBy(File.GetLastWriteTime)
-                     .ToArray();
-
-        foreach (var file in files)
+        // This runs on a raw Timer callback (a thread-pool thread), not a Task — an exception
+        // escaping here isn't just a failed import, it's an unhandled exception on a thread-pool
+        // thread, which crashes the whole process by default in .NET. Directory.GetFiles (and
+        // File.GetLastWriteTime) throw for things well outside this service's control — a
+        // network share blipping, permissions changing, a drive letter disappearing — so the
+        // whole poll pass needs its own safety net, not just the per-file TryImport below.
+        try
         {
-            if (_seen.Contains(Path.GetFileName(file))) continue; // already processed this session
-            TryImport(file);
+            if (string.IsNullOrEmpty(_folder) || !Directory.Exists(_folder)) return;
+
+            var files = Directory.GetFiles(_folder, "*.xlsx")
+                         .Concat(Directory.GetFiles(_folder, "*.xls"))
+                         .OrderBy(File.GetLastWriteTime)
+                         .ToArray();
+
+            foreach (var file in files)
+            {
+                if (_seen.Contains(Path.GetFileName(file))) continue; // already processed this session
+                TryImport(file);
+            }
+        }
+        catch (Exception ex)
+        {
+            Notify($"Auto-import poll failed — will retry next cycle: {ex.Message}");
         }
     }
 
@@ -98,11 +111,13 @@ public sealed class AutoImportService : IDisposable
 
             // 3. Import — replicate the UpsertOrders logic without going through the ViewModel
             var result = RunUpsert(orders);
+            if (result.SitesCreated > 0)
+                try { CampusArrangementService.Arrange(); } catch { /* best-effort; runs again at next startup/sync */ }
 
             MoveToProcessed(filePath, "imported");
             Notify($"Auto-imported \"{Path.GetFileName(filePath)}\": " +
                    $"{result.Added} added, {result.Updated} updated, {result.Skipped} unchanged, " +
-                   $"{result.LocationsCreated} locations, {result.SitesCreated} sites, {result.RompsCreated} ROMPs.");
+                   $"{result.LocationsCreated} clusters, {result.SitesCreated} sites, {result.RompsCreated} ROMPs.");
             Application.Current?.Dispatcher.InvokeAsync(() => ImportCompleted?.Invoke(result));
         }
         catch (Exception ex)
@@ -125,8 +140,9 @@ public sealed class AutoImportService : IDisposable
             .AsEnumerable()
             .ToDictionary(o => (o.CustomerOrder!, o.OrdLine!));
 
-        var locationCache = db.Locations.ToDictionary(l => l.Name, StringComparer.OrdinalIgnoreCase);
-        var siteCache     = db.Sites.ToDictionary(s => s.Name,     StringComparer.OrdinalIgnoreCase);
+        // Safe against duplicate names (no DB-level uniqueness on Location/Site.Name) — see ToSafeNameDictionary.
+        var locationCache = db.Locations.AsEnumerable().ToSafeNameDictionary(l => l.Name, l => l.LastModified);
+        var siteCache     = db.Sites.AsEnumerable().ToSafeNameDictionary(s => s.Name,     s => s.LastModified);
 
         var existingRompSet = db.Romps.AsNoTracking()
             .Select(r => new { SiteName = r.Site!.Name, RompName = r.Name })

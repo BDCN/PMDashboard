@@ -1,0 +1,119 @@
+<UserControl x:Class="PMDashboard.Views.UserManagementPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="#F1F5F9">
+
+    <Grid>
+        <!-- Access restricted — Super Admin or Director, same as the old Manage Users card on
+             Configuration. Shown instead of the page for a plain "User". -->
+        <StackPanel Margin="32,28,32,28" HorizontalAlignment="Center" VerticalAlignment="Center">
+            <StackPanel.Style>
+                <Style TargetType="StackPanel">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding CanManageUsers}" Value="False">
+                            <Setter Property="Visibility" Value="Visible"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </StackPanel.Style>
+            <TextBlock Text="🔒" FontSize="40" HorizontalAlignment="Center" Margin="0,0,0,16"/>
+            <TextBlock Text="User Management is restricted to Super Admins and Directors" FontSize="18" FontWeight="SemiBold"
+                       Foreground="#0F172A" HorizontalAlignment="Center"/>
+            <TextBlock Text="Ask a Super Admin or Director if you need an account changed."
+                       FontSize="13" Foreground="#64748B" HorizontalAlignment="Center" Margin="0,6,0,0"/>
+        </StackPanel>
+
+        <Grid Margin="32,28,32,28">
+            <Grid.Style>
+                <Style TargetType="Grid">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding CanManageUsers}" Value="True">
+                            <Setter Property="Visibility" Value="Visible"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Grid.Style>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>  <!-- Title -->
+                <RowDefinition Height="*"/>     <!-- Users card -->
+            </Grid.RowDefinitions>
+
+            <!-- ── Title ── -->
+            <StackPanel Grid.Row="0" Margin="0,0,0,24">
+                <TextBlock Text="User Management" FontSize="22" FontWeight="Bold"
+                           Foreground="#0F172A" FontFamily="Segoe UI Semibold"/>
+                <TextBlock Text="Create logins for team members, reset passwords, and manage account access."
+                           FontSize="13" Foreground="#64748B" Margin="0,4,0,0"/>
+            </StackPanel>
+
+            <!-- ── Users card ── -->
+            <Border Grid.Row="1" Background="White" CornerRadius="10"
+                    BorderBrush="#E2E8F0" BorderThickness="1" Padding="24,20" VerticalAlignment="Top">
+                <StackPanel>
+                    <Grid Margin="0,0,0,4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Accounts" FontSize="16" FontWeight="SemiBold" Foreground="#0F172A"/>
+                        <Button Grid.Column="1" Content="+ Add User" Click="BtnAddUser_Click"
+                                Style="{StaticResource PrimaryButtonStyle}" Padding="12,6" FontSize="12"/>
+                    </Grid>
+                    <TextBlock Text="Directors can manage regular accounts but cannot create, reset, or deactivate a Super Admin."
+                               FontSize="13" Foreground="#64748B" Margin="0,0,0,16"/>
+
+                    <Border BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" ClipToBounds="True">
+                        <DataGrid x:Name="UsersGrid"
+                                  Style="{StaticResource AppDataGridStyle}"
+                                  CellStyle="{StaticResource DataGridCellStyle}"
+                                  ColumnHeaderStyle="{StaticResource DataGridColumnHeaderStyle}"
+                                  ItemsSource="{Binding Users}"
+                                  AutoGenerateColumns="False" IsReadOnly="True" BorderThickness="0">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Name"  Width="180" Binding="{Binding DisplayName}"/>
+                                <DataGridTextColumn Header="Email" Width="220" Binding="{Binding Email}"/>
+                                <DataGridTextColumn Header="Role"  Width="110" Binding="{Binding Role}"/>
+                                <DataGridTextColumn Header="Last Login" Width="140"
+                                                    Binding="{Binding LastLoginUtc, StringFormat='yyyy-MM-dd HH:mm'}"/>
+                                <DataGridTemplateColumn Header="Active" Width="80">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <CheckBox IsChecked="{Binding IsActive, Mode=OneWay}"
+                                                      IsHitTestVisible="False" HorizontalAlignment="Center"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTemplateColumn Header="" Width="*">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,2">
+                                                <Button Content="Reset Password" Click="BtnResetUserPassword_Click"
+                                                        Style="{StaticResource SecondaryButtonStyle}"
+                                                        Padding="8,3" FontSize="11" Margin="0,0,8,0"/>
+                                                <Button Click="BtnToggleUserActive_Click"
+                                                        Padding="8,3" FontSize="11">
+                                                    <Button.Style>
+                                                        <Style TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
+                                                            <Setter Property="Content" Value="Deactivate"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsActive}" Value="False">
+                                                                    <Setter Property="Content" Value="Activate"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Button.Style>
+                                                </Button>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </Border>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

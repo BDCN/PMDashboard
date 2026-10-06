@@ -31,8 +31,14 @@ public partial class AddEditRompDialog : Window
         InitializeComponent();
         _existing = existing;
 
-        // Status dropdown — dynamic from StatusConfig
-        CboStatus.ItemsSource = StatusConfig.All.ToList();
+        // Status dropdown — dynamic from StatusConfig, excluding disabled statuses so they can't
+        // be newly assigned. If this ROMP is already sitting on a disabled status, that status is
+        // still added so the field shows its real current value instead of going blank/changing
+        // it as a side effect of opening the dialog.
+        var statusOptions = StatusConfig.Selectable.ToList();
+        if (existing != null && !statusOptions.Contains(existing.Status, StringComparer.OrdinalIgnoreCase))
+            statusOptions.Insert(0, existing.Status);
+        CboStatus.ItemsSource = statusOptions;
 
         // Sites dropdown
         CboSite.ItemsSource = sites;
@@ -47,6 +53,8 @@ public partial class AddEditRompDialog : Window
             TxtName.Text          = existing.Name;
             CboSite.SelectedItem  = sites.FirstOrDefault(s => s.Id == existing.SiteId);
             CboStatus.SelectedItem = existing.Status;
+            TxtCurrentStatus.Text       = $"Currently: {existing.Status}";
+            TxtCurrentStatus.Visibility = Visibility.Visible;
         }
         else
         {
@@ -87,7 +95,7 @@ public partial class AddEditRompDialog : Window
     private void CboSite_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (CboSite.SelectedItem is Site site && site.Location != null)
-            TxtRegionHint.Text = $"Region: {site.Location.GeographicalLocation} (inherited from location)";
+            TxtRegionHint.Text = $"Region: {site.Location.GeographicalLocation} (inherited from cluster)";
         else
             TxtRegionHint.Text = "";
     }
@@ -111,7 +119,7 @@ public partial class AddEditRompDialog : Window
         }
 
         var status = CboStatus.SelectedItem as string
-                     ?? StatusConfig.All.FirstOrDefault()
+                     ?? StatusConfig.Selectable.FirstOrDefault()
                      ?? "Ordered";
 
         if (ChkMarkComplete.IsChecked == true)

@@ -34,7 +34,7 @@ public class SiteAssignmentImportService
     {
         var ws = wb.Worksheets.Add(SheetName);
 
-        string[] headers = ["Location", "Site Name", "PM Data Name"];
+        string[] headers = ["Cluster", "Site Name", "PM Data Name"];
         for (int col = 1; col <= headers.Length; col++)
         {
             var cell = ws.Cell(1, col);
@@ -112,7 +112,7 @@ public class SiteAssignmentImportService
 
         ws.Cell("A3").Value = "1. Fill in the \"Site Assignments\" sheet starting at row 2.";
         ws.Cell("A4").Value = "2. Delete or overwrite the example row (row 2) before importing.";
-        ws.Cell("A5").Value = "3. Location and Site Name must both match an existing Site exactly — this import does not create new Sites.";
+        ws.Cell("A5").Value = "3. Cluster and Site Name must both match an existing Site exactly — this import does not create new Sites.";
         ws.Cell("A6").Value = "4. PM Data Name has a dropdown of active PMs — click the cell and use the arrow, or type an exact Data Name.";
         ws.Cell("A7").Value = "5. If a Site is already assigned to a different PM than the sheet says, that row is skipped and reported — it is not overwritten.";
         ws.Cell("A8").Value = "6. To unassign a PM from a site, use the Assignment or PM Detail page instead — this importer only assigns.";
@@ -129,8 +129,8 @@ public class SiteAssignmentImportService
 
         string[,] cols =
         {
-            { "A", "Location",      "Required — must match an existing Location's code exactly" },
-            { "B", "Site Name",     "Required — must match an existing Site under that Location" },
+            { "A", "Cluster",       "Required — must match an existing Cluster's code exactly" },
+            { "B", "Site Name",   "Required — must match an existing Site under that Cluster" },
             { "C", "PM Data Name",  "Required — pick from the dropdown (active PMs only), or type an exact Data Name" },
         };
         for (int r = 0; r < cols.GetLength(0); r++)
@@ -177,7 +177,7 @@ public class SiteAssignmentImportService
 
             if (string.IsNullOrEmpty(location) || string.IsNullOrEmpty(siteName))
             {
-                messages.Add($"Row {row}: Location and Site Name are both required — skipped.");
+                messages.Add($"Row {row}: Cluster and Site Name are both required — skipped.");
                 errors++;
                 continue;
             }
@@ -199,8 +199,8 @@ public class SiteAssignmentImportService
                 // means a typo in the Location column rather than a missing Site.
                 bool existsElsewhere = sites.Any(s => string.Equals(s.Name, siteName, StringComparison.OrdinalIgnoreCase));
                 messages.Add(existsElsewhere
-                    ? $"Row {row}: Site \"{siteName}\" exists, but not under Location \"{location}\" — skipped."
-                    : $"Row {row}: Site \"{siteName}\" not found under Location \"{location}\" — skipped.");
+                    ? $"Row {row}: Site \"{siteName}\" exists, but not under Cluster \"{location}\" — skipped."
+                    : $"Row {row}: Site \"{siteName}\" not found under Cluster \"{location}\" — skipped.");
                 errors++;
                 continue;
             }
@@ -226,7 +226,14 @@ public class SiteAssignmentImportService
                 continue;
             }
 
-            site.AssignedPmId = pm.Id; // site came from a tracked query on this same db context
+            if (TeamRules.For(db).Reason(pm.Id, site.LocationId, site.CampusId) is { } why)
+            {
+                messages.Add($"Row {row} ({siteName}): {why} — skipped.");
+                errors++;
+                continue;
+            }
+
+            AssignmentHistoryService.RecordChange(db, site, pm.Id); // site came from a tracked query on this same db context
             assigned++;
         }
 

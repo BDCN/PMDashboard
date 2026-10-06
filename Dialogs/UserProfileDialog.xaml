@@ -30,6 +30,10 @@
             <TextBlock x:Name="TxtStatus" FontSize="12"
                        Visibility="Collapsed" Margin="0,0,0,12" TextWrapping="Wrap"/>
 
+            <Button x:Name="BtnForgetDevice" Content="Forget This Device (disable auto-login)"
+                    Style="{StaticResource SecondaryButtonStyle}" HorizontalAlignment="Left"
+                    FontSize="11" Padding="10,5" Margin="0,0,0,12" Click="BtnForgetDevice_Click"/>
+
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
                 <Button Content="Change Password" Style="{StaticResource SecondaryButtonStyle}"
                         Click="BtnChangePassword_Click" Margin="0,0,10,0"/>

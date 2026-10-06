@@ -35,7 +35,7 @@ public class SitesImportService
     {
         var ws = wb.Worksheets.Add(SheetName);
 
-        string[] headers = ["Location", "Region", "Site Name", "ROMP Name", "Status"];
+        string[] headers = ["Cluster", "Region", "Site Name", "ROMP Name", "Status"];
         for (int col = 1; col <= headers.Length; col++)
         {
             var cell = ws.Cell(1, col);
@@ -78,15 +78,15 @@ public class SitesImportService
             }
         }
 
-        ws.Column(1).Width = 14; // Location
+        ws.Column(1).Width = 14; // Cluster
         ws.Column(2).Width = 12; // Region
-        ws.Column(3).Width = 18; // Site Name
+        ws.Column(3).Width = 18; // Campus Name
         ws.Column(4).Width = 16; // ROMP Name
         ws.Column(5).Width = 18; // Status
 
         ws.SheetView.FreezeRows(1);
 
-        // Region dropdown (column B) — only used when the Location doesn't already exist
+        // Region dropdown (column B) — only used when the Cluster doesn't already exist
         var regionRange = ws.Range("B2:B10000");
         var dvRegion = regionRange.CreateDataValidation();
         dvRegion.List("\"East,Central,West\"");
@@ -95,8 +95,11 @@ public class SitesImportService
         dvRegion.ErrorMessage = "Please choose East, Central, or West";
 
         // Status dropdown (column E) — built from the LIVE status list, since RompStatus is an
-        // admin-configurable table (Config → Site/ROMP Statuses), not a fixed enum.
-        var statusList = string.Join(",", StatusConfig.All);
+        // admin-configurable table (Config → Site/ROMP Statuses), not a fixed enum. Disabled
+        // statuses are left out of the pick-list (same reasoning as every other "assign a
+        // status" control — see StatusConfig.Selectable), but a ROMP already on one keeps it;
+        // the parser only rejects a disabled status when it would be a genuine new assignment.
+        var statusList = string.Join(",", StatusConfig.Selectable);
         var statusRange = ws.Range("E2:E10000");
         var dvStatus = statusRange.CreateDataValidation();
         dvStatus.List($"\"{statusList}\"");
@@ -115,9 +118,9 @@ public class SitesImportService
 
         ws.Cell("A3").Value = "1. Fill in the \"Sites Bulk Import\" sheet starting at row 2 — one row per ROMP.";
         ws.Cell("A4").Value = "2. Delete or overwrite the example row (row 2) before importing.";
-        ws.Cell("A5").Value = "3. If the Location doesn't exist yet, Region (East/Central/West, column B) is required to create it.";
-        ws.Cell("A6").Value = "4. If the Location already exists, Region is ignored — it is not updated from this sheet.";
-        ws.Cell("A7").Value = "5. If the Site already exists under a different Location than the sheet says, that row is skipped and reported.";
+        ws.Cell("A5").Value = "3. If the Cluster doesn't exist yet, Region (East/Central/West, column B) is required to create it.";
+        ws.Cell("A6").Value = "4. If the Cluster already exists, Region is ignored — it is not updated from this sheet.";
+        ws.Cell("A7").Value = "5. If the Site already exists under a different Cluster than the sheet says, that row is skipped and reported.";
         ws.Cell("A8").Value = "6. If the Site/ROMP combination already exists, its Status is updated to match the sheet — re-download, edit, and re-upload to record status changes.";
         ws.Cell("A9").Value = "7. Status (column E) must be one of the statuses configured in Config → Site/ROMP Statuses (see dropdown).";
 
@@ -133,9 +136,9 @@ public class SitesImportService
 
         string[,] cols =
         {
-            { "A", "Location",   "Required — 3-letter code; created automatically if new" },
-            { "B", "Region",     "Required only when creating a new Location — East, Central, or West" },
-            { "C", "Site Name",  "Required — created automatically if new" },
+            { "A", "Cluster",    "Required — 3-letter code; created automatically if new" },
+            { "B", "Region",     "Required only when creating a new Cluster — East, Central, or West" },
+            { "C", "Site Name","Required — created automatically if new" },
             { "D", "ROMP Name",  "Required — created automatically if new" },
             { "E", "Status",     "Required — must match a configured ROMP status exactly" },
         };
@@ -169,12 +172,17 @@ public class SitesImportService
 
         using var db = new AppDbContext();
 
-        var locationCache = db.Locations.ToDictionary(l => l.Name, StringComparer.OrdinalIgnoreCase);
-        var siteCache      = db.Sites.Include(s => s.Location).ToDictionary(s => s.Name, StringComparer.OrdinalIgnoreCase);
-        var rompCache      = db.Romps.Include(r => r.Site)
-                                .ToDictionary(r => $"{r.Site.Name}|{r.Name}", StringComparer.OrdinalIgnoreCase);
+        // Safe against duplicate names (no DB-level uniqueness on Location/Site.Name) — see ToSafeNameDictionary.
+        var locationCache = db.Locations.AsEnumerable().ToSafeNameDictionary(l => l.Name, l => l.LastModified);
+        var siteCache     = db.Sites.Include(s => s.Location).AsEnumerable()
+                                .ToSafeNameDictionary(s => s.Name, s => s.LastModified);
+        var rompCache     = db.Romps.Include(r => r.Site).AsEnumerable()
+                                .ToSafeNameDictionary(r => $"{r.Site.Name}|{r.Name}", r => r.LastModified);
 
-        var validStatuses = StatusConfig.All;
+        var validStatuses    = StatusConfig.All;
+        var disabledStatuses = StatusConfig.All
+            .Except(StatusConfig.Selectable, StringComparer.OrdinalIgnoreCase)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         for (int row = 2; row <= lastRow; row++)
         {
@@ -190,7 +198,7 @@ public class SitesImportService
 
             if (string.IsNullOrEmpty(location) || string.IsNullOrEmpty(siteName) || string.IsNullOrEmpty(rompName))
             {
-                errors.Add($"Row {row}: Location, Site Name, and ROMP Name are all required — skipped.");
+                errors.Add($"Row {row}: Cluster, Site Name, and ROMP Name are all required — skipped.");
                 continue;
             }
 
@@ -203,6 +211,22 @@ public class SitesImportService
             // practice, but a hand-typed value could differ only by case).
             status = validStatuses.First(s => string.Equals(s, status, StringComparison.OrdinalIgnoreCase));
 
+            // A disabled status is still a REAL status (ROMPs already on it must keep working,
+            // and a re-downloaded/re-uploaded sheet legitimately carries it for an unchanged
+            // row) — only block it as a NEW assignment: a brand-new ROMP, or moving an existing
+            // one onto it from something else. Checked by raw sheet key so it doesn't need the
+            // Site to already be resolved.
+            if (disabledStatuses.Contains(status))
+            {
+                var alreadyOnThisStatus = rompCache.TryGetValue($"{siteName}|{rompName}", out var currentRomp)
+                                          && string.Equals(currentRomp.Status, status, StringComparison.Ordinal);
+                if (!alreadyOnThisStatus)
+                {
+                    errors.Add($"Row {row} ({siteName}/{rompName}): Status \"{status}\" is disabled for new assignment — skipped.");
+                    continue;
+                }
+            }
+
             // ── Site: find, or create (creating its Location first if needed) ──
             Site site;
             if (siteCache.TryGetValue(siteName, out var existingSite))
@@ -210,7 +234,7 @@ public class SitesImportService
                 if (existingSite.Location != null &&
                     !string.Equals(existingSite.Location.Name, location, StringComparison.OrdinalIgnoreCase))
                 {
-                    errors.Add($"Row {row}: Site \"{siteName}\" already exists under Location \"{existingSite.Location.Name}\", not \"{location}\" — skipped.");
+                    errors.Add($"Row {row}: Site \"{siteName}\" already exists under Cluster \"{existingSite.Location.Name}\", not \"{location}\" — skipped.");
                     continue;
                 }
                 site = existingSite;
@@ -221,7 +245,7 @@ public class SitesImportService
                 {
                     if (!ValidRegions.Contains(region, StringComparer.OrdinalIgnoreCase))
                     {
-                        errors.Add($"Row {row}: Location \"{location}\" doesn't exist yet, and Region must be East, Central, or West to create it — skipped.");
+                        errors.Add($"Row {row}: Cluster \"{location}\" doesn't exist yet, and Region must be East, Central, or West to create it — skipped.");
                         continue;
                     }
                     loc = new Location { Name = location, GeographicalLocation = region };
@@ -259,9 +283,11 @@ public class SitesImportService
 
         var result = new SitesImportResult(locationsCreated, sitesCreated, rompsCreated, rompsUpdated, unchanged, errors.Count);
         AuditService.Log("Import", "SitesRomps", details:
-            $"Sites/ROMPs import: {locationsCreated} location(s), {sitesCreated} site(s), {rompsCreated} ROMP(s) created, " +
+            $"Sites/ROMPs import: {locationsCreated} cluster(s), {sitesCreated} site(s), {rompsCreated} ROMP(s) created, " +
             $"{rompsUpdated} ROMP(s) updated, {errors.Count} error(s)");
 
+        if (sitesCreated > 0)
+            try { CampusArrangementService.Arrange(); } catch { /* best-effort; runs again at next startup/sync */ }
         return (result, errors);
     }
 }

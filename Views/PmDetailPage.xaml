@@ -16,10 +16,20 @@
 
         <!-- ── Back button + title ── -->
         <StackPanel Grid.Row="0" Margin="0,0,0,20">
-            <Button Content="← Back to Workload" HorizontalAlignment="Left"
-                    Style="{StaticResource SecondaryButtonStyle}"
-                    Padding="12,6" FontSize="12" Margin="0,0,0,16"
-                    Click="BtnBack_Click"/>
+            <Grid Margin="0,0,0,16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <Button Grid.Column="0" Content="← Back to Workload" HorizontalAlignment="Left"
+                        Style="{StaticResource SecondaryButtonStyle}"
+                        Padding="12,6" FontSize="12"
+                        Click="BtnBack_Click"/>
+                <Button Grid.Column="1" Content="Assignment History" HorizontalAlignment="Right"
+                        Style="{StaticResource SecondaryButtonStyle}"
+                        Padding="12,6" FontSize="12"
+                        Click="BtnAssignmentHistory_Click"/>
+            </Grid>
             <TextBlock Text="{Binding PmName}" FontSize="24" FontWeight="Bold"
                        Foreground="#0F172A" FontFamily="Segoe UI Semibold"/>
             <TextBlock FontSize="13" Foreground="#64748B" Margin="0,4,0,0">
@@ -296,8 +306,22 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
-                    <TextBlock Grid.Column="0" Text="Assigned Sites" FontSize="16"
-                               FontWeight="SemiBold" Foreground="#0F172A" VerticalAlignment="Center"/>
+                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                        <TextBlock Text="Assigned Sites" FontSize="16"
+                                   FontWeight="SemiBold" Foreground="#0F172A"/>
+                        <TextBlock Text="{Binding DirectClusters}" FontSize="12" Foreground="#475569"
+                                   TextWrapping="Wrap" Margin="0,4,0,0">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding DirectClusters}" Value="">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
 
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                         <CheckBox x:Name="ChkSelectAll" Content="Select All"
@@ -358,7 +382,7 @@
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
 
-                            <!-- Site Name — clickable link to drill into ROMs -->
+                            <!-- Campus Name — clickable link to drill into ROMs -->
                             <DataGridTemplateColumn Header="Site Name" Width="*" SortMemberPath="SiteName">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
@@ -390,7 +414,8 @@
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
 
-                            <DataGridTextColumn Header="Location" Binding="{Binding Location}"   Width="90"/>
+                            <DataGridTextColumn Header="Cluster" Binding="{Binding Location}"   Width="90"/>
+                            <DataGridTextColumn Header="Campus" Binding="{Binding Campus}"     Width="90"/>
                             <DataGridTextColumn Header="Status"   Binding="{Binding SiteStatus}" Width="90"/>
                             <DataGridTextColumn Header="ROMs"
                                                 Binding="{Binding ActiveRomps}" Width="70"/>

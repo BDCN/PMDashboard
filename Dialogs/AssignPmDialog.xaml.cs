@@ -11,9 +11,13 @@ public partial class AssignPmDialog : Window
     public bool WasUnassigned { get; private set; }
 
     public AssignPmDialog(Site site, List<PM> pms, PM? currentPm)
+        : this($"Site: {site.Name}", pms, currentPm) { }
+
+    /// <summary>Generalized constructor — used for ROMP-level assignment too (subjectLabel e.g. "ROMP: X").</summary>
+    public AssignPmDialog(string subjectLabel, List<PM> pms, PM? currentPm)
     {
         InitializeComponent();
-        TxtSiteName.Text  = $"Site: {site.Name}";
+        TxtSiteName.Text  = subjectLabel;
         PmGrid.ItemsSource = pms;
 
         // Pre-select currently assigned PM

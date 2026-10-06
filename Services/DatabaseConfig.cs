@@ -22,6 +22,52 @@ public static class DatabaseConfig
     public static string       CloudConnectionString { get; private set; } = "";
     public static bool         IsTravelMode         { get; private set; } = false;
 
+    /// <summary>
+    /// True once this machine has ever completed one unconditional "send everything" push to
+    /// the cloud. Deliberately stored here (per-machine, never synced) rather than as an
+    /// AppConfig row — AppConfigs sync between machines, and a flag meaning "has THIS machine
+    /// done its one-time full push" would be meaningless (or actively wrong) if another
+    /// machine's value overwrote it. Must persist across app restarts: CloudSyncService used to
+    /// track this in memory only, so it reset to false — and re-triggered a full resend of every
+    /// row in every table, Orders included — on every single launch, not just the first one ever.
+    /// For a 130k+-row Orders table that made every restart pay a multi-minute sync before any
+    /// real edit could get pushed, which was long enough for other machines' watermarks to
+    /// advance past that edit's timestamp and skip it permanently.
+    /// </summary>
+    public static bool         CloudFirstPushDone   { get; private set; } = false;
+
+    /// <summary>
+    /// Bump <see cref="RequiredFullPushGeneration"/> to make every machine redo one full
+    /// "push everything newer than the cloud" pass on its next start — for recovering rows that
+    /// a sync bug kept from ever reaching the cloud. Generation 1 = 2026-10-05: every
+    /// ForceCloud context was silently writing to local SQLite, so nothing saved during that
+    /// window was uploaded, and its LastModified is now older than the incremental cursor.
+    /// Safe to re-run: BatchPush only applies rows that are newer than the cloud's copy.
+    /// </summary>
+    public const int RequiredFullPushGeneration = 1;
+    public static int          CloudFullPushGeneration { get; private set; } = 0;
+    public static bool         CloudFullPushCurrent => CloudFirstPushDone && CloudFullPushGeneration >= RequiredFullPushGeneration;
+
+    /// <summary>
+    /// True once this machine has done one unconditional "send everything since the beginning
+    /// of time" sync pass for the 5 Forecast Planning tables specifically. Needed because the
+    /// Forecast tables were added to the cloud schema after other machines had already pushed
+    /// forecast data — those pushes failed per-table (table didn't exist yet) but the global
+    /// sync watermark (<c>_lastSyncUtc</c>) still advanced every cycle regardless, since
+    /// per-table failures are caught and swallowed. That left already-uploaded forecast rows
+    /// permanently stuck: their LastModified became older than the watermark, so the normal
+    /// incremental "only rows newer than since" push/pull would never pick them up again, even
+    /// after the missing tables were created. This flag forces one more MinValue (full-history)
+    /// push+pull of just those 5 tables to flush the stuck rows, the same way
+    /// <see cref="CloudFirstPushDone"/> does for the whole database on a brand new machine.
+    /// </summary>
+    public static bool         ForecastFirstSyncDone { get; private set; } = false;
+
+    /// <summary>This machine's primary-key Id slot in the cloud database identified by
+    /// <see cref="IdSlotCloud"/> — see <see cref="IdAllocator"/>. Null until claimed.</summary>
+    public static int?         IdSlot               { get; private set; }
+    public static string       IdSlotCloud          { get; private set; } = "";
+
     // ── Computed paths ────────────────────────────────────────────────────────
     public static string LocalDbPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -61,6 +107,11 @@ public static class DatabaseConfig
             NetworkDbPath         = obj.NetworkDbPath        ?? "";
             CloudConnectionString = obj.CloudConnectionString ?? "";
             IsTravelMode          = obj.IsTravelMode;
+            CloudFirstPushDone    = obj.CloudFirstPushDone;
+            CloudFullPushGeneration = obj.CloudFullPushGeneration;
+            ForecastFirstSyncDone = obj.ForecastFirstSyncDone;
+            IdSlot                = obj.IdSlot;
+            IdSlotCloud           = obj.IdSlotCloud ?? "";
         }
         catch { /* corrupt file — fall back to Local */ }
     }
@@ -75,8 +126,38 @@ public static class DatabaseConfig
                 NetworkDbPath         = NetworkDbPath,
                 CloudConnectionString = CloudConnectionString,
                 IsTravelMode          = IsTravelMode,
+                CloudFirstPushDone    = CloudFirstPushDone,
+                CloudFullPushGeneration = CloudFullPushGeneration,
+                ForecastFirstSyncDone = ForecastFirstSyncDone,
+                IdSlot                = IdSlot,
+                IdSlotCloud           = IdSlotCloud,
             },
             new JsonSerializerOptions { WriteIndented = true }));
+    }
+
+    /// <summary>Called by CloudSyncService once its first unconditional full push completes.</summary>
+    public static void MarkCloudFirstPushDone()
+    {
+        if (CloudFullPushCurrent) return;
+        CloudFirstPushDone      = true;
+        CloudFullPushGeneration = RequiredFullPushGeneration;
+        Save();
+    }
+
+    /// <summary>Called by CloudSyncService once its one-time full-history Forecast sync completes.</summary>
+    public static void MarkForecastFirstSyncDone()
+    {
+        if (ForecastFirstSyncDone) return;
+        ForecastFirstSyncDone = true;
+        Save();
+    }
+
+    /// <summary>Called by IdAllocator once it has claimed a slot in the cloud.</summary>
+    public static void SetIdSlot(int slot, string cloudIdentity)
+    {
+        IdSlot      = slot;
+        IdSlotCloud = cloudIdentity;
+        Save();
     }
 
     // ── Apply helpers (call then restart the EF contexts as needed) ───────────
@@ -116,5 +197,10 @@ public static class DatabaseConfig
         public string?      NetworkDbPath         { get; set; }
         public string?      CloudConnectionString { get; set; }
         public bool         IsTravelMode          { get; set; }
+        public bool         CloudFirstPushDone    { get; set; }
+        public int          CloudFullPushGeneration { get; set; }
+        public bool         ForecastFirstSyncDone { get; set; }
+        public int?         IdSlot                { get; set; }
+        public string?      IdSlotCloud           { get; set; }
     }
 }

@@ -13,15 +13,15 @@
             <TextBlock x:Name="TxtTitle" Text="Add Site" FontSize="18"
                        FontWeight="SemiBold" Foreground="#0F172A" Margin="0,0,0,24"/>
 
-            <!-- Location -->
-            <TextBlock Text="Location" FontSize="12" FontWeight="SemiBold"
+            <!-- Cluster -->
+            <TextBlock Text="Cluster" FontSize="12" FontWeight="SemiBold"
                        Foreground="#374151" Margin="0,0,0,6"/>
             <ComboBox x:Name="CboLocation" Style="{StaticResource FormComboBoxStyle}"
                       DisplayMemberPath="Name" Margin="0,0,0,8"/>
             <TextBlock x:Name="TxtRegionHint" Text="" FontSize="11"
                        Foreground="#64748B" Margin="0,0,0,16"/>
 
-            <!-- Site Name -->
+            <!-- Campus Name -->
             <TextBlock Text="Site Name" FontSize="12" FontWeight="SemiBold"
                        Foreground="#374151" Margin="0,0,0,6"/>
             <TextBox x:Name="TxtName" Style="{StaticResource FormTextBoxStyle}" Margin="0,0,0,24"/>
@@ -40,13 +40,17 @@
                         </Border>
                     </StackPanel>
                     <TextBlock Text="Leaves individual ROMP statuses unchanged if set to No change."
-                               FontSize="11" Foreground="#94A3B8" Margin="0,0,0,8"/>
+                               FontSize="11" Foreground="#94A3B8" Margin="0,0,0,4"/>
+                    <!-- Current status breakdown — set in code-behind; hidden if there are no ROMPs yet -->
+                    <TextBlock x:Name="TxtCurrentStatuses" FontSize="11" FontWeight="SemiBold"
+                               Foreground="#374151" TextWrapping="Wrap" Margin="0,0,0,8"
+                               Visibility="Collapsed"/>
                     <!-- Items loaded dynamically from StatusConfig in code-behind -->
                     <ComboBox x:Name="CboBulkRompStatus" Style="{StaticResource FormComboBoxStyle}"/>
                 </StackPanel>
             </Border>
 
-            <!-- Close shortcut — completes every ROMP at this site and hides it from the list -->
+            <!-- Close shortcut — completes every ROMP at this campus and hides it from the list -->
             <Border x:Name="CloseSiteSection" Visibility="Collapsed"
                     Background="#FEF2F2" BorderBrush="#FECACA" BorderThickness="1"
                     CornerRadius="6" Padding="14,12" Margin="0,0,0,20">

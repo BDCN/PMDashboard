@@ -24,6 +24,14 @@ public partial class PmDetailPage : UserControl
 
     private void BtnBack_Click(object sender, RoutedEventArgs e) => Vm?.GoBack();
 
+    private void BtnAssignmentHistory_Click(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm) return;
+        var dlg = AssignmentHistoryDialog.ForPm(vm.CurrentPmId, vm.PmName);
+        dlg.Owner = Window.GetWindow(this);
+        dlg.ShowDialog();
+    }
+
     // ── Bulk selection ────────────────────────────────────────────────────────
 
     private void ChkSelectAll_Click(object sender, RoutedEventArgs e)

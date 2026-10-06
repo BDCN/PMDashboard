@@ -1,0 +1,460 @@
+<UserControl x:Class="PMDashboard.Views.CoveragePlannerPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="#F1F5F9">
+
+    <UserControl.Resources>
+        <!-- Flat tab strip matching the app's palette (no other page uses tabs yet) -->
+        <Style x:Key="PlannerTabStyle" TargetType="TabItem">
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Foreground" Value="#64748B"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabItem">
+                        <Border x:Name="Bd" Padding="16,10" Margin="0,0,4,0" BorderThickness="0,0,0,3"
+                                BorderBrush="Transparent" Background="Transparent">
+                            <ContentPresenter ContentSource="Header" HorizontalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#2563EB"/>
+                                <Setter Property="Foreground" Value="#0F172A"/>
+                                <Setter Property="FontWeight" Value="SemiBold"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Foreground" Value="#0F172A"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="CardStyle" TargetType="Border">
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="BorderBrush" Value="#E2E8F0"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="18,14"/>
+            <Setter Property="Margin" Value="0,0,12,0"/>
+        </Style>
+
+        <Style x:Key="HintStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Foreground" Value="#64748B"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="Margin" Value="0,0,0,10"/>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Margin="32,28,32,28">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>  <!-- title -->
+            <RowDefinition Height="Auto"/>  <!-- KPI cards -->
+            <RowDefinition Height="*"/>     <!-- tabs -->
+        </Grid.RowDefinitions>
+
+        <!-- ── Title ── -->
+        <DockPanel Grid.Row="0" Margin="0,0,0,16">
+            <Button DockPanel.Dock="Right" Content="Recalculate" Style="{StaticResource SecondaryButtonStyle}"
+                    Click="BtnRefresh_Click" VerticalAlignment="Top"
+                    ToolTip="Rebuild the plan from the latest forecast, assignments and settings"/>
+            <Button DockPanel.Dock="Right" Content="Model settings" Style="{StaticResource SecondaryButtonStyle}"
+                    Click="BtnSettings_Click" VerticalAlignment="Top" Margin="0,0,10,0"
+                    ToolTip="Change the model's variables (Configuration → Coverage Planning Model)">
+                <Button.Visibility>
+                    <Binding Path="CanEditSettings" Mode="OneWay">
+                        <Binding.Converter><BooleanToVisibilityConverter/></Binding.Converter>
+                    </Binding>
+                </Button.Visibility>
+            </Button>
+            <StackPanel>
+                <TextBlock Text="Coverage Planner" FontSize="22" FontWeight="Bold"
+                           Foreground="#0F172A" FontFamily="Segoe UI Semibold"/>
+                <TextBlock Text="{Binding SettingsSummary}" FontSize="12" Foreground="#64748B" Margin="0,4,0,0"
+                           TextWrapping="Wrap"
+                           ToolTip="Change these on the Configuration page → Coverage Planning"/>
+                <TextBlock Text="{Binding DataSummary}" FontSize="12" Foreground="#94A3B8" Margin="0,2,0,0"/>
+                <TextBlock Text="{Binding StatusMessage}" FontSize="12" Foreground="#15803D" Margin="0,4,0,0">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding StatusMessage}" Value="">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </StackPanel>
+        </DockPanel>
+
+        <!-- ── KPI cards ── -->
+        <UniformGrid Grid.Row="1" Rows="1" Margin="0,0,-12,16">
+            <Border Style="{StaticResource CardStyle}">
+                <StackPanel>
+                    <TextBlock Text="Sites covered" FontSize="12" Foreground="#64748B"/>
+                    <TextBlock Text="{Binding AssignedCampusCount}" FontSize="26" FontWeight="Bold" Foreground="#0F172A"/>
+                    <TextBlock Text="with a dated window in the horizon" FontSize="11" Foreground="#94A3B8"/>
+                </StackPanel>
+            </Border>
+            <Border Style="{StaticResource CardStyle}">
+                <StackPanel>
+                    <TextBlock Text="Unassigned" FontSize="12" Foreground="#64748B"/>
+                    <TextBlock Text="{Binding UnassignedCount}" FontSize="26" FontWeight="Bold" Foreground="#CA8A04"/>
+                    <TextBlock Text="site windows + undated sites" FontSize="11" Foreground="#94A3B8"/>
+                </StackPanel>
+            </Border>
+            <Border Style="{StaticResource CardStyle}">
+                <StackPanel>
+                    <TextBlock Text="PMs over capacity" FontSize="12" Foreground="#64748B"/>
+                    <TextBlock Text="{Binding OverloadedPmCount}" FontSize="26" FontWeight="Bold" Foreground="#DC2626"/>
+                    <TextBlock Text="at some point in the horizon" FontSize="11" Foreground="#94A3B8"/>
+                </StackPanel>
+            </Border>
+            <Border Style="{StaticResource CardStyle}">
+                <StackPanel>
+                    <TextBlock Text="PMs to hire" FontSize="12" Foreground="#64748B"/>
+                    <TextBlock Text="{Binding HiresNeeded}" FontSize="26" FontWeight="Bold" Foreground="#7C3AED"/>
+                    <TextBlock Text="peak shortfall, all regions shown" FontSize="11" Foreground="#94A3B8"/>
+                </StackPanel>
+            </Border>
+        </UniformGrid>
+
+        <!-- ── Tabs ── -->
+        <Border Grid.Row="2" Background="White" CornerRadius="10" BorderBrush="#E2E8F0" BorderThickness="1">
+            <TabControl Background="Transparent" BorderThickness="0" Padding="20,12,20,16">
+                <TabControl.Resources>
+                    <Style TargetType="TabItem" BasedOn="{StaticResource PlannerTabStyle}"/>
+                </TabControl.Resources>
+
+                <!-- ═══ PM Schedules ═══ -->
+                <TabItem Header="PM Schedules">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="11*"/>
+                            <ColumnDefinition Width="16"/>
+                            <ColumnDefinition Width="10*"/>
+                        </Grid.ColumnDefinitions>
+                        <DockPanel Grid.Column="0">
+                            <TextBlock DockPanel.Dock="Top" Style="{StaticResource HintStyle}"
+                                       Text="Each PM's workload from the sites assigned to them. Load = build phase × build weight + CX window × CX weight, averaged per week. Select a PM to see their schedule."/>
+                            <DataGrid ItemsSource="{Binding Schedules}" SelectedItem="{Binding SelectedSchedule}"
+                                      Style="{StaticResource AppDataGridStyle}" CellStyle="{StaticResource DataGridCellStyle}"
+                                      ColumnHeaderStyle="{StaticResource DataGridColumnHeaderStyle}"
+                                      AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single" BorderThickness="0">
+                                <DataGrid.RowStyle>
+                                    <Style TargetType="DataGridRow">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsOver}" Value="True">
+                                                <Setter Property="Foreground" Value="#B91C1C"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding IsNear}" Value="True">
+                                                <Setter Property="Foreground" Value="#B45309"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </DataGrid.RowStyle>
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="PM" Binding="{Binding PmName}" Width="*" MinWidth="150"/>
+                                    <DataGridTextColumn Header="Region" Binding="{Binding Region}" Width="70"/>
+                                    <DataGridTextColumn Header="Sites" Binding="{Binding Campuses}" Width="82"/>
+                                    <DataGridTextColumn Header="Load now" Binding="{Binding LoadNow, StringFormat=0.00}" Width="75"/>
+                                    <DataGridTextColumn Header="Peak" Binding="{Binding PeakLoad, StringFormat=0.00}" Width="60"/>
+                                    <DataGridTextColumn Header="Peak %" Binding="{Binding PeakPct, StringFormat={}{0}%}" Width="65"/>
+                                    <DataGridTextColumn Header="Wks over" Binding="{Binding OverWeeks}" Width="78"/>
+                                    <DataGridTextColumn Header="Next opening" Binding="{Binding NextOpening}" Width="115"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </DockPanel>
+
+                        <DockPanel Grid.Column="2">
+                            <StackPanel DockPanel.Dock="Top">
+                                <TextBlock FontSize="15" FontWeight="SemiBold" Foreground="#0F172A"
+                                           Text="{Binding SelectedSchedule.PmName, FallbackValue='Select a PM'}"/>
+                                <TextBlock Text="{Binding SelectedSchedule.Status}" FontSize="12" Foreground="#64748B" Margin="0,2,0,8"/>
+                                <!-- Weekly load chart: one bar per week; blue = room, amber = near, red = over -->
+                                <Grid Height="90" Background="#F8FAFC">
+                                    <ItemsControl ItemsSource="{Binding SelectedBars}" VerticalAlignment="Bottom">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <UniformGrid Rows="1"/>
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Rectangle Height="{Binding Height}" Fill="{Binding Fill}" Margin="0.5,0"
+                                                           VerticalAlignment="Bottom" ToolTip="{Binding Tooltip}"/>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <!-- capacity line -->
+                                    <Border VerticalAlignment="Bottom" Height="{Binding CapacityLineY}"
+                                            BorderBrush="#DC2626" BorderThickness="0,1,0,0" IsHitTestVisible="False"/>
+                                </Grid>
+                                <TextBlock Text="{Binding ChartScaleText}" FontSize="11" Foreground="#94A3B8" Margin="0,4,0,10"/>
+                            </StackPanel>
+                            <DataGrid ItemsSource="{Binding SelectedPackages}"
+                                      Style="{StaticResource AppDataGridStyle}" CellStyle="{StaticResource DataGridCellStyle}"
+                                      ColumnHeaderStyle="{StaticResource DataGridColumnHeaderStyle}"
+                                      AutoGenerateColumns="False" IsReadOnly="True" BorderThickness="0">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Site" Binding="{Binding Campus}" Width="*"/>
+                                    <DataGridTextColumn Header="Cluster" Binding="{Binding Cluster}" Width="80"/>
+                                    <DataGridTextColumn Header="Room" Binding="{Binding RoomType}" Width="120"/>
+                                    <DataGridTextColumn Header="NBD" Binding="{Binding Nbd, StringFormat=yyyy-MM-dd}" Width="100"/>
+                                    <DataGridTextColumn Header="CX starts" Binding="{Binding CxStart, StringFormat=yyyy-MM-dd}" Width="100"/>
+                                    <DataGridTextColumn Header="PFHO" Binding="{Binding Pfho, StringFormat=yyyy-MM-dd}" Width="100"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </DockPanel>
+                    </Grid>
+                </TabItem>
+
+                <!-- ═══ Unassigned ═══ -->
+                <TabItem Header="Unassigned">
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Top" Style="{StaticResource HintStyle}"
+                                   Text="Site windows in the horizon with no active PM. 'PMs who fit' counts same-region PMs who could take it without going over capacity in any week — see Gap Fill to assign. Sites marked 'not in system' are in the forecast but have no Site record yet."/>
+                        <Expander DockPanel.Dock="Bottom" Margin="0,10,0,0" FontSize="12" Foreground="#475569">
+                            <Expander.Header>
+                                <TextBlock>
+                                    <Run Text="{Binding Undated.Count, Mode=OneWay}"/>
+                                    <Run Text=" unassigned sites have no forecast dates (can't be scheduled)"/>
+                                </TextBlock>
+                            </Expander.Header>
+                            <DataGrid ItemsSource="{Binding Undated}" MaxHeight="220" Margin="0,6,0,0"
+                                      Style="{StaticResource AppDataGridStyle}" CellStyle="{StaticResource DataGridCellStyle}"
+                                      ColumnHeaderStyle="{StaticResource DataGridColumnHeaderStyle}"
+                                      AutoGenerateColumns="False" IsReadOnly="True" BorderThickness="0">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Site" Binding="{Binding Campus}" Width="*"/>
+                                    <DataGridTextColumn Header="Cluster" Binding="{Binding Cluster}" Width="120"/>
+                                    <DataGridTextColumn Header="Region" Binding="{Binding Region}" Width="90"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Expander>
+                        <DataGrid ItemsSource="{Binding Unassigned}"
+                                  Style="{StaticResource AppDataGridStyle}" CellStyle="{StaticResource DataGridCellStyle}"
+                                  ColumnHeaderStyle="{StaticResource DataGridColumnHeaderStyle}"
+                                  AutoGenerateColumns="False" IsReadOnly="True" BorderThickness="0">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Site" Binding="{Binding Campus}" Width="*"/>
+                                <DataGridTextColumn Header="Cluster" Binding="{Binding Cluster}" Width="90"/>
+                                <DataGridTextColumn Header="Region" Binding="{Binding Region}" Width="70"/>
+                                <DataGridTextColumn Header="Room" Binding="{Binding RoomType}" Width="120"/>
+                                <DataGridTextColumn Header="NBD" Binding="{Binding Nbd, StringFormat=yyyy-MM-dd}" Width="100"/>
+                                <DataGridTextColumn Header="CX starts" Binding="{Binding CxStart, StringFormat=yyyy-MM-dd}" Width="100"/>
+                                <DataGridTextColumn Header="PFHO" Binding="{Binding Pfho, StringFormat=yyyy-MM-dd}" Width="100"/>
+                                <DataGridCheckBoxColumn Header="In system" Binding="{Binding InSystem, Mode=OneWay}" Width="75"/>
+                                <DataGridTextColumn Header="PMs who fit" Binding="{Binding FitCount}" Width="95"/>
+                                <DataGridTextColumn Header="Best fit" Binding="{Binding BestFit}" Width="150"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </DockPanel>
+                </TabItem>
+
+                <!-- ═══ Overlaps ═══ -->
+                <TabItem Header="Overlaps">
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Top" Style="{StaticResource HintStyle}"
+                                   Text="Periods where a PM's assigned sites add up to more than one PM can carry. 'Over by' is how far past capacity the worst week goes — move sites from these PMs to someone with room (PM Schedules → Next opening)."/>
+                        <DataGrid ItemsSource="{Binding Overlaps}"
+                                  Style="{StaticResource AppDataGridStyle}" CellStyle="{StaticResource DataGridCellStyle}"
+                                  ColumnHeaderStyle="{StaticResource DataGridColumnHeaderStyle}"
+                                  AutoGenerateColumns="False" IsReadOnly="True" BorderThickness="0">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="PM" Binding="{Binding PmName}" Width="160"/>
+                                <DataGridTextColumn Header="Region" Binding="{Binding Region}" Width="70"/>
+                                <DataGridTextColumn Header="From" Binding="{Binding From, StringFormat=yyyy-MM-dd}" Width="100"/>
+                                <DataGridTextColumn Header="To" Binding="{Binding To, StringFormat=yyyy-MM-dd}" Width="100"/>
+                                <DataGridTextColumn Header="Weeks" Binding="{Binding Weeks}" Width="60"/>
+                                <DataGridTextColumn Header="Peak load" Binding="{Binding Peak, StringFormat=0.00}" Width="80"/>
+                                <DataGridTextColumn Header="Over by" Binding="{Binding OverBy, StringFormat=0.00}" Width="70"/>
+                                <DataGridTextColumn Header="# Windows" Binding="{Binding Count}" Width="88"/>
+                                <DataGridTextColumn Header="Sites" Binding="{Binding Campuses}" Width="*"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </DockPanel>
+                </TabItem>
+
+                <!-- ═══ Gap Fill ═══ -->
+                <TabItem Header="Gap Fill">
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Top" Style="{StaticResource HintStyle}"
+                                   Text="Unassigned sites a PM could take on in the breaks in their schedule — adding it never pushes them over capacity in any week of its window. Same region only. 'Spare after' is the room left in their busiest week of that window."/>
+                        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,10">
+                            <TextBlock Text="PM:" VerticalAlignment="Center" Margin="0,0,8,0" Foreground="#374151"/>
+                            <ComboBox ItemsSource="{Binding GapPmOptions}" SelectedItem="{Binding SelectedGapPm}"
+                                      DisplayMemberPath="Label" Width="260" Style="{StaticResource FormComboBoxStyle}"/>
+                            <TextBlock Margin="12,0,0,0" VerticalAlignment="Center" FontSize="12" Foreground="#64748B">
+                                <Run Text="{Binding GapFits.Count, Mode=OneWay}"/><Run Text=" possible assignments"/>
+                            </TextBlock>
+                        </StackPanel>
+                        <DataGrid ItemsSource="{Binding GapFits}"
+                                  Style="{StaticResource AppDataGridStyle}" CellStyle="{StaticResource DataGridCellStyle}"
+                                  ColumnHeaderStyle="{StaticResource DataGridColumnHeaderStyle}"
+                                  AutoGenerateColumns="False" IsReadOnly="True" BorderThickness="0">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Site" Binding="{Binding Campus}" Width="*"/>
+                                <DataGridTextColumn Header="Cluster" Binding="{Binding Cluster}" Width="90"/>
+                                <DataGridTextColumn Header="Room" Binding="{Binding RoomType}" Width="120"/>
+                                <DataGridTextColumn Header="NBD" Binding="{Binding Nbd, StringFormat=yyyy-MM-dd}" Width="100"/>
+                                <DataGridTextColumn Header="PFHO" Binding="{Binding Pfho, StringFormat=yyyy-MM-dd}" Width="100"/>
+                                <DataGridTextColumn Header="Could go to" Binding="{Binding PmName}" Width="160"/>
+                                <DataGridTextColumn Header="Peak after" Binding="{Binding PeakAfter, StringFormat=0.00}" Width="80"/>
+                                <DataGridTextColumn Header="Spare after" Binding="{Binding SpareAfter, StringFormat=0.00}" Width="85"/>
+                                <DataGridTemplateColumn Header="" Width="90">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Button Content="Assign" Tag="{Binding}" Click="BtnAssignGap_Click"
+                                                    Style="{StaticResource RowLinkStyle}"
+                                                    ToolTip="Assign this whole site to this PM">
+                                                <Button.Visibility>
+                                                    <Binding Path="CanAssign">
+                                                        <Binding.Converter>
+                                                            <BooleanToVisibilityConverter/>
+                                                        </Binding.Converter>
+                                                    </Binding>
+                                                </Button.Visibility>
+                                            </Button>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </DockPanel>
+                </TabItem>
+
+                <!-- ═══ Hiring Forecast ═══ -->
+                <TabItem Header="Hiring Forecast">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource HintStyle}"
+                                       Text="PMs needed = a region's total load in its busiest week ÷ capacity, rounded up (the minimum headcount if work were spread perfectly). Hire-by = the week more PMs are needed, minus the hiring lead time. Sites listed are the unassigned ones active when the extra PMs are needed."/>
+
+                            <!-- Region summary cards -->
+                            <ItemsControl ItemsSource="{Binding RegionSummaries}" Margin="0,0,0,14">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Width="240" Margin="0,0,12,0" Padding="16,12" CornerRadius="8" BorderThickness="1">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Background" Value="#F0FDF4"/>
+                                                    <Setter Property="BorderBrush" Value="#BBF7D0"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding NeedsHiring}" Value="True">
+                                                            <Setter Property="Background" Value="#FEF2F2"/>
+                                                            <Setter Property="BorderBrush" Value="#FECACA"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding Region}" FontSize="14" FontWeight="SemiBold" Foreground="#0F172A"/>
+                                                <TextBlock FontSize="12" Foreground="#475569" Margin="0,4,0,0">
+                                                    <Run Text="{Binding PmsNow, Mode=OneWay}"/><Run Text=" PMs now  ·  peak need "/><Run Text="{Binding PeakNeeded, Mode=OneWay}"/>
+                                                </TextBlock>
+                                                <TextBlock Text="{Binding NextHire}" FontSize="12" FontWeight="SemiBold" Margin="0,4,0,0"
+                                                           Foreground="#0F172A" TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <!-- Month-by-month heat grid: PMs needed per region (+N = short by N) -->
+                            <TextBlock Text="PMs needed by month" FontSize="13" FontWeight="SemiBold" Foreground="#0F172A" Margin="0,0,0,6"/>
+                            <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" Margin="0,0,0,16">
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Width="80"/>
+                                        <ItemsControl ItemsSource="{Binding MonthLabels}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding}" Width="58" FontSize="10" Foreground="#64748B" TextAlignment="Center"/>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                    <ItemsControl ItemsSource="{Binding RegionMonths}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                                    <TextBlock Text="{Binding Region}" Width="80" VerticalAlignment="Center"
+                                                               FontSize="12" FontWeight="SemiBold" Foreground="#0F172A"/>
+                                                    <ItemsControl ItemsSource="{Binding Cells}">
+                                                        <ItemsControl.ItemsPanel>
+                                                            <ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate>
+                                                        </ItemsControl.ItemsPanel>
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate>
+                                                                <Border Width="56" Height="28" Margin="0,0,2,0" CornerRadius="3"
+                                                                        Background="{Binding Background}" ToolTip="{Binding Tooltip}">
+                                                                    <TextBlock Text="{Binding Text}" FontSize="11" Foreground="#0F172A"
+                                                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                </Border>
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <TextBlock FontSize="11" Foreground="#94A3B8" Margin="80,6,0,0"
+                                               Text="Green = covered  ·  amber = within 15% of current headcount  ·  red = short (+N more PMs needed)  ·  hover a cell for the math"/>
+                                </StackPanel>
+                            </ScrollViewer>
+
+                            <!-- Hiring steps -->
+                            <TextBlock Text="Hiring plan" FontSize="13" FontWeight="SemiBold" Foreground="#0F172A" Margin="0,0,0,6"/>
+                            <TextBlock Text="No hiring needed within the horizon at the current settings." FontSize="12" Foreground="#15803D">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Hiring.Count}" Value="0">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <DataGrid ItemsSource="{Binding Hiring}" MaxHeight="420"
+                                      Style="{StaticResource AppDataGridStyle}" CellStyle="{StaticResource DataGridCellStyle}"
+                                      ColumnHeaderStyle="{StaticResource DataGridColumnHeaderStyle}"
+                                      AutoGenerateColumns="False" IsReadOnly="True" BorderThickness="0">
+                                <DataGrid.RowStyle>
+                                    <Style TargetType="DataGridRow">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Overdue}" Value="True">
+                                                <Setter Property="Foreground" Value="#B91C1C"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </DataGrid.RowStyle>
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Region" Binding="{Binding Region}" Width="70"/>
+                                    <DataGridTextColumn Header="Hire" Binding="{Binding Count, StringFormat=+{0}}" Width="50"/>
+                                    <DataGridTextColumn Header="Hire by" Binding="{Binding HireByText}" Width="160"/>
+                                    <DataGridTextColumn Header="Needed from" Binding="{Binding NeededBy, StringFormat=yyyy-MM-dd}" Width="105"/>
+                                    <DataGridTextColumn Header="Total short" Binding="{Binding TotalShort}" Width="90"/>
+                                    <DataGridTextColumn Header="Region load" Binding="{Binding Load, StringFormat=0.0}" Width="95"/>
+                                    <DataGridTextColumn Header="Over-capacity PMs then" Binding="{Binding OverloadedPms}" Width="200"/>
+                                    <DataGridTextColumn Header="Unassigned sites to cover" Binding="{Binding Drivers}" Width="*"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+            </TabControl>
+        </Border>
+    </Grid>
+</UserControl>

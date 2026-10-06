@@ -11,6 +11,13 @@ public partial class AddEditPmDialog : Window
     private readonly List<PM>     _existingPms;
     public PM? Result { get; private set; }
 
+    // Data Name auto-fills from First/Last Name (new PMs only) as "first.last", lowercase, no
+    // spaces — but only until the user actually edits it themselves; after that their value
+    // wins and typing more of the name no longer overwrites it. _settingDataNameProgrammatically
+    // distinguishes our own writes to TxtDataName from a real user edit in its TextChanged handler.
+    private bool _dataNameManuallyEdited;
+    private bool _settingDataNameProgrammatically;
+
     /// <summary>
     /// existingPms is used only for the duplicate-name/DataName warning on save; pass an empty
     /// list (or omit) if that check isn't needed (e.g. a caller that doesn't have the list handy).
@@ -23,6 +30,10 @@ public partial class AddEditPmDialog : Window
 
         if (existing != null)
         {
+            // Editing an existing PM — never auto-fill over a Data Name that's already set
+            // (and already in use as the Orders/report join key).
+            _dataNameManuallyEdited = true;
+
             TxtTitle.Text          = "Edit PM";
             TxtFirstName.Text      = existing.FirstName;
             TxtLastName.Text       = existing.LastName;
@@ -59,6 +70,25 @@ public partial class AddEditPmDialog : Window
             CapacityRow.Visibility       = Visibility.Collapsed;
             PmMultiplierPanel.Visibility = Visibility.Collapsed;
         }
+    }
+
+    private void TxtName_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_dataNameManuallyEdited) return;
+
+        var first = TxtFirstName.Text.Trim();
+        var last  = TxtLastName.Text.Trim();
+        if (first.Length == 0 && last.Length == 0) return;
+
+        _settingDataNameProgrammatically = true;
+        TxtDataName.Text = $"{first}.{last}".Trim('.').ToLowerInvariant().Replace(" ", "");
+        _settingDataNameProgrammatically = false;
+    }
+
+    private void TxtDataName_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_settingDataNameProgrammatically) return;
+        _dataNameManuallyEdited = true; // a real user edit — stop overwriting it from First/Last Name
     }
 
     private static void SelectComboItem(ComboBox cbo, string value)

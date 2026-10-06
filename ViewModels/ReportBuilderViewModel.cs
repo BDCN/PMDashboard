@@ -45,7 +45,7 @@ public partial class ReportBuilderViewModel : ObservableObject
     private readonly HashSet<string> _selectedRompStatuses  = new();
     private readonly HashSet<string> _selectedOrderStatuses = new();
 
-    [ObservableProperty] private string _locationSelectionInfo    = "All locations";
+    [ObservableProperty] private string _locationSelectionInfo    = "All clusters";
     [ObservableProperty] private string _siteSelectionInfo        = "All sites";
     [ObservableProperty] private string _pmSelectionInfo          = "All PMs";
     [ObservableProperty] private string _rompStatusSelectionInfo  = "All statuses";
@@ -188,8 +188,8 @@ public partial class ReportBuilderViewModel : ObservableObject
 
     private void UpdateSelectionInfoLabels()
     {
-        LocationSelectionInfo    = _selectedLocationIds.Count   == 0 ? "All locations" : $"{_selectedLocationIds.Count} location(s) selected";
-        SiteSelectionInfo        = _selectedSiteIds.Count       == 0 ? "All sites"     : $"{_selectedSiteIds.Count} site(s) selected";
+        LocationSelectionInfo    = _selectedLocationIds.Count   == 0 ? "All clusters" : $"{_selectedLocationIds.Count} cluster(s) selected";
+        SiteSelectionInfo        = _selectedSiteIds.Count       == 0 ? "All sites" : $"{_selectedSiteIds.Count} site(s) selected";
         PmSelectionInfo          = _selectedPmIds.Count         == 0 ? "All PMs"       : $"{_selectedPmIds.Count} PM(s) selected";
         RompStatusSelectionInfo  = _selectedRompStatuses.Count  == 0 ? "All statuses"  : $"{_selectedRompStatuses.Count} status(es) selected";
         OrderStatusSelectionInfo = _selectedOrderStatuses.Count == 0 ? "All statuses"  : $"{_selectedOrderStatuses.Count} status(es) selected";

@@ -99,7 +99,8 @@ public class UserService
         if (!email.Contains('@'))             return "Enter a valid email address.";
         if (string.IsNullOrWhiteSpace(initialPassword) || initialPassword.Length < 8)
             return "Initial password must be at least 8 characters.";
-        if (role != "SuperAdmin" && role != "User") return "Role must be SuperAdmin or User.";
+        if (role != "SuperAdmin" && role != "Director" && role != "User")
+            return "Role must be SuperAdmin, Director, or User.";
 
         using var db = new AppDbContext();
         if (db.Users.Any(u => u.Email.ToLower() == email.ToLower()))

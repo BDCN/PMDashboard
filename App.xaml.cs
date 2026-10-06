@@ -11,13 +11,98 @@ public partial class App : Application
     public static AutoImportService AutoImport   { get; } = new AutoImportService();
     public static CloudSyncService  CloudSync    { get; } = new CloudSyncService();
 
-    protected override void OnStartup(StartupEventArgs e)
+    public App()
+    {
+        // Registered in the constructor — before OnStartup runs at all — so even an exception
+        // during the earliest startup work (DatabaseConfig.Load, EnsureCreated, migrations) is
+        // caught instead of producing exactly the kind of orphaned, no-window, unkillable process
+        // this was added to stop: previously NOTHING in the app caught an exception that escaped
+        // this far, on any thread. async void OnStartup in particular marshals its exceptions
+        // back through the Dispatcher, so DispatcherUnhandledException alone covers it without
+        // needing to wrap OnStartup's ~600-line body in its own try/catch.
+        DispatcherUnhandledException += OnDispatcherUnhandledException;
+        AppDomain.CurrentDomain.UnhandledException += OnAppDomainUnhandledException;
+        System.Threading.Tasks.TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
+    }
+
+    private static string CrashLogPath => System.IO.Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PMDashboard", "crash.log");
+
+    private static void LogFatalException(string source, Exception? ex)
+    {
+        try
+        {
+            var dir = System.IO.Path.GetDirectoryName(CrashLogPath)!;
+            System.IO.Directory.CreateDirectory(dir);
+            System.IO.File.AppendAllText(CrashLogPath,
+                $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}  [{source}]  SAT {AppVersion.Full} on {Environment.MachineName}{Environment.NewLine}{ex}{Environment.NewLine}{Environment.NewLine}");
+        }
+        catch { /* logging itself must never throw from inside a crash handler */ }
+    }
+
+    /// <summary>
+    /// Anything thrown on the UI thread that nothing else caught lands here — this is the
+    /// handler that actually stops a crash from becoming a silent, orphaned process: it logs the
+    /// real exception (previously lost entirely), shows the user something concrete happened
+    /// instead of the window just vanishing, disposes the background sync/import services so
+    /// their Timers don't keep running past the point the app is trying to close, and only then
+    /// shuts down deliberately — rather than leaving the default WPF crash behavior (or lack of
+    /// any handler at all) to decide what state the process is left in.
+    /// </summary>
+    private void OnDispatcherUnhandledException(object sender, System.Windows.Threading.DispatcherUnhandledExceptionEventArgs e)
+    {
+        // An assignment blocked by the team rule isn't a crash — explain it and carry on. It's
+        // thrown before anything is saved (see TeamRules), so there's nothing to undo.
+        for (var ex = e.Exception; ex != null; ex = ex.InnerException)
+        {
+            if (ex is not TeamRuleException rule) continue;
+            e.Handled = true;
+            try { MessageBox.Show(rule.Message, "Outside the Team's Area", MessageBoxButton.OK, MessageBoxImage.Warning); } catch { }
+            return;
+        }
+
+        LogFatalException("DispatcherUnhandledException", e.Exception);
+        e.Handled = true; // we're taking over the shutdown ourselves, not letting WPF's default crash path run
+
+        try
+        {
+            MessageBox.Show(
+                $"An unexpected error occurred and the application needs to close.\n\n{e.Exception.Message}\n\n" +
+                $"Details were saved to:\n{CrashLogPath}",
+                "Unexpected Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        catch { /* the error dialog itself must never be what crashes the crash handler */ }
+
+        try { CloudSync.Dispose(); } catch { }
+        try { AutoImport.Dispose(); } catch { }
+        try { Shutdown(1); } catch { Environment.Exit(1); } // last resort if even a clean Shutdown can't run
+    }
+
+    /// <summary>Exceptions on a non-UI thread (e.g. a raw Timer/ThreadPool callback, not a Task)
+    /// bypass the Dispatcher entirely and land here instead — IsTerminating is effectively always
+    /// true by the time this fires, so there's no "handle and continue" option, only logging
+    /// whatever we can before the process goes down for a real post-mortem next time.</summary>
+    private void OnAppDomainUnhandledException(object sender, UnhandledExceptionEventArgs e) =>
+        LogFatalException($"AppDomain.UnhandledException (IsTerminating={e.IsTerminating})", e.ExceptionObject as Exception);
+
+    /// <summary>A faulted Task whose exception nobody ever awaited/observed (several background
+    /// operations in CloudSyncService/AutoImportService are fire-and-forget Task.Run calls).
+    /// Doesn't crash the process in modern .NET, but logging it is the only way to ever find out
+    /// one of those silently failed instead of just... not happening.</summary>
+    private void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
+    {
+        LogFatalException("UnobservedTaskException", e.Exception);
+        e.SetObserved();
+    }
+
+    protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
 
         // Must load before the first AppDbContext is constructed so OnConfiguring
         // knows which provider / path to use.
         DatabaseConfig.Load();
+        IdAllocator.InitFromConfig(); // per-machine Id ranges in Cloud mode — see IdAllocator
 
         using var db = new AppDbContext();
         db.Database.EnsureCreated();
@@ -51,6 +136,57 @@ public partial class App : Application
         try { db.Database.ExecuteSqlRaw(
             "ALTER TABLE RompStatuses ADD COLUMN ScoreWeight REAL NOT NULL DEFAULT 0"); }
         catch { /* column already exists */ }
+
+        // IsDisabled column on RompStatuses — hides a status from "assign a status" pickers
+        // without touching ROMPs already on it (StatusConfig.Selectable vs .All).
+        try { db.Database.ExecuteSqlRaw(
+            "ALTER TABLE RompStatuses ADD COLUMN IsDisabled INTEGER NOT NULL DEFAULT 0"); }
+        catch { /* column already exists */ }
+
+        // Color column on RompStatuses — indicator-dot color for Campus/ROMP lists (Configuration
+        // page color picker). Seeded, ONLY at the moment the column is first added, to match the
+        // colors already hardcoded into SitesPage.xaml before this feature, so existing installs
+        // see no visual change until an admin picks something different. Must not re-seed on
+        // every later startup — that would stomp an admin's deliberate choice if it ever happened
+        // to match the pre-seed default, same trap the ScoreWeight migration above works around.
+        bool colorColumnJustAdded = false;
+        try
+        {
+            db.Database.ExecuteSqlRaw("ALTER TABLE RompStatuses ADD COLUMN Color TEXT NOT NULL DEFAULT '#94A3B8'");
+            colorColumnJustAdded = true;
+        }
+        catch { /* column already exists */ }
+
+        // Also seed when every status still carries the column default: the first build of this
+        // migration crashed right after the ALTER (Dictionary.ContainsKey isn't SQL-translatable),
+        // so those installs have the column but were never seeded — and colorColumnJustAdded is
+        // false for them forever after. An admin deliberately setting every status to the same
+        // grey is not a realistic choice to protect.
+        bool neverSeeded = !colorColumnJustAdded
+            && db.RompStatuses.Any()
+            && db.RompStatuses.All(r => r.Color == "#94A3B8");
+
+        if (colorColumnJustAdded || neverSeeded)
+        {
+            var seedColors = new Dictionary<string, string>
+            {
+                ["Ordered"]      = "#94A3B8",
+                ["OFCI"]         = "#2563EB",
+                ["Construction"] = "#F59E0B",
+                ["CX"]           = "#F97316",
+                ["Complete"]     = "#22C55E",
+            };
+            var seedNames = seedColors.Keys.ToList();   // List.Contains translates to SQL IN; Dictionary.ContainsKey doesn't
+            foreach (var rs in db.RompStatuses.Where(r => seedNames.Contains(r.Name)).ToList())
+                rs.Color = seedColors[rs.Name];
+            // No LastModified stamp: in Cloud mode the cloud may already hold colors an admin
+            // picked elsewhere. Stamping would make these local defaults "newer" and push them
+            // over those choices; unstamped, the startup pull's equal-timestamp re-apply (see
+            // CloudSyncService.BatchPush applyOnEqual) replaces them with the cloud's values.
+            db.SkipLastModifiedStamp = true;
+            db.SaveChanges();
+            db.SkipLastModifiedStamp = false;
+        }
 
         // EquipmentWeights table (legacy — kept for schema compat, scoring now uses EquipmentCategories)
         db.Database.ExecuteSqlRaw("""
@@ -93,6 +229,145 @@ public partial class App : Application
                 UNIQUE(RompId, EquipmentCategoryId)
             )
             """);
+
+        // AssignmentHistories — one row per (Site, PM) assignment period; survives reassignment
+        // and site closure since Site.AssignedPmId only ever holds the current PM. See
+        // AssignmentHistoryService, which is the only code that should write to this table.
+        db.Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS AssignmentHistories (
+                Id              INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                SiteId          INTEGER NOT NULL REFERENCES Sites(Id) ON DELETE CASCADE,
+                PmId            INTEGER NOT NULL REFERENCES PMs(Id) ON DELETE RESTRICT,
+                AssignedAtUtc   TEXT    NOT NULL,
+                UnassignedAtUtc TEXT    NULL,
+                AssignedBy      TEXT    NOT NULL DEFAULT '',
+                UnassignedBy    TEXT    NULL,
+                LastModified    TEXT    NOT NULL DEFAULT '2000-01-01 00:00:00'
+            )
+            """);
+
+        // ── Forecast Planning ────────────────────────────────────────────────
+        // ForecastTypes: admin-managed sheet types (the 5 real-world sheets are seeded below).
+        // ForecastFields: column definitions — ForecastTypeId NULL = shared across every type
+        // (Site/Region/Edd/etc., the columns that actually recur across all 5 real sheets),
+        // non-NULL = specific to one type. Key is stable ("ff{Id}"), same convention as
+        // CustomColumn.Key, so renaming Name never orphans values already stored under it.
+        // ForecastHeaderMappings: remembers "this raw header text, for this type" -> field, so a
+        // second upload of the same sheet shape needs no re-mapping. ColumnIndex disambiguates
+        // when the same header text appears twice in one sheet's header row (seen for real in
+        // one of these sheets — po_number/OSD/MK2/Titus each appear twice on one type).
+        // ForecastImports: one row per upload. ForecastRows: one row per data row, values as
+        // JSON keyed by ForecastField.Key (same pattern as CustomRow.ValuesJson).
+        db.Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS ForecastTypes (
+                Id           INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                Code         TEXT    NOT NULL,
+                Name         TEXT    NOT NULL,
+                SortOrder    INTEGER NOT NULL DEFAULT 0,
+                IsBuiltIn    INTEGER NOT NULL DEFAULT 0,
+                LastModified TEXT    NOT NULL DEFAULT '2000-01-01 00:00:00'
+            )
+            """);
+        db.Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS ForecastFields (
+                Id             INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                ForecastTypeId INTEGER NULL REFERENCES ForecastTypes(Id) ON DELETE RESTRICT,
+                Name           TEXT    NOT NULL,
+                [Key]          TEXT    NOT NULL,
+                FieldType      TEXT    NOT NULL DEFAULT 'Text',
+                IsSiteKey      INTEGER NOT NULL DEFAULT 0,
+                IsIgnored      INTEGER NOT NULL DEFAULT 0,
+                SortOrder      INTEGER NOT NULL DEFAULT 0,
+                LastModified   TEXT    NOT NULL DEFAULT '2000-01-01 00:00:00'
+            )
+            """);
+        db.Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS ForecastHeaderMappings (
+                Id              INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                ForecastTypeId  INTEGER NOT NULL REFERENCES ForecastTypes(Id) ON DELETE CASCADE,
+                SourceHeader    TEXT    NOT NULL,
+                ColumnIndex     INTEGER NOT NULL DEFAULT -1,
+                ForecastFieldId INTEGER NOT NULL REFERENCES ForecastFields(Id) ON DELETE CASCADE,
+                LastModified    TEXT    NOT NULL DEFAULT '2000-01-01 00:00:00'
+            )
+            """);
+        db.Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS ForecastImports (
+                Id             INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                ForecastTypeId INTEGER NOT NULL REFERENCES ForecastTypes(Id) ON DELETE RESTRICT,
+                FileName       TEXT    NOT NULL DEFAULT '',
+                UploadedBy     TEXT    NOT NULL DEFAULT '',
+                UploadedAtUtc  TEXT    NOT NULL,
+                RowCount       INTEGER NOT NULL DEFAULT 0,
+                LastModified   TEXT    NOT NULL DEFAULT '2000-01-01 00:00:00'
+            )
+            """);
+        db.Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS ForecastRows (
+                Id               INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                ForecastImportId INTEGER NOT NULL REFERENCES ForecastImports(Id) ON DELETE CASCADE,
+                ForecastTypeId   INTEGER NOT NULL REFERENCES ForecastTypes(Id) ON DELETE RESTRICT,
+                SiteCode         TEXT    NULL,
+                SiteId           INTEGER NULL REFERENCES Sites(Id) ON DELETE SET NULL,
+                ValuesJson       TEXT    NOT NULL DEFAULT '{{}}',
+                LastModified     TEXT    NOT NULL DEFAULT '2000-01-01 00:00:00'
+            )
+            """);
+
+        // Seed the 5 real-world sheet types + the canonical fields that recur across all of
+        // them (confirmed from an actual column-header sample) as global (ForecastTypeId NULL)
+        // fields. Everything else each sheet carries is type-specific and gets created on the
+        // fly the first time that header is seen during an upload — see ForecastImportService.
+        if (!db.ForecastTypes.Any())
+        {
+            var types = new[]
+            {
+                new ForecastType { Code = "O", Name = "Type O", SortOrder = 1, IsBuiltIn = true },
+                new ForecastType { Code = "M", Name = "Type M", SortOrder = 2, IsBuiltIn = true },
+                new ForecastType { Code = "L", Name = "Type L", SortOrder = 3, IsBuiltIn = true },
+                new ForecastType { Code = "B", Name = "Type B", SortOrder = 4, IsBuiltIn = true },
+                new ForecastType { Code = "P", Name = "Type P", SortOrder = 5, IsBuiltIn = true },
+            };
+            db.ForecastTypes.AddRange(types);
+            db.SaveChanges();
+
+            var globalFields = new (string Name, string FieldType, bool IsSiteKey)[]
+            {
+                ("Site",                  "Text",   true),
+                ("Region",                "Text",   false),
+                ("Country",               "Text",   false),
+                ("Cluster",               "Text",   false),
+                ("FBN",                   "Text",   false),
+                ("PFHO",                  "Date",   false),
+                ("PO Number",             "Text",   false),
+                ("EDD",                   "Date",   false),
+                ("Room Type",             "Text",   false),
+                ("NBD",                   "Date",   false),
+                ("Qty",                   "Number", false),
+                ("Size",                  "Text",   false),
+                ("Build Type ID",         "Text",   false),
+                ("Config New",            "Text",   false),
+                ("Last PRO Sche Update",  "Date",   false),
+                ("NBD Prev Wk",           "Date",   false),
+                ("PO Created At",         "Date",   false),
+            };
+            int i = 0;
+            foreach (var (name, fieldType, isSiteKey) in globalFields)
+            {
+                var field = new ForecastField
+                {
+                    ForecastTypeId = null,
+                    Name           = name,
+                    FieldType      = fieldType,
+                    IsSiteKey      = isSiteKey,
+                    SortOrder      = i++,
+                };
+                db.ForecastFields.Add(field);
+                db.SaveChanges(); // need field.Id before Key can be set
+                field.Key = $"ff{field.Id}";
+                db.SaveChanges();
+            }
+        }
 
         // SavedReports — Report Builder named presets (filters/columns/chart config as JSON)
         db.Database.ExecuteSqlRaw("""
@@ -176,9 +451,13 @@ public partial class App : Application
         // exist before the first query, same rule as LastModified below.
         foreach (var tbl in new[] { "Orders", "Romps", "Sites" })
         {
+            // tbl is a hardcoded literal above, never user input, and a table name can't be
+            // parameterized via ExecuteSql anyway (only values can) — EF1002 suppressed.
+#pragma warning disable EF1002
             try { db.Database.ExecuteSqlRaw(
                 $"ALTER TABLE {tbl} ADD COLUMN LastModifiedBy TEXT NOT NULL DEFAULT ''"); }
             catch { /* column already exists on this table */ }
+#pragma warning restore EF1002
         }
 
         // Site.IsClosed — explicit close flag for the "Close All ROMPs & This Site"/Location
@@ -186,6 +465,106 @@ public partial class App : Application
         // ROMP data alone (see Site.cs).
         try { db.Database.ExecuteSqlRaw(
             "ALTER TABLE Sites ADD COLUMN IsClosed INTEGER NOT NULL DEFAULT 0"); }
+        catch { /* column already exists */ }
+
+        // Site.StatusWhenEmpty — stand-in status for a zero-ROMP campus, set via the same "Set
+        // All ROMPs to Status" picker used when ROMPs exist. Nullable, no seeding needed (null
+        // just falls back to the existing IsClosed-based guess — see Site.cs).
+        try { db.Database.ExecuteSqlRaw(
+            "ALTER TABLE Sites ADD COLUMN StatusWhenEmpty TEXT NULL"); }
+        catch { /* column already exists */ }
+
+        // ── Campuses: Cluster → Campus → Site → ROMP (see Data/Models/Campus.cs) ──
+        // New table plus three Site columns. CampusArrangementService places every site under a
+        // campus after startup (CloudSyncService runs it after the initial pull in Cloud mode).
+        db.Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS Campuses (
+                Id             INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                Name           TEXT    NOT NULL,
+                LocationId     INTEGER NOT NULL,
+                AssignedPmId   INTEGER NULL,
+                LastModified   TEXT    NOT NULL DEFAULT '2000-01-01 00:00:00',
+                LastModifiedBy TEXT    NOT NULL DEFAULT '',
+                FOREIGN KEY (LocationId)   REFERENCES Locations(Id) ON DELETE CASCADE,
+                FOREIGN KEY (AssignedPmId) REFERENCES PMs(Id)       ON DELETE SET NULL
+            )
+            """);
+        try { db.Database.ExecuteSqlRaw("ALTER TABLE Sites ADD COLUMN CampusId INTEGER NULL"); }
+        catch { /* column already exists */ }
+        try { db.Database.ExecuteSqlRaw("ALTER TABLE Sites ADD COLUMN CampusManual INTEGER NOT NULL DEFAULT 0"); }
+        catch { /* column already exists */ }
+        try { db.Database.ExecuteSqlRaw("ALTER TABLE Sites ADD COLUMN PmOverride INTEGER NOT NULL DEFAULT 0"); }
+        catch { /* column already exists */ }
+
+        // ── Teams: Director › PE (sub-region) › PM › PA (see Data/Models/TeamMember.cs) ──
+        db.Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS SubRegions (
+                Id           INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                Name         TEXT    NOT NULL,
+                Region       TEXT    NOT NULL DEFAULT '',
+                SortOrder    INTEGER NOT NULL DEFAULT 0,
+                LastModified TEXT    NOT NULL DEFAULT '2000-01-01 00:00:00'
+            )
+            """);
+        db.Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS TeamMembers (
+                Id           INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                Role         TEXT    NOT NULL,
+                FirstName    TEXT    NOT NULL DEFAULT '',
+                LastName     TEXT    NOT NULL DEFAULT '',
+                Email        TEXT    NOT NULL DEFAULT '',
+                Phone        TEXT    NOT NULL DEFAULT '',
+                Region       TEXT    NOT NULL DEFAULT '',
+                SubRegionId  INTEGER NULL,
+                PmId         INTEGER NULL,
+                IsActive     INTEGER NOT NULL DEFAULT 1,
+                LastModified TEXT    NOT NULL DEFAULT '2000-01-01 00:00:00',
+                FOREIGN KEY (SubRegionId) REFERENCES SubRegions(Id) ON DELETE SET NULL,
+                FOREIGN KEY (PmId)        REFERENCES PMs(Id)        ON DELETE SET NULL
+            )
+            """);
+        try { db.Database.ExecuteSqlRaw("ALTER TABLE PMs ADD COLUMN PeId INTEGER NULL"); }
+        catch { /* column already exists */ }
+        try { db.Database.ExecuteSqlRaw("ALTER TABLE Locations ADD COLUMN SubRegionId INTEGER NULL"); }
+        catch { /* column already exists */ }
+        // A campus can belong to a different sub-region than its cluster (split clusters).
+        try { db.Database.ExecuteSqlRaw("ALTER TABLE Campuses ADD COLUMN SubRegionId INTEGER NULL"); }
+        catch { /* column already exists */ }
+
+        // ForecastField.IsCampusField — which forecast column names the campus ("az"). Seeded
+        // only at the moment the column is first added (so an admin un-ticking it later sticks):
+        // Type O's "az" column, and Type L's column SAT named "Cluster", which holds az-style
+        // campus codes (CMH050, ATL086) rather than 3-letter clusters. Not stamped, so nothing is
+        // pushed — every machine seeds the same way on its own first run.
+        bool campusFieldJustAdded = false;
+        try
+        {
+            db.Database.ExecuteSqlRaw("ALTER TABLE ForecastFields ADD COLUMN IsCampusField INTEGER NOT NULL DEFAULT 0");
+            campusFieldJustAdded = true;
+        }
+        catch { /* column already exists */ }
+        if (campusFieldJustAdded)
+        {
+            db.Database.ExecuteSqlRaw("UPDATE ForecastFields SET IsCampusField = 1 WHERE lower(Name) = 'az'");
+            db.Database.ExecuteSqlRaw(
+                "UPDATE ForecastFields SET IsCampusField = 1 WHERE Name = 'Cluster' AND ForecastTypeId IN " +
+                "(SELECT Id FROM ForecastTypes WHERE Code = 'L')");
+        }
+
+        // Location.AssignedPmId — direct "owner" PM for a cluster with no campuses to carry a
+        // per-Site assignment instead (see Location.cs). Nullable, no seeding needed.
+        try { db.Database.ExecuteSqlRaw(
+            "ALTER TABLE Locations ADD COLUMN AssignedPmId INTEGER NULL"); }
+        catch { /* column already exists */ }
+
+        // Romp.AssignedPmId — individual-ROMP PM override (see AssignmentResolver); and
+        // AssignmentHistories.RompId to let the same history table record ROMP-level overrides
+        // alongside campus-level ones (see AssignmentHistoryService.RecordRompChange).
+        try { db.Database.ExecuteSqlRaw(
+            "ALTER TABLE Romps ADD COLUMN AssignedPmId INTEGER NULL"); }
+        catch { /* column already exists */ }
+        try { db.Database.ExecuteSqlRaw(
+            "ALTER TABLE AssignmentHistories ADD COLUMN RompId INTEGER NULL"); }
         catch { /* column already exists */ }
 
         // ── LastModified column on all tables (must run before any EF query) ────
@@ -239,11 +618,11 @@ public partial class App : Application
         if (!db.RompStatuses.Any())
         {
             db.RompStatuses.AddRange(
-                new RompStatus { Name = "Ordered",      IsComplete = false, CountsAsActive = false, ScoreWeight = 0.4, SortOrder = 1, IsBuiltIn = true },
-                new RompStatus { Name = "OFCI",         IsComplete = false, CountsAsActive = false, ScoreWeight = 0.6, SortOrder = 2, IsBuiltIn = true },
-                new RompStatus { Name = "Construction", IsComplete = false, CountsAsActive = true,  ScoreWeight = 1.0, SortOrder = 3, IsBuiltIn = true },
-                new RompStatus { Name = "CX",           IsComplete = false, CountsAsActive = true,  ScoreWeight = 1.2, SortOrder = 4, IsBuiltIn = true },
-                new RompStatus { Name = "Complete",     IsComplete = true,  CountsAsActive = false, ScoreWeight = 0.1, SortOrder = 5, IsBuiltIn = true }
+                new RompStatus { Name = "Ordered",      IsComplete = false, CountsAsActive = false, ScoreWeight = 0.4, SortOrder = 1, IsBuiltIn = true, Color = "#94A3B8" },
+                new RompStatus { Name = "OFCI",         IsComplete = false, CountsAsActive = false, ScoreWeight = 0.6, SortOrder = 2, IsBuiltIn = true, Color = "#2563EB" },
+                new RompStatus { Name = "Construction", IsComplete = false, CountsAsActive = true,  ScoreWeight = 1.0, SortOrder = 3, IsBuiltIn = true, Color = "#F59E0B" },
+                new RompStatus { Name = "CX",           IsComplete = false, CountsAsActive = true,  ScoreWeight = 1.2, SortOrder = 4, IsBuiltIn = true, Color = "#F97316" },
+                new RompStatus { Name = "Complete",     IsComplete = true,  CountsAsActive = false, ScoreWeight = 0.1, SortOrder = 5, IsBuiltIn = true, Color = "#22C55E" }
             );
             db.SaveChanges();
         }
@@ -325,6 +704,14 @@ public partial class App : Application
         SeedConfig(ConfigKeys.OverloadThreshold, "1.00");
         SeedConfig(ConfigKeys.SkillBase,         "0.40");
         SeedConfig(ConfigKeys.SkillPerPoint,     "0.06");
+        SeedConfig(ConfigKeys.CxWindowDays,            "14");
+        SeedConfig(ConfigKeys.MaxConcurrentCxPerRegion, "1");
+        var ic = System.Globalization.CultureInfo.InvariantCulture;
+        SeedConfig(ConfigKeys.CoverageBuildWeight,     CoverageDefaults.BuildWeight.ToString(ic));
+        SeedConfig(ConfigKeys.CoverageCxWeight,        CoverageDefaults.CxWeight.ToString(ic));
+        SeedConfig(ConfigKeys.CoverageCapacityPerPm,   CoverageDefaults.CapacityPerPm.ToString(ic));
+        SeedConfig(ConfigKeys.CoverageHireLeadDays,    CoverageDefaults.HireLeadDays.ToString(ic));
+        SeedConfig(ConfigKeys.CoverageHorizonWeeks,    CoverageDefaults.HorizonWeeks.ToString(ic));
         db.SaveChanges();
 
         // ── One-time migration: populate RompEquipmentTypes from existing orders ─
@@ -336,29 +723,70 @@ public partial class App : Application
         StatusConfig.Reload();
         ScoreConfig.Reload();
 
+        // ── Start cloud background sync (Cloud mode only) — BEFORE auth ────────
+        // Started here (not fire-and-forget-later) so it's already running while the
+        // Create-Admin/Login dialogs are up, but NOT awaited by default — most launches are an
+        // already-known user on a machine that already has a local Users table, and blocking
+        // every single startup on a cloud round-trip just to show the Sign In screen cost ~10
+        // seconds for no benefit in that common case. Login.xaml.cs's TrySignIn awaits the same
+        // pull, but only if a login actually fails locally (see WaitForInitialPullAsync's doc).
+        if (CloudSyncService.IsAvailable)
+        {
+            var intervalStr = new ConfigService().Get(ConfigKeys.CloudSyncInterval, "30");
+            int.TryParse(intervalStr, out var interval);
+            CloudSync.Start(interval > 0 ? interval : 30); // runs CampusArrangementService after its initial pull
+        }
+        else
+        {
+            // Local/Network mode: place any site without a campus now (see CampusArrangementService).
+            try { CampusArrangementService.Arrange(); } catch { /* never block startup over it */ }
+        }
+
         // ── Authentication ─────────────────────────────────────────────────────
         // No user exists yet (fresh install) → the first real person creates the admin
         // account directly, choosing their own email and password. Unlike a seeded
         // placeholder password, nothing here is ever a literal in source, so there is
         // nothing to leak into git history.
+        // This IS one of the two cases that's worth waiting on the cloud pull for: an empty
+        // local Users table could mean a genuinely fresh install, or it could mean a fresh
+        // install on a machine whose cloud account data just hasn't arrived yet — without
+        // waiting here, the latter would incorrectly show "create a new admin account" instead
+        // of recognizing the accounts that already exist in the cloud.
         if (!db.Users.Any())
         {
-            var create = new Dialogs.CreateAdminAccountDialog();
-            if (create.ShowDialog() != true) { Shutdown(); return; }
+            if (CloudSyncService.IsAvailable)
+                await CloudSync.WaitForInitialPullAsync(TimeSpan.FromSeconds(15));
+
+            if (!db.Users.Any())
+            {
+                var create = new Dialogs.CreateAdminAccountDialog();
+                if (create.ShowDialog() != true) { Shutdown(); return; }
+            }
         }
 
-        // ShutdownMode is OnExplicitShutdown (App.xaml) for exactly this: the login/create-
-        // account dialog is the only window open, and under the default OnLastWindowClose its
-        // closing would end the application before the main window was ever created.
-        var login = new Dialogs.LoginDialog();
-        if (login.ShowDialog() != true) { Shutdown(); return; }
+        // ── Dev auto-login (this machine only) ─────────────────────────────────
+        // Opted into via LoginDialog's "Skip login on this computer" checkbox — see
+        // DevAutoLogin's doc for the security tradeoff. Falls through to the normal login screen
+        // whenever the saved account can't be auto-signed-in as-is (missing, deactivated, or a
+        // pending forced password change), rather than erroring.
+        var autoLoginUser = DevAutoLogin.TryGetSavedEmail() is { } savedEmail
+            ? new UserService().FindByEmail(savedEmail)
+            : null;
 
-        // ── Start cloud background sync (Cloud mode only) ─────────────────────
-        if (CloudSyncService.IsAvailable)
+        if (autoLoginUser is { IsActive: true, MustChangePassword: false })
         {
-            var intervalStr = new ConfigService().Get(ConfigKeys.CloudSyncInterval, "30");
-            int.TryParse(intervalStr, out var interval);
-            CloudSync.Start(interval > 0 ? interval : 30);
+            CurrentUser.SignIn(autoLoginUser);
+            new UserService().RecordLogin(autoLoginUser.Id);
+            AuditService.Log("AutoLogin", "User", autoLoginUser.Id,
+                $"Auto-signed in as {autoLoginUser.Email} (dev auto-login on this machine) — SAT {AppVersion.Short}");
+        }
+        else
+        {
+            // ShutdownMode is OnExplicitShutdown (App.xaml) for exactly this: the login/create-
+            // account dialog is the only window open, and under the default OnLastWindowClose its
+            // closing would end the application before the main window was ever created.
+            var login = new Dialogs.LoginDialog();
+            if (login.ShowDialog() != true) { Shutdown(); return; }
         }
 
         // ── Resume semi-automatic import ──────────────────────────────────────

@@ -52,4 +52,15 @@ public static class ConfigKeys
     // PM experience multiplier config (used in eff_capacity calculation)
     public const string SkillBase     = "SkillBase";      // floor factor (default 0.40)
     public const string SkillPerPoint = "SkillPerPoint";  // per-point increment (default 0.06)
+
+    // Forecast Timeline schedule-conflict detection — see ScheduleConflictService
+    public const string CxWindowDays           = "CxWindowDays";           // days before PFHO treated as the CX/cutover window (default 14)
+    public const string MaxConcurrentCxPerRegion = "MaxConcurrentCxPerRegion"; // max sites one PM can have in the same region's CX window at once before flagging (default 1)
+
+    // Coverage Planner — see Services/CoveragePlanner.cs for the model
+    public const string CoverageBuildWeight   = "CoverageBuildWeight";   // load per day during a campus's build phase, NBD → CX (default 0.25)
+    public const string CoverageCxWeight      = "CoverageCxWeight";      // load per day during the CX window (default 1.0)
+    public const string CoverageCapacityPerPm = "CoverageCapacityPerPm"; // load one PM can carry at once (default 3.0 — e.g. 12 campuses in build, or 3 in CX)
+    public const string CoverageHireLeadDays  = "CoverageHireLeadDays";  // hire this many days before a shortfall starts (default 90)
+    public const string CoverageHorizonWeeks  = "CoverageHorizonWeeks";  // how far ahead to plan (default 104 = 2 years)
 }

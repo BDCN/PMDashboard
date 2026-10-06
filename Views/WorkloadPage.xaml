@@ -13,13 +13,21 @@
 
         <!-- ── Title + Stats ── -->
         <Grid Grid.Row="0" Margin="0,0,0,16">
-            <StackPanel>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0">
                 <TextBlock Text="Project Managers — Workload"
                            FontSize="22" FontWeight="Bold"
                            Foreground="#0F172A" FontFamily="Segoe UI Semibold"/>
                 <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
                     <TextBlock Text="{Binding PmCount, StringFormat={}{0} PMs}"
                                FontSize="13" Foreground="#2563EB"/>
+                    <TextBlock Text="  •  " FontSize="13" Foreground="#64748B"/>
+                    <TextBlock Text="{Binding TotalClusters, StringFormat={}{0} clusters}"
+                               FontSize="13" Foreground="#64748B"/>
                     <TextBlock Text="  •  " FontSize="13" Foreground="#64748B"/>
                     <TextBlock Text="{Binding TotalSites, StringFormat={}{0} assigned sites}"
                                FontSize="13" Foreground="#64748B"/>
@@ -28,6 +36,104 @@
                                FontSize="13" Foreground="#64748B"/>
                 </StackPanel>
             </StackPanel>
+
+            <!-- Card view sort — only meaningful (and only shown) in Card view -->
+            <Border Grid.Column="1" Background="White" CornerRadius="8"
+                    BorderBrush="#E2E8F0" BorderThickness="1" Padding="10,0"
+                    VerticalAlignment="Center" Margin="0,0,10,0">
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Setter Property="Visibility" Value="Collapsed"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsCardView}" Value="True">
+                                <Setter Property="Visibility" Value="Visible"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Sort by:" FontSize="12" Foreground="#64748B"
+                               VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <ComboBox SelectedValuePath="Content" SelectedValue="{Binding CardSortBy, Mode=TwoWay}"
+                              FontSize="12" BorderThickness="0" Background="Transparent"
+                              VerticalContentAlignment="Center" MinWidth="140">
+                        <ComboBoxItem Content="Region"/>
+                        <ComboBoxItem Content="Clusters"/>
+                        <ComboBoxItem Content="Sites"/>
+                        <ComboBoxItem Content="ROMPs"/>
+                        <ComboBoxItem Content="Total Assignments"/>
+                    </ComboBox>
+                </StackPanel>
+            </Border>
+
+            <!-- Chart / Card view toggle — segmented control, two-way via IsCardView -->
+            <Border Grid.Column="2" Background="#F1F5F9" CornerRadius="8" Padding="3"
+                    VerticalAlignment="Center">
+                <StackPanel Orientation="Horizontal">
+                    <RadioButton x:Name="RbChartView" GroupName="WorkloadViewMode"
+                                 IsChecked="True" Click="RbChartView_Click">
+                        <RadioButton.Style>
+                            <Style TargetType="RadioButton" BasedOn="{StaticResource {x:Type ToggleButton}}">
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="RadioButton">
+                                            <Border x:Name="bg" CornerRadius="6" Padding="14,6">
+                                                <ContentPresenter/>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsChecked" Value="True">
+                                                    <Setter TargetName="bg" Property="Background" Value="White"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                                <Setter Property="Content" Value="Chart"/>
+                                <Setter Property="FontSize" Value="12"/>
+                                <Setter Property="FontWeight" Value="SemiBold"/>
+                                <Setter Property="Cursor" Value="Hand"/>
+                                <Setter Property="Foreground" Value="#64748B"/>
+                                <Style.Triggers>
+                                    <Trigger Property="IsChecked" Value="True">
+                                        <Setter Property="Foreground" Value="#0F172A"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </RadioButton.Style>
+                    </RadioButton>
+                    <RadioButton x:Name="RbCardView" GroupName="WorkloadViewMode"
+                                 Click="RbCardView_Click">
+                        <RadioButton.Style>
+                            <Style TargetType="RadioButton" BasedOn="{StaticResource {x:Type ToggleButton}}">
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="RadioButton">
+                                            <Border x:Name="bg" CornerRadius="6" Padding="14,6">
+                                                <ContentPresenter/>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsChecked" Value="True">
+                                                    <Setter TargetName="bg" Property="Background" Value="White"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                                <Setter Property="Content" Value="Card"/>
+                                <Setter Property="FontSize" Value="12"/>
+                                <Setter Property="FontWeight" Value="SemiBold"/>
+                                <Setter Property="Cursor" Value="Hand"/>
+                                <Setter Property="Foreground" Value="#64748B"/>
+                                <Style.Triggers>
+                                    <Trigger Property="IsChecked" Value="True">
+                                        <Setter Property="Foreground" Value="#0F172A"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </RadioButton.Style>
+                    </RadioButton>
+                </StackPanel>
+            </Border>
         </Grid>
 
         <!-- ── KPI Panel — hidden entirely in Site Count Only mode ── -->
@@ -226,6 +332,16 @@
         <!-- ── Chart Body ── -->
         <Border Grid.Row="2" CornerRadius="10,10,0,0" BorderBrush="#E2E8F0" BorderThickness="1,1,1,0"
                 Background="White" ClipToBounds="True">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="Visibility" Value="Visible"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsCardView}" Value="True">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
             <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <Grid x:Name="ChartGrid" ClipToBounds="True"
                       SizeChanged="ChartGrid_SizeChanged">
@@ -328,13 +444,23 @@
         <!-- ── Bottom Axis ── -->
         <Border Grid.Row="3" BorderBrush="#E2E8F0" BorderThickness="1,0,1,1"
                 CornerRadius="0,0,10,10" Background="White" Padding="0,0,0,6">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="Visibility" Value="Visible"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsCardView}" Value="True">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="150"/>  <!-- name column spacer -->
                     <ColumnDefinition Width="*"/>    <!-- axis tick area -->
                 </Grid.ColumnDefinitions>
 
-                <!-- Axis label — "% Utilization" normally, "Assigned Sites" in Count mode -->
+                <!-- Axis label — "% Utilization" normally, "Assigned Campuses" in Count mode -->
                 <TextBlock Grid.Column="0"
                            FontSize="10" FontWeight="SemiBold" Foreground="#64748B"
                            HorizontalAlignment="Right" VerticalAlignment="Top"
@@ -408,6 +534,215 @@
                     </ItemsControl>
                 </Canvas>
             </Grid>
+        </Border>
+
+        <!-- ── Card View — one tile per PM: Team - Name, Cluster/Campus/ROMP counts, then
+             the list of clusters they're assigned into. Spans rows 2-3 so it gets the full
+             height the chart+axis would otherwise use. ── -->
+        <Border Grid.Row="2" Grid.RowSpan="2" CornerRadius="10" BorderBrush="#E2E8F0" BorderThickness="1"
+                Background="#EEF1F5" ClipToBounds="True">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsCardView}" Value="True">
+                            <Setter Property="Visibility" Value="Visible"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <!-- WrapPanel for natural responsive reflow (width-based, no code-behind column
+                     math needed) + Grid.IsSharedSizeScope/SharedSizeGroup so every card's height
+                     still comes out uniform — each card sits in its own single-cell Grid whose
+                     Auto row is tagged with the same SharedSizeGroup, which WPF resolves to the
+                     tallest row among all of them and applies to every one. This is the
+                     idiomatic WPF way to get "uniform to the largest" out of a wrapping layout;
+                     a plain UniformGrid forces a strict N×M grid instead and (as seen in
+                     practice) didn't actually keep every row visually uniform. -->
+                <ItemsControl ItemsSource="{Binding CardRows}" Margin="16" Grid.IsSharedSizeScope="True">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel Orientation="Horizontal"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="0,0,16,16">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" SharedSizeGroup="PmCardHeight"/>
+                                </Grid.RowDefinitions>
+                            <Border CornerRadius="10" BorderBrush="#94A3B8" BorderThickness="1.5"
+                                    Background="White" Width="300" ClipToBounds="True">
+                                <Border.Effect>
+                                    <DropShadowEffect Color="#0F172A" Opacity="0.12"
+                                                       BlurRadius="10" ShadowDepth="2" Direction="270"/>
+                                </Border.Effect>
+                                <StackPanel>
+                                    <!-- Header strip: Team - PM Name. Unassigned PMs get a green
+                                         gradient here instead of white, as an at-a-glance flag that
+                                         this PM is carrying no clusters/campuses/ROMPs at all. -->
+                                    <Border Padding="18,14,18,10">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Background" Value="White"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding HasNoAssignments}" Value="True">
+                                                        <Setter Property="Background">
+                                                            <Setter.Value>
+                                                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                                                    <GradientStop Color="#16A34A" Offset="0"/>
+                                                                    <GradientStop Color="#86EFAC" Offset="1"/>
+                                                                </LinearGradientBrush>
+                                                            </Setter.Value>
+                                                        </Setter>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding PmName, StringFormat='Team - {0}'}"
+                                                       FontSize="15" FontWeight="Bold" Foreground="#0F172A"
+                                                       TextWrapping="Wrap"/>
+                                            <TextBlock Text="No Assignments" FontSize="10" FontWeight="Bold"
+                                                       Foreground="White" Margin="0,2,0,0">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding HasNoAssignments}" Value="True">
+                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <StackPanel Margin="18,12,18,16">
+                                    <!-- Cluster / Campus / Site / ROMP counts (CampusCount = sites; RealCampusCount = campuses) -->
+                                    <Grid Margin="0,0,0,14">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Text="{Binding ClusterCount}" FontSize="22" FontWeight="Bold"
+                                                       Foreground="#2563EB" HorizontalAlignment="Center"/>
+                                            <TextBlock Text="Clusters" FontSize="10" FontWeight="SemiBold"
+                                                       Foreground="#64748B" HorizontalAlignment="Center"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1">
+                                            <TextBlock Text="{Binding RealCampusCount}" FontSize="22" FontWeight="Bold"
+                                                       Foreground="#7C3AED" HorizontalAlignment="Center"/>
+                                            <TextBlock Text="Campuses" FontSize="10" FontWeight="SemiBold"
+                                                       Foreground="#64748B" HorizontalAlignment="Center"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="2">
+                                            <TextBlock Text="{Binding CampusCount}" FontSize="22" FontWeight="Bold"
+                                                       Foreground="#16A34A" HorizontalAlignment="Center"/>
+                                            <TextBlock Text="Sites" FontSize="10" FontWeight="SemiBold"
+                                                       Foreground="#64748B" HorizontalAlignment="Center"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="3">
+                                            <TextBlock Text="{Binding RompCount}" FontSize="22" FontWeight="Bold"
+                                                       Foreground="#D97706" HorizontalAlignment="Center"/>
+                                            <TextBlock Text="ROMPs" FontSize="10" FontWeight="SemiBold"
+                                                       Foreground="#64748B" HorizontalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <Separator Background="#E2E8F0" Margin="0,0,0,10"/>
+
+                                    <TextBlock Text="Assigned Clusters" FontSize="11" FontWeight="SemiBold"
+                                               Foreground="#374151" Margin="0,0,0,8"/>
+
+                                    <!-- Bounded height + its own scroll area: a PM with a very large
+                                         portfolio (hundreds of campuses/ROMPs) must not balloon this
+                                         card's height, since SharedSizeGroup would then force every
+                                         other card on the page to match it. -->
+                                    <ScrollViewer MaxHeight="220" VerticalScrollBarVisibility="Auto"
+                                                  HorizontalScrollBarVisibility="Disabled">
+                                    <!-- One block per cluster this PM has campuses in -->
+                                    <ItemsControl ItemsSource="{Binding Clusters}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Margin="0,0,0,8">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <StackPanel Grid.Column="0" Orientation="Horizontal">
+                                                            <Ellipse Width="5" Height="5" Fill="#94A3B8"
+                                                                     VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                                            <TextBlock Text="{Binding ClusterName}" FontSize="12"
+                                                                       FontWeight="SemiBold" Foreground="#0F172A"/>
+                                                            <TextBlock Text="{Binding Region, StringFormat=' ({0})'}"
+                                                                       FontSize="11" Foreground="#94A3B8"/>
+                                                        </StackPanel>
+                                                        <TextBlock Grid.Column="1"
+                                                                   FontSize="11" Foreground="#64748B">
+                                                            <TextBlock.Style>
+                                                                <Style TargetType="TextBlock">
+                                                                    <Setter Property="Text" Value="{Binding CampusCount, StringFormat='{}{0} site(s)'}"/>
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding IsDirectAssignment}" Value="True">
+                                                                            <Setter Property="Text" Value="Assigned directly — no sites yet"/>
+                                                                            <Setter Property="Foreground" Value="#94A3B8"/>
+                                                                            <Setter Property="FontStyle" Value="Italic"/>
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </TextBlock.Style>
+                                                        </TextBlock>
+                                                    </Grid>
+
+                                                    <!-- Campuses under this cluster, each with its ROMPs listed beneath -->
+                                                    <ItemsControl ItemsSource="{Binding Campuses}" Margin="13,4,0,0">
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate>
+                                                                <StackPanel Margin="0,0,0,4">
+                                                                    <TextBlock Text="{Binding CampusName}" FontSize="11.5"
+                                                                               FontWeight="Medium" Foreground="#1E293B"/>
+                                                                    <TextBlock Text="{Binding RompNamesText}" FontSize="10.5"
+                                                                               Foreground="#64748B" TextWrapping="Wrap"
+                                                                               Margin="10,1,0,0"/>
+                                                                </StackPanel>
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    </ScrollViewer>
+
+                                    <!-- Empty state — no clusters assigned -->
+                                    <TextBlock Text="No sites assigned" FontSize="12"
+                                               Foreground="#94A3B8" FontStyle="Italic">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Clusters.Count}" Value="0">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
         </Border>
 
     </Grid>

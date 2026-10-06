@@ -34,24 +34,21 @@
                     </Button.Style>
                 </Button>
 
-                <TextBlock Text="Sites" FontSize="22" FontWeight="Bold"
+                <TextBlock Text="Campuses" FontSize="22" FontWeight="Bold"
                            Foreground="#0F172A" FontFamily="Segoe UI Semibold"/>
 
                 <!-- Breadcrumb -->
                 <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
-                    <Button Content="Locations" Style="{StaticResource BreadcrumbBtnStyle}"
+                    <Button Content="Clusters" Style="{StaticResource BreadcrumbBtnStyle}"
                             Click="BtnBreadcrumbRoot_Click"/>
 
-                    <!-- › [LocationName] — visible at Sites + Romps levels -->
+                    <!-- › [Cluster] — visible at Campuses, Sites and ROMPs levels -->
                     <StackPanel Orientation="Horizontal">
                         <StackPanel.Style>
                             <Style TargetType="StackPanel">
                                 <Setter Property="Visibility" Value="Collapsed"/>
                                 <Style.Triggers>
-                                    <DataTrigger Binding="{Binding IsAtSitesLevel}" Value="True">
-                                        <Setter Property="Visibility" Value="Visible"/>
-                                    </DataTrigger>
-                                    <DataTrigger Binding="{Binding IsAtRompsLevel}" Value="True">
+                                    <DataTrigger Binding="{Binding IsAboveLocations}" Value="True">
                                         <Setter Property="Visibility" Value="Visible"/>
                                     </DataTrigger>
                                 </Style.Triggers>
@@ -61,6 +58,24 @@
                         <Button Content="{Binding SelectedLocation.Name}"
                                 Style="{StaticResource BreadcrumbBtnStyle}"
                                 Click="BtnBreadcrumbLocation_Click"/>
+                    </StackPanel>
+
+                    <!-- › [Campus] — visible at Sites and ROMPs levels -->
+                    <StackPanel Orientation="Horizontal">
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsBelowCampuses}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
+                        <TextBlock Text="  ›  " FontSize="13" Foreground="#94A3B8" VerticalAlignment="Center"/>
+                        <Button Content="{Binding SelectedCampus.Name}"
+                                Style="{StaticResource BreadcrumbBtnStyle}"
+                                Click="BtnBreadcrumbCampus_Click"/>
                     </StackPanel>
 
                     <!-- › [SiteName] — visible at Romps level only, non-clickable (current) -->
@@ -113,9 +128,9 @@
             </Grid.RowDefinitions>
 
             <Grid Grid.Row="0" Margin="0,0,0,10">
-                <TextBlock Text="All locations — click a name to view its sites"
+                <TextBlock Text="All clusters — click a name to view its campuses"
                            FontSize="13" Foreground="#64748B" VerticalAlignment="Center"/>
-                <Button Content="+ Add Location" HorizontalAlignment="Right"
+                <Button Content="+ Add Cluster" HorizontalAlignment="Right"
                         Style="{StaticResource PrimaryButtonStyle}"
                         Click="BtnAddLocation_Click"/>
             </Grid>
@@ -159,7 +174,7 @@
                           ItemsSource="{Binding FilteredLocations}"
                           BorderThickness="0">
                     <DataGrid.Columns>
-                        <DataGridTemplateColumn Header="Location" Width="*">
+                        <DataGridTemplateColumn Header="Cluster" Width="*">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <Button Content="{Binding Name}" Tag="{Binding}"
@@ -170,15 +185,26 @@
                         </DataGridTemplateColumn>
                         <DataGridTextColumn Header="Region"
                                             Binding="{Binding GeographicalLocation}" Width="80"/>
+                        <DataGridTextColumn Header="Assigned PM"
+                                            Binding="{Binding AssignedPmDisplay}" Width="160"/>
+                        <DataGridTextColumn Header="Campuses" Width="80">
+                            <DataGridTextColumn.Binding>
+                                <Binding Path="Campuses.Count"/>
+                            </DataGridTextColumn.Binding>
+                        </DataGridTextColumn>
                         <DataGridTextColumn Header="Sites" Width="60">
                             <DataGridTextColumn.Binding>
                                 <Binding Path="Sites.Count"/>
                             </DataGridTextColumn.Binding>
                         </DataGridTextColumn>
-                        <DataGridTemplateColumn Header="Actions" Width="120">
+                        <DataGridTemplateColumn Header="Actions" Width="210">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <Button Content="Assign PM" Style="{StaticResource SecondaryButtonStyle}"
+                                                Tag="{Binding}" Click="BtnAssignLocationPm_Click"
+                                                Padding="8,4" FontSize="12" Margin="0,0,6,0"
+                                                ToolTipService.ToolTip="Assign one PM to every campus in this cluster (sites with their own PM keep it)"/>
                                         <Button Content="Edit" Style="{StaticResource IconButtonStyle}"
                                                 Tag="{Binding}" Click="BtnEditLocation_Click" Margin="0,0,6,0"/>
                                         <Button Content="Delete" Style="{StaticResource DangerButtonStyle}"
@@ -193,7 +219,102 @@
         </Grid>
 
         <!-- ════════════════════════════════════════════════════════
-             LEVEL 2 — SITES
+             LEVEL 2 — CAMPUSES (Cluster → Campus → Site → ROMP)
+             ════════════════════════════════════════════════════════ -->
+        <Grid Grid.Row="1">
+            <Grid.Style>
+                <Style TargetType="Grid">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsAtCampusesLevel}" Value="True">
+                            <Setter Property="Visibility" Value="Visible"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Grid.Style>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <Grid Grid.Row="0" Margin="0,0,0,10">
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="{Binding SelectedLocation.Name, StringFormat='Campuses in: {0}'}"
+                               FontSize="15" FontWeight="SemiBold" Foreground="#1E293B"/>
+                    <TextBlock Text="Click a campus name to view its sites. Assigning a PM to a campus assigns all its sites."
+                               FontSize="11" Foreground="#94A3B8" Margin="0,2,0,0"/>
+                </StackPanel>
+                <Button Content="+ Add Campus" HorizontalAlignment="Right"
+                        Style="{StaticResource PrimaryButtonStyle}"
+                        Click="BtnAddCampus_Click"/>
+            </Grid>
+
+            <Border Grid.Row="1" Background="White" CornerRadius="8"
+                    BorderBrush="#E2E8F0" BorderThickness="1"
+                    Margin="0,0,0,10" Padding="10,0" Height="40">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="🔍" FontSize="12" Foreground="#94A3B8"
+                               VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <TextBox Text="{Binding CampusSearch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             MinWidth="160" BorderThickness="0" Background="Transparent"
+                             FontSize="12" Foreground="#374151" FontFamily="Segoe UI"
+                             VerticalAlignment="Center"
+                             ToolTipService.ToolTip="Search campus names, PMs and the sites inside each campus"/>
+                    <Border Width="1" Background="#E2E8F0" Margin="10,6,10,6"/>
+                    <CheckBox Content="Show Completed"
+                              IsChecked="{Binding ShowCompletedCampuses, Mode=TwoWay}"
+                              FontSize="12" Foreground="#374151" VerticalAlignment="Center"/>
+                </StackPanel>
+            </Border>
+
+            <Border Grid.Row="2" CornerRadius="10" BorderBrush="#E2E8F0" BorderThickness="1"
+                    Background="White" ClipToBounds="True">
+                <DataGrid x:Name="CampusesGrid"
+                          Style="{StaticResource AppDataGridStyle}"
+                          CellStyle="{StaticResource DataGridCellStyle}"
+                          ColumnHeaderStyle="{StaticResource DataGridColumnHeaderStyle}"
+                          ItemsSource="{Binding FilteredCampuses}"
+                          BorderThickness="0">
+                    <DataGrid.Columns>
+                        <DataGridTemplateColumn Header="Campus" Width="*">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Button Content="{Binding Name}" Tag="{Binding}"
+                                            Style="{StaticResource RowLinkStyle}"
+                                            Click="BtnCampusLink_Click"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        <DataGridTextColumn Header="Assigned PM" Binding="{Binding PmDisplay}" Width="230"/>
+                        <DataGridTextColumn Header="Sub-region" Binding="{Binding SubRegionDisplay}" Width="120"/>
+                        <DataGridTextColumn Header="Sites" Binding="{Binding SiteCount}" Width="60"/>
+                        <DataGridTextColumn Header="ROMPs" Binding="{Binding RompCount}" Width="65"/>
+                        <DataGridTextColumn Header="Status" Binding="{Binding CampusStatus}" Width="80"/>
+                        <DataGridTemplateColumn Header="Actions" Width="250">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <Button Content="Assign PM" Style="{StaticResource SecondaryButtonStyle}"
+                                                Tag="{Binding}" Click="BtnAssignCampusPm_Click"
+                                                Padding="8,4" FontSize="12" Margin="0,0,6,0"
+                                                ToolTipService.ToolTip="Assign a PM to this campus and all its sites (sites with their own PM keep it)"/>
+                                        <Button Content="Rename" Style="{StaticResource IconButtonStyle}"
+                                                Tag="{Binding}" Click="BtnRenameCampus_Click" Margin="0,0,6,0"/>
+                                        <Button Content="Delete" Style="{StaticResource DangerButtonStyle}"
+                                                Tag="{Binding}" Click="BtnDeleteCampus_Click"
+                                                ToolTipService.ToolTip="Delete an empty campus (move its sites first)"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </Border>
+        </Grid>
+
+        <!-- ════════════════════════════════════════════════════════
+             LEVEL 3 — SITES
              ════════════════════════════════════════════════════════ -->
         <Grid Grid.Row="1">
             <Grid.Style>
@@ -214,9 +335,9 @@
 
             <Grid Grid.Row="0" Margin="0,0,0,10">
                 <StackPanel VerticalAlignment="Center">
-                    <TextBlock Text="{Binding SelectedLocation.Name, StringFormat='Sites in: {0}'}"
+                    <TextBlock Text="{Binding SelectedCampus.Name, StringFormat='Sites in campus: {0}'}"
                                FontSize="15" FontWeight="SemiBold" Foreground="#1E293B"/>
-                    <TextBlock Text="Click a site name to view its ROMPs"
+                    <TextBlock Text="Click a site name to view its ROMPs. Move… re-associates a site, with its ROMPs, to another campus."
                                FontSize="11" Foreground="#94A3B8" Margin="0,2,0,0"/>
                 </StackPanel>
                 <Button Content="+ Add Site" HorizontalAlignment="Right"
@@ -275,23 +396,14 @@
                         <DataGridTemplateColumn Header="" Width="34">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
+                                    <!-- Color comes from whichever individual status is furthest
+                                         along among this campus's ROMPs — see Site.StatusColor.
+                                         Tooltip keeps the Active/Complete/Ordered summary label
+                                         since that's still the easiest-to-scan category. -->
                                     <Ellipse Width="14" Height="14"
                                              HorizontalAlignment="Center" VerticalAlignment="Center"
-                                             ToolTipService.ToolTip="{Binding SiteStatus}">
-                                        <Ellipse.Style>
-                                            <Style TargetType="Ellipse">
-                                                <Setter Property="Fill" Value="#22C55E"/>
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding SiteStatus}" Value="Active">
-                                                        <Setter Property="Fill" Value="#F59E0B"/>
-                                                    </DataTrigger>
-                                                    <DataTrigger Binding="{Binding SiteStatus}" Value="Complete">
-                                                        <Setter Property="Fill" Value="#EF4444"/>
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </Ellipse.Style>
-                                    </Ellipse>
+                                             Fill="{Binding StatusColor, Converter={StaticResource HexColorToBrushConverter}}"
+                                             ToolTipService.ToolTip="{Binding SiteStatus}"/>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
@@ -308,14 +420,14 @@
                         </DataGridTemplateColumn>
 
                         <DataGridTextColumn Header="Assigned PM"
-                                            Binding="{Binding AssignedPm.FullName}" Width="160"/>
+                                            Binding="{Binding PmDisplay}" Width="200"/>
                         <DataGridTextColumn Header="ROMPs" Width="65">
                             <DataGridTextColumn.Binding>
                                 <Binding Path="Romps.Count"/>
                             </DataGridTextColumn.Binding>
                         </DataGridTextColumn>
 
-                        <DataGridTemplateColumn Header="Actions" Width="190">
+                        <DataGridTemplateColumn Header="Actions" Width="260">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
@@ -323,7 +435,12 @@
                                                 Tag="{Binding}"  Click="BtnEditSite_Click"   Margin="0,0,6,0"/>
                                         <Button Content="Assign" Style="{StaticResource SecondaryButtonStyle}"
                                                 Tag="{Binding}"  Click="BtnAssignPm_Click"
-                                                Padding="8,4" FontSize="12" Margin="0,0,6,0"/>
+                                                Padding="8,4" FontSize="12" Margin="0,0,6,0"
+                                                ToolTipService.ToolTip="Give this site its own PM, or put it back on the campus's PM"/>
+                                        <Button Content="Move…" Style="{StaticResource SecondaryButtonStyle}"
+                                                Tag="{Binding}"  Click="BtnMoveSite_Click"
+                                                Padding="8,4" FontSize="12" Margin="0,0,6,0"
+                                                ToolTipService.ToolTip="Move this site, with its ROMPs, to another campus"/>
                                         <Button Content="Delete" Style="{StaticResource DangerButtonStyle}"
                                                 Tag="{Binding}"  Click="BtnDeleteSite_Click"/>
                                     </StackPanel>
@@ -361,6 +478,8 @@
                            FontSize="15" FontWeight="SemiBold" Foreground="#1E293B"
                            VerticalAlignment="Center"/>
                 <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
+                    <Button Content="Assignment History" Style="{StaticResource SecondaryButtonStyle}"
+                            Click="BtnSiteAssignmentHistory_Click" Margin="0,0,8,0"/>
                     <Button Content="Show All" Style="{StaticResource SecondaryButtonStyle}"
                             Click="BtnShowAllRomps_Click" Margin="0,0,8,0"/>
                     <Button Content="+ Add ROMP" Style="{StaticResource PrimaryButtonStyle}"
@@ -404,8 +523,33 @@
                     <DataGrid.Columns>
 
                         <DataGridTextColumn Header="ROMP Name" Binding="{Binding Name}" Width="*"/>
-                        <DataGridTextColumn Header="Assigned PM"
-                                            Binding="{Binding Site.AssignedPm.FullName}" Width="160"/>
+
+                        <!-- Assigned PM — the ROMP's own override if set, else its Campus's PM.
+                             A ⚡ marker flags a ROMP whose PM differs from its Campus's PM, so an
+                             override is visible at a glance without opening the row. -->
+                        <DataGridTemplateColumn Header="Assigned PM" Width="170">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="⚡" FontSize="11" Foreground="#D97706" Margin="0,0,4,0"
+                                                   ToolTipService.ToolTip="This ROMP has its own PM override, different from (or in addition to) its Campus's assignment">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding HasPmOverride}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <TextBlock Text="{Binding EffectivePm.FullName}"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+
                         <DataGridTextColumn Header="Region"
                                             Binding="{Binding GeographicalLocation}" Width="80"/>
 
@@ -421,34 +565,17 @@
                                             Width="65"
                                             IsReadOnly="True"/>
 
-                        <!-- Status + Edit + Delete combined column -->
-                        <DataGridTemplateColumn Header="Actions" Width="310">
+                        <!-- Status + Edit + Assign + Delete combined column -->
+                        <DataGridTemplateColumn Header="Actions" Width="390">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
 
-                                        <!-- Color indicator dot -->
-                                        <Ellipse Width="10" Height="10" VerticalAlignment="Center" Margin="0,0,6,0">
-                                            <Ellipse.Style>
-                                                <Style TargetType="Ellipse">
-                                                    <Setter Property="Fill" Value="#94A3B8"/>
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding Status}" Value="OFCI">
-                                                            <Setter Property="Fill" Value="#2563EB"/>
-                                                        </DataTrigger>
-                                                        <DataTrigger Binding="{Binding Status}" Value="Construction">
-                                                            <Setter Property="Fill" Value="#F59E0B"/>
-                                                        </DataTrigger>
-                                                        <DataTrigger Binding="{Binding Status}" Value="CX">
-                                                            <Setter Property="Fill" Value="#F97316"/>
-                                                        </DataTrigger>
-                                                        <DataTrigger Binding="{Binding Status}" Value="Complete">
-                                                            <Setter Property="Fill" Value="#22C55E"/>
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </Ellipse.Style>
-                                        </Ellipse>
+                                        <!-- Color indicator dot — this ROMP's own status color
+                                             (Configuration page color picker), via Romp.StatusColor -->
+                                        <Ellipse Width="10" Height="10" VerticalAlignment="Center" Margin="0,0,6,0"
+                                                 Fill="{Binding StatusColor, Converter={StaticResource HexColorToBrushConverter}}"
+                                                 ToolTipService.ToolTip="{Binding Status}"/>
 
                                         <!-- Quick-change dropdown (items bound to ViewModel's StatusConfig list) -->
                                         <ComboBox Tag="{Binding}"
@@ -459,10 +586,14 @@
                                                   Background="White" Padding="6,3"
                                                   SelectionChanged="CboRompStatus_SelectionChanged"/>
 
-                                        <!-- Edit / Delete buttons with left margin -->
+                                        <!-- Edit / Assign / Delete buttons with left margin -->
                                         <Button Content="Edit" Style="{StaticResource IconButtonStyle}"
                                                 Tag="{Binding}" Click="BtnEditRomp_Click"
                                                 Margin="16,0,6,0"/>
+                                        <Button Content="Assign" Style="{StaticResource SecondaryButtonStyle}"
+                                                Tag="{Binding}" Click="BtnAssignRompPm_Click"
+                                                Padding="8,4" FontSize="12" Margin="0,0,6,0"
+                                                ToolTipService.ToolTip="Override this ROMP's PM independently of its Campus"/>
                                         <Button Content="Delete" Style="{StaticResource DangerButtonStyle}"
                                                 Tag="{Binding}" Click="BtnDeleteRomp_Click"/>
                                     </StackPanel>

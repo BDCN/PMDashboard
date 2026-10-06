@@ -22,8 +22,41 @@ public partial class WorkloadPage : UserControl
 
     private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
+        if (e.OldValue is WorkloadViewModel oldVm)
+            oldVm.DataRefreshed -= OnVmDataRefreshed;
         if (e.NewValue is WorkloadViewModel vm)
+        {
+            vm.DataRefreshed += OnVmDataRefreshed;
             RebuildBackground(vm);
+        }
+    }
+
+    /// <summary>
+    /// Fires when a background sync pulled in a change and the VM reloaded itself — unlike the
+    /// SizeChanged-driven path, this happens whether or not the page is actually the one on
+    /// screen right now, so the chart must re-derive its own current width rather than assume
+    /// it already has a fresh one. Load() always leaves ApplyScale at a 700px placeholder.
+    /// </summary>
+    private void OnVmDataRefreshed()
+    {
+        if (Vm is not { } vm) return;
+        var barWidth = ChartGrid.ActualWidth - NameColumnWidth;
+        if (barWidth > 50)
+            vm.ApplyScale(barWidth);
+        RebuildBackground(vm);
+    }
+
+    // ── Chart / Card view toggle ──
+    private void RbChartView_Click(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm) return;
+        vm.IsCardView = false;
+    }
+
+    private void RbCardView_Click(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm) return;
+        vm.IsCardView = true;
     }
 
     // ── Auto-scale: fires whenever the chart panel gets a new size ──

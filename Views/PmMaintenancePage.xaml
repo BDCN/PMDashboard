@@ -89,6 +89,7 @@
                       ItemsSource="{Binding Pms}"
                       SelectedItem="{Binding SelectedPm}"
                       BorderThickness="0"
+                      BeginningEdit="PmGrid_BeginningEdit"
                       RowEditEnding="PmGrid_RowEditEnding">
                 <DataGrid.Columns>
 
@@ -156,7 +157,7 @@
                                         Width="135"/>
                     <DataGridTextColumn x:Name="ColSiteCap" Header="Site Cap"
                                         Binding="{Binding Capacity, UpdateSourceTrigger=LostFocus, StringFormat={}{0:N1}}"
-                                        Width="80"
+                                        Width="90"
                                         HeaderStyle="{StaticResource DataGridColumnHeaderStyle}">
                         <DataGridTextColumn.HeaderTemplate>
                             <DataTemplate>
@@ -185,12 +186,19 @@
                                         Binding="{Binding IdealUtilization, UpdateSourceTrigger=LostFocus, StringFormat={}{0:N1}}"
                                         Width="110"/>
 
-                    <!-- Actions — Delete only (Edit replaced by inline editing) -->
-                    <DataGridTemplateColumn Header="" Width="80">
+                    <!-- Actions — Edit (full dialog, all fields incl. Active) + Delete.
+                         Inline cell editing above still works for quick tweaks; Edit is for a
+                         clearer, validated view of everything at once (and catches duplicate
+                         name/Data Name the way inline editing doesn't). -->
+                    <DataGridTemplateColumn Header="" Width="140">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
-                                <Button Content="Delete" Style="{StaticResource DangerButtonStyle}"
-                                        Tag="{Binding}" Click="BtnDelete_Click"/>
+                                <StackPanel Orientation="Horizontal">
+                                    <Button Content="Edit" Style="{StaticResource IconButtonStyle}"
+                                            Tag="{Binding}" Click="BtnEdit_Click" Margin="0,0,6,0"/>
+                                    <Button Content="Delete" Style="{StaticResource DangerButtonStyle}"
+                                            Tag="{Binding}" Click="BtnDelete_Click"/>
+                                </StackPanel>
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>

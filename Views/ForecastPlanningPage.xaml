@@ -1,0 +1,209 @@
+<UserControl x:Class="PMDashboard.Views.ForecastPlanningPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="#F1F5F9">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="32,28,32,28">
+
+            <!-- ── Title ── -->
+            <StackPanel Margin="0,0,0,24">
+                <TextBlock Text="Forecast Planning" FontSize="22" FontWeight="Bold"
+                           Foreground="#0F172A" FontFamily="Segoe UI Semibold"/>
+                <TextBlock Text="Upload equipment buildout forecast sheets, map their columns, and browse what's been imported."
+                           FontSize="13" Foreground="#64748B" Margin="0,4,0,0"/>
+            </StackPanel>
+
+            <!-- ── Types ── -->
+            <Border Background="White" CornerRadius="10" BorderBrush="#E2E8F0" BorderThickness="1"
+                    Padding="24,20" Margin="0,0,0,16">
+                <StackPanel>
+                    <TextBlock Text="Forecast Types" FontSize="16" FontWeight="SemiBold" Foreground="#0F172A" Margin="0,0,0,4"/>
+                    <TextBlock Text="Select a type below to manage its fields and browse its data. Each upload is classified as one of these."
+                               FontSize="13" Foreground="#64748B" Margin="0,0,0,14"/>
+
+                    <ItemsControl x:Name="TypesList" ItemsSource="{Binding Types}" Margin="0,0,0,14">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel Orientation="Horizontal"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button Content="{Binding Name}" Tag="{Binding}"
+                                        Click="BtnSelectType_Click"
+                                        Margin="0,0,8,8" Padding="12,7" FontSize="12"
+                                        Style="{StaticResource SecondaryButtonStyle}"/>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <StackPanel Orientation="Horizontal">
+                        <TextBox x:Name="TxtNewTypeCode" Width="80" Margin="0,0,8,0"
+                                 Style="{StaticResource FormTextBoxStyle}"
+                                 Text="{Binding NewTypeCode, UpdateSourceTrigger=PropertyChanged}"
+                                 ToolTip="Code (e.g. O, M, L)"/>
+                        <TextBox x:Name="TxtNewTypeName" Width="220" Margin="0,0,8,0"
+                                 Style="{StaticResource FormTextBoxStyle}"
+                                 Text="{Binding NewTypeName, UpdateSourceTrigger=PropertyChanged}"
+                                 ToolTip="Display name (optional)"/>
+                        <Button Content="+ Add Type" Click="BtnAddType_Click"
+                                Style="{StaticResource PrimaryButtonStyle}" Padding="12,6" FontSize="12"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- ── Upload ── -->
+            <Border Background="White" CornerRadius="10" BorderBrush="#E2E8F0" BorderThickness="1"
+                    Padding="24,20" Margin="0,0,0,16">
+                <StackPanel>
+                    <TextBlock Text="Upload" FontSize="16" FontWeight="SemiBold" Foreground="#0F172A" Margin="0,0,0,4"/>
+                    <TextBlock Text="One file = one type. The type is auto-detected from the file's columns against what's been seen before; you'll be asked to confirm or pick manually when it's unsure."
+                               FontSize="13" Foreground="#64748B" TextWrapping="Wrap" Margin="0,0,0,14"/>
+                    <Button Content="Upload Excel File" Click="BtnUpload_Click"
+                            Style="{StaticResource PrimaryButtonStyle}" Padding="14,7" FontSize="12"
+                            HorizontalAlignment="Left"/>
+                    <TextBlock x:Name="TxtUploadStatus" FontSize="12" Foreground="#166534"
+                               TextWrapping="Wrap" Margin="0,10,0,0" Visibility="Collapsed"/>
+                </StackPanel>
+            </Border>
+
+            <!-- ── Fields (selected type) ── -->
+            <Border Background="White" CornerRadius="10" BorderBrush="#E2E8F0" BorderThickness="1"
+                    Padding="24,20" Margin="0,0,0,16">
+                <StackPanel>
+                    <TextBlock Text="Fields" FontSize="16" FontWeight="SemiBold" Foreground="#0F172A" Margin="0,0,0,4"/>
+                    <TextBlock Text="Global fields (shared across every type) are listed first, then fields specific to the selected type. Rename a field, mark it ignored to exclude it from import/browsing, mark it as the site code column (Site Key), or as the column naming each site's campus (Campus (az) — e.g. Type O's &quot;az&quot;)."
+                               FontSize="13" Foreground="#64748B" TextWrapping="Wrap" Margin="0,0,0,14"/>
+
+                    <Border BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" ClipToBounds="True">
+                        <DataGrid x:Name="FieldsGrid"
+                                  Style="{StaticResource AppDataGridStyle}"
+                                  CellStyle="{StaticResource DataGridCellStyle}"
+                                  ColumnHeaderStyle="{StaticResource DataGridColumnHeaderStyle}"
+                                  ItemsSource="{Binding Fields}"
+                                  AutoGenerateColumns="False" BorderThickness="0"
+                                  CanUserAddRows="False"
+                                  RowEditEnding="FieldsGrid_RowEditEnding">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Scope" Width="90" Binding="{Binding ScopeLabel}" IsReadOnly="True"/>
+                                <!-- Which Excel column (A, B, ..., AZ) this field's data came from in its
+                                     source sheet — blank for a global field, which can sit at a different
+                                     column in each sheet type it's shared across. See ForecastField.ExcelColumn. -->
+                                <DataGridTextColumn Header="Column" Width="60" Binding="{Binding ExcelColumn}" IsReadOnly="True">
+                                    <DataGridTextColumn.ElementStyle>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Foreground" Value="#64748B"/>
+                                            <Setter Property="FontFamily" Value="Consolas"/>
+                                        </Style>
+                                    </DataGridTextColumn.ElementStyle>
+                                </DataGridTextColumn>
+                                <DataGridTextColumn Header="Name" Width="220" Binding="{Binding Name, UpdateSourceTrigger=LostFocus}"/>
+                                <DataGridTextColumn Header="Type" Width="80" Binding="{Binding FieldType}" IsReadOnly="True"/>
+                                <DataGridTemplateColumn Header="Site Key" Width="90">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <CheckBox IsChecked="{Binding IsSiteKey, Mode=OneWay}"
+                                                      Click="ChkSiteKey_Click" Tag="{Binding}"
+                                                      HorizontalAlignment="Center"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTemplateColumn Header="Campus (az)" Width="90">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <CheckBox IsChecked="{Binding IsCampusField, Mode=OneWay}"
+                                                      Click="ChkCampus_Click" Tag="{Binding}"
+                                                      HorizontalAlignment="Center"
+                                                      ToolTip="This column names the campus each row's site belongs to"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTemplateColumn Header="Ignored" Width="70">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <CheckBox IsChecked="{Binding IsIgnored, Mode=OneWay}"
+                                                      Click="ChkIgnored_Click" Tag="{Binding}"
+                                                      HorizontalAlignment="Center"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </Border>
+                </StackPanel>
+            </Border>
+
+            <!-- ── Recent imports ── -->
+            <Border Background="White" CornerRadius="10" BorderBrush="#E2E8F0" BorderThickness="1"
+                    Padding="24,20" Margin="0,0,0,16">
+                <StackPanel>
+                    <TextBlock Text="Recent Imports" FontSize="16" FontWeight="SemiBold" Foreground="#0F172A" Margin="0,0,0,10"/>
+                    <ItemsControl ItemsSource="{Binding RecentImports}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="{Binding FileName}" FontSize="12" Foreground="#0F172A"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding RowCount, StringFormat='{}{0:N0} rows'}"
+                                               FontSize="12" Foreground="#64748B" Margin="12,0"/>
+                                    <TextBlock Grid.Column="2" Text="{Binding UploadedAtUtc, StringFormat='{}{0:yyyy-MM-dd HH:mm}'}"
+                                               FontSize="12" Foreground="#94A3B8"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+            <!-- ── Browse data ── -->
+            <Border Background="White" CornerRadius="10" BorderBrush="#E2E8F0" BorderThickness="1"
+                    Padding="24,20">
+                <StackPanel>
+                    <Grid Margin="0,0,0,10">
+                        <TextBlock Text="Data" FontSize="16" FontWeight="SemiBold" Foreground="#0F172A"/>
+                        <TextBlock x:Name="TxtBrowseCount" HorizontalAlignment="Right" FontSize="12" Foreground="#64748B"/>
+                    </Grid>
+
+                    <Border BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" ClipToBounds="True">
+                        <DataGrid x:Name="BrowseGrid"
+                                  Style="{StaticResource AppDataGridStyle}"
+                                  CellStyle="{StaticResource DataGridCellStyle}"
+                                  ColumnHeaderStyle="{StaticResource DataGridColumnHeaderStyle}"
+                                  ItemsSource="{Binding BrowseRows}"
+                                  AutoGenerateColumns="False" IsReadOnly="True" BorderThickness="0">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Site Code" Width="110" Binding="{Binding SiteCode}"/>
+                                <DataGridTemplateColumn Header="Matched" Width="70">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <CheckBox IsChecked="{Binding SiteMatched, Mode=OneWay}"
+                                                      IsHitTestVisible="False" HorizontalAlignment="Center"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTextColumn Header="File" Width="160" Binding="{Binding FileName}"/>
+                                <DataGridTextColumn Header="Uploaded" Width="140"
+                                                     Binding="{Binding UploadedAtUtc, StringFormat='{}{0:yyyy-MM-dd HH:mm}'}"/>
+                                <DataGridTextColumn Header="Values" Width="*" Binding="{Binding Values}"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </Border>
+
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+                        <Button Content="◀ Prev" Click="BtnPrevPage_Click"
+                                Style="{StaticResource SecondaryButtonStyle}" Padding="10,5" FontSize="12" Margin="0,0,8,0"/>
+                        <TextBlock x:Name="TxtPageInfo" VerticalAlignment="Center" FontSize="12" Foreground="#64748B" Margin="0,0,8,0"/>
+                        <Button Content="Next ▶" Click="BtnNextPage_Click"
+                                Style="{StaticResource SecondaryButtonStyle}" Padding="10,5" FontSize="12"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

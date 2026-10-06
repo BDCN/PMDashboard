@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Media;
 using PMDashboard.Services;
 
 namespace PMDashboard.Dialogs;
@@ -11,7 +12,24 @@ public partial class LoginDialog : Window
     public LoginDialog()
     {
         InitializeComponent();
-        Loaded += (_, _) => TxtEmail.Focus();
+        TxtVersion.Text = AppVersion.Short;
+        TxtVersion.ToolTip = AppVersion.Full;
+        Loaded += (_, _) =>
+        {
+            // Pre-fill from a saved-but-currently-inert auto-login (e.g. it's enabled but the
+            // account now has MustChangePassword set, so App.xaml.cs fell back to showing this
+            // dialog) — saves re-typing the email, and keeps the checkbox reflecting reality.
+            if (DevAutoLogin.TryGetSavedEmail() is { } savedEmail)
+            {
+                TxtEmail.Text = savedEmail;
+                ChkSkipLogin.IsChecked = true;
+                PwdBox.Focus();
+            }
+            else
+            {
+                TxtEmail.Focus();
+            }
+        };
     }
 
     private void BtnSignIn_Click(object sender, RoutedEventArgs e) => TrySignIn();
@@ -22,7 +40,7 @@ public partial class LoginDialog : Window
         if (e.Key == Key.Enter) TrySignIn();
     }
 
-    private void TrySignIn()
+    private async void TrySignIn()
     {
         var email = TxtEmail.Text.Trim();
         if (string.IsNullOrWhiteSpace(email) || string.IsNullOrEmpty(PwdBox.Password))
@@ -32,6 +50,20 @@ public partial class LoginDialog : Window
         }
 
         var user = _users.Authenticate(email, PwdBox.Password);
+
+        // A user created on another machine may not have reached this machine's local cache yet
+        // if cloud sync is still doing its initial catch-up — give it one bounded chance to
+        // finish and retry, rather than an immediate "incorrect" that's really just "not synced
+        // here yet". Skipped entirely once InitialPullDone, so this never slows down the common
+        // case of a genuinely wrong password.
+        if (user == null && CloudSyncService.IsAvailable && !App.CloudSync.InitialPullDone)
+        {
+            SetChecking(true);
+            await App.CloudSync.WaitForInitialPullAsync(TimeSpan.FromSeconds(10));
+            SetChecking(false);
+            user = _users.Authenticate(email, PwdBox.Password);
+        }
+
         if (user == null)
         {
             // One message for unknown address, wrong password and disabled account alike —
@@ -56,15 +88,39 @@ public partial class LoginDialog : Window
         }
 
         _users.RecordLogin(user.Id);
-        AuditService.Log("Login", "User", user.Id, $"Signed in as {user.Email}");
+        AuditService.Log("Login", "User", user.Id, $"Signed in as {user.Email} — SAT {AppVersion.Short}");
+
+        if (ChkSkipLogin.IsChecked == true)
+            DevAutoLogin.Enable(user.Email);
+        else if (DevAutoLogin.IsEnabled)
+            DevAutoLogin.Disable(); // user explicitly logged in through the form — honor an unchecked box
+
         DialogResult = true;
     }
 
     private void ShowError(string message)
     {
-        TxtError.Text       = message;
-        TxtError.Visibility = Visibility.Visible;
+        TxtError.Foreground = new SolidColorBrush(Color.FromRgb(0xEF, 0x44, 0x44));
+        TxtError.Text        = message;
+        TxtError.Visibility  = Visibility.Visible;
         PwdBox.Clear();
         PwdBox.Focus();
+    }
+
+    private void SetChecking(bool checking)
+    {
+        BtnSignIn.IsEnabled = !checking;
+        TxtEmail.IsEnabled  = !checking;
+        PwdBox.IsEnabled    = !checking;
+        if (checking)
+        {
+            TxtError.Foreground = new SolidColorBrush(Color.FromRgb(0x64, 0x74, 0x8B));
+            TxtError.Text        = "Checking for recent account updates…";
+            TxtError.Visibility  = Visibility.Visible;
+        }
+        else
+        {
+            TxtError.Visibility = Visibility.Collapsed;
+        }
     }
 }

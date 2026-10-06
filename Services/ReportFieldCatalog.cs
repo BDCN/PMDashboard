@@ -18,6 +18,7 @@ public class SiteRompFlatRow
     public int      RompId               { get; init; }
     public string   LocationName         { get; init; } = "";
     public string   GeographicalLocation { get; init; } = "";
+    public string   CampusName           { get; init; } = "";
     public string   SiteName             { get; init; } = "";
     public string   SiteStatus           { get; init; } = "";
     public string   AssignedPmName       { get; init; } = "";
@@ -73,8 +74,9 @@ public static class ReportFieldCatalog
 
     public static readonly IReadOnlyList<ReportField> SiteRompFields = new List<ReportField>
     {
-        new() { Key = "LocationName",         DisplayName = "Location",          FieldType = ReportFieldType.Text },
+        new() { Key = "LocationName",         DisplayName = "Cluster",           FieldType = ReportFieldType.Text },
         new() { Key = "GeographicalLocation", DisplayName = "Region",            FieldType = ReportFieldType.Text },
+        new() { Key = "CampusName",           DisplayName = "Campus",            FieldType = ReportFieldType.Text },
         new() { Key = "SiteName",             DisplayName = "Site",              FieldType = ReportFieldType.Text },
         new() { Key = "SiteStatus",           DisplayName = "Site Status",       FieldType = ReportFieldType.Text },
         new() { Key = "AssignedPmName",       DisplayName = "Assigned PM",       FieldType = ReportFieldType.Text },
@@ -118,6 +120,7 @@ public static class ReportFieldCatalog
     {
         "LocationName"         => r.LocationName,
         "GeographicalLocation" => r.GeographicalLocation,
+        "CampusName"           => r.CampusName,
         "SiteName"             => r.SiteName,
         "SiteStatus"           => r.SiteStatus,
         "AssignedPmName"       => r.AssignedPmName,

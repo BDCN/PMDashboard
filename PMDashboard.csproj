@@ -6,11 +6,46 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <!-- WPF has no built-in color picker dialog; the Configuration page's per-status color
+         picker (Campus/ROMP Statuses) uses System.Windows.Forms.ColorDialog, the standard native
+         Windows "any color" picker. -->
+    <UseWindowsForms>true</UseWindowsForms>
+    <!-- Embeds favicon.ico as the .exe's own native Win32 icon resource — what Explorer, a
+         taskbar shortcut/pin, and Alt-Tab show for the file itself. Without this, only the
+         live Window.Icon binding (MainWindow.xaml) shows an icon, and only once the window has
+         actually opened — the .exe on disk, and anything referencing it before launch, falls
+         back to the generic default icon. -->
+    <ApplicationIcon>favicon.ico</ApplicationIcon>
+
+    <!-- App version — shown in the header/login screen, written to sync-debug.log, crash.log
+         and login audit entries, and reported per machine to the cloud so an outdated install
+         gets a warning banner (see Services/AppVersion.cs). Bump it for EVERY build that gets
+         installed anywhere — publish.ps1 does this for you:
+           .\publish.ps1            → patch (1.0.0 → 1.0.1)  bug fixes
+           .\publish.ps1 -Bump minor → 1.0.1 → 1.1.0         new features
+           .\publish.ps1 -Bump major → 1.1.0 → 2.0.0         big/breaking changes -->
+    <Version>1.3.0</Version>
   </PropertyGroup>
 
+  <!-- Build timestamp (UTC), read back by AppVersion.BuildDateUtc — distinguishes two builds
+       that someone forgot to give different version numbers. -->
   <ItemGroup>
-    <Resource Include="favicon.ico"/>
-    <Resource Include="Assets\iem-logo.png"/>
+    <AssemblyMetadata Include="BuildDateUtc" Value="$([System.DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ'))" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="favicon.ico" />
+    <Resource Include="Assets\iem-logo.png" />
+  </ItemGroup>
+
+  <!-- UseWindowsForms auto-adds global usings for System.Windows.Forms / System.Drawing, which
+       collide project-wide with WPF's own System.Windows.* types (UserControl, Application,
+       Brush, Timer, KeyEventArgs, ...). The only WinForms type this project actually needs is
+       ColorDialog (Views/ConfigPage.xaml.cs), referenced there by its full name, so these two
+       implicit usings are safe to drop. -->
+  <ItemGroup>
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
   </ItemGroup>
 
   <ItemGroup>

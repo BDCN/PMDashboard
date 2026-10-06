@@ -9,8 +9,26 @@ public class Romp
     public int SiteId { get; set; }
     public Site Site { get; set; } = null!;
 
+    /// <summary>
+    /// Optional ROMP-level PM override — when set, this ROMP's score counts toward THIS PM
+    /// instead of its Campus's assigned PM (see AssignmentResolver.EffectivePmId). Null (the
+    /// common case) means the ROMP just follows its Campus's assignment. Changed only via
+    /// AssignmentHistoryService.RecordRompChange, never set directly, so history survives.
+    /// </summary>
+    public int? AssignedPmId { get; set; }
+    public PM?  AssignedPm   { get; set; }
+
+    /// <summary>The PM this ROMP's score actually counts toward — its own override if set, else
+    /// its Campus's PM. Requires Site (+ Site.AssignedPm) and AssignedPm to be loaded.</summary>
+    public PM?  EffectivePm     => AssignedPm ?? Site?.AssignedPm;
+    public bool HasPmOverride   => AssignedPmId != null;
+
     public string   Status       { get; set; } = "Ordered";
     public DateTime LastModified { get; set; }
+
+    /// <summary>Indicator-dot color for this ROMP's own Status, from the Configuration page's
+    /// per-status color picker (RompStatus.Color via StatusConfig.ColorFor).</summary>
+    public string StatusColor => StatusConfig.ColorFor(Status);
 
     /// <summary>Email of whoever last wrote this row; stamped by AppDbContext.SaveChanges.</summary>
     public string LastModifiedBy { get; set; } = "";

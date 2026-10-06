@@ -24,6 +24,15 @@ public partial class ConfigPage : UserControl
             // Populate DDL text area if Cloud mode was already active when the page opens
             if (vm.IsDbCloud)
                 TxtDdl.Text = vm.GetDdlScript();
+
+            // Opened from Coverage Planner's "Model settings" button — jump to that card. Deferred
+            // to after layout so the card has a position to scroll to.
+            if (vm.PendingScrollTarget == "Coverage")
+            {
+                vm.PendingScrollTarget = null;
+                Dispatcher.InvokeAsync(() => CoverageCard.BringIntoView(),
+                                       System.Windows.Threading.DispatcherPriority.Loaded);
+            }
         };
     }
 
@@ -42,6 +51,30 @@ public partial class ConfigPage : UserControl
 
     private void BtnSaveWorkloadParams_Click(object sender, RoutedEventArgs e) =>
         Vm?.SaveWorkloadParams();
+
+    private void BtnSaveScheduleConflict_Click(object sender, RoutedEventArgs e) =>
+        Vm?.SaveScheduleConflictSettings();
+
+    private void BtnSaveCoverage_Click(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm) return;
+        vm.SaveCoverageSettings();
+        MessageBox.Show("Coverage planning settings saved. The Coverage Planner recalculates the next time you open it.",
+            "Saved", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    private void BtnResetCoverage_Click(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm) return;
+        var confirm = MessageBox.Show(
+            "Put every Coverage Planning variable back to its default and save?\n\n" + vm.CoverageDefaultsText +
+            "\n\nThe CX window is shared with Forecast Schedule Conflicts, so that card changes too.",
+            "Reset to Defaults", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (confirm != MessageBoxResult.Yes) return;
+        vm.ResetCoverageSettings();
+        MessageBox.Show("Coverage planning settings reset to defaults and saved.",
+            "Reset", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
 
     private void BtnSyncEquipment_Click(object sender, RoutedEventArgs e)
     {
@@ -201,7 +234,12 @@ public partial class ConfigPage : UserControl
         if (Vm is not { } vm) return;
         if (e.EditAction != DataGridEditAction.Commit) return;
         if (e.Row.Item is not RompStatus status) return;
-        Dispatcher.BeginInvoke(() => vm.SaveRompStatus(status),
+        Dispatcher.BeginInvoke(() =>
+            {
+                var error = vm.SaveRompStatus(status);
+                if (error != null)
+                    MessageBox.Show(error, "Can't Rename Status", MessageBoxButton.OK, MessageBoxImage.Warning);
+            },
             System.Windows.Threading.DispatcherPriority.Background);
     }
 
@@ -227,6 +265,39 @@ public partial class ConfigPage : UserControl
         }
     }
 
+    private void ChkStatusDisabled_Click(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm) return;
+        if (sender is CheckBox chk && chk.DataContext is RompStatus status)
+        {
+            status.IsDisabled = chk.IsChecked == true;
+            vm.SaveRompStatus(status);
+        }
+    }
+
+    /// <summary>Opens the native Windows color picker for a status's indicator-dot color. Uses
+    /// System.Windows.Forms.ColorDialog — WPF has no first-party equivalent — so the conversion
+    /// between System.Drawing.Color (dialog) and the "#RRGGBB" string (RompStatus.Color) happens
+    /// right here rather than spreading WinForms types through the rest of the app.</summary>
+    private void StatusColorSwatch_MouseLeftButtonUp(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (Vm is not { } vm) return;
+        if (((FrameworkElement)sender).Tag is not RompStatus status) return;
+
+        var current = System.Drawing.ColorTranslator.FromHtml(
+            string.IsNullOrWhiteSpace(status.Color) ? "#94A3B8" : status.Color);
+
+        using var dlg = new System.Windows.Forms.ColorDialog
+        {
+            Color = current,
+            FullOpen = true,
+        };
+        if (dlg.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
+
+        status.Color = System.Drawing.ColorTranslator.ToHtml(dlg.Color);
+        vm.SaveRompStatus(status);
+    }
+
     private void BtnStatusUp_Click(object sender, RoutedEventArgs e)
     {
         if (Vm is not { } vm) return;
@@ -242,10 +313,14 @@ public partial class ConfigPage : UserControl
     private void BtnDeleteStatus_Click(object sender, RoutedEventArgs e)
     {
         if (Vm is not { } vm) return;
-        if (((Button)sender).Tag is not RompStatus status || status.IsBuiltIn) return;
+        if (((Button)sender).Tag is not RompStatus status) return;
         var confirm = MessageBox.Show($"Delete status \"{status.Name}\"?", "Confirm",
             MessageBoxButton.YesNo, MessageBoxImage.Warning);
-        if (confirm == MessageBoxResult.Yes) vm.DeleteRompStatus(status);
+        if (confirm != MessageBoxResult.Yes) return;
+
+        var error = vm.DeleteRompStatus(status);
+        if (error != null)
+            MessageBox.Show(error, "Can't Delete Status", MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
     private void BtnAddStatus_Click(object sender, RoutedEventArgs e)
@@ -483,38 +558,72 @@ public partial class ConfigPage : UserControl
         TxtDeleteLocalStatus.Visibility = Visibility.Visible;
     }
 
-    // ── Manage users ─────────────────────────────────────────────────────────
+    // ── Danger zone — clear EVERYTHING, cloud included ───────────────────────
 
-    private void BtnAddUser_Click(object sender, RoutedEventArgs e)
+    private void BtnClearAllData_Click(object sender, RoutedEventArgs e)
     {
         if (Vm is not { } vm) return;
-        var dlg = new AddEditUserDialog { Owner = Window.GetWindow(this) };
-        if (dlg.ShowDialog() == true) vm.LoadUsers();
-    }
 
-    private void BtnResetUserPassword_Click(object sender, RoutedEventArgs e)
-    {
-        if (Vm is not { } vm) return;
-        if (sender is not FrameworkElement { DataContext: User user }) return;
-
-        var dlg = new ResetUserPasswordDialog(user.Id, user.DisplayName) { Owner = Window.GetWindow(this) };
-        dlg.ShowDialog();
-    }
-
-    private void BtnToggleUserActive_Click(object sender, RoutedEventArgs e)
-    {
-        if (Vm is not { } vm) return;
-        if (sender is not FrameworkElement { DataContext: User user }) return;
-
-        if (user.IsActive)
+        // Belt-and-suspenders: the button only exists inside the SuperAdmin-only Database card,
+        // but this is destructive enough to check again rather than trust the UI alone.
+        if (!CurrentUser.IsSuperAdmin)
         {
-            var confirm = MessageBox.Show(
-                $"Deactivate {user.DisplayName}? They will no longer be able to sign in.",
-                "Deactivate User", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-            if (confirm != MessageBoxResult.Yes) return;
+            MessageBox.Show("Only a Super Admin can clear all data.",
+                "Not Allowed", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
         }
 
-        vm.SetUserActive(user, !user.IsActive);
+        var counts = vm.GetAllDataCounts();
+        int total  = counts.Values.Sum();
+
+        if (total == 0)
+        {
+            ShowClearAllStatus("Database is already empty — nothing to clear.");
+            return;
+        }
+
+        var breakdown = string.Join(
+            Environment.NewLine,
+            counts.Where(c => c.Value > 0).Select(c => $"    {c.Key}: {c.Value:N0}"));
+
+        var scope = DatabaseConfig.IsCloud
+            ? "You are in Cloud mode: this deletes from the SHARED CLOUD DATABASE too, not just this computer. Every other machine and every user account — including your own — is affected. There is no cloud copy left afterward to recover from."
+            : "You are in Local mode. Once this runs, this data cannot be recovered.";
+
+        var first = MessageBox.Show(
+            $"Clear ALL data — every PM, Cluster, Site, ROMP, Order, user account, and setting?\n\n{breakdown}\n\n" +
+            $"Total: {total:N0} record(s).\n\n{scope}\n\nThis is permanent.",
+            "Clear ALL Data", MessageBoxButton.YesNo, MessageBoxImage.Stop);
+        if (first != MessageBoxResult.Yes) return;
+
+        // Second gate: a longer, more deliberate phrase than Delete Local Data's "DELETE" —
+        // this is strictly more destructive (cloud-wide, includes every account) and should be
+        // harder to trigger by a stray double-click or muscle memory from the other button.
+        var dlg = new TextInputDialog(
+            "Confirm Clear ALL Data",
+            $"This permanently deletes {total:N0} record(s) — everywhere, including the cloud — and cannot be undone.\n\nType CLEAR ALL DATA to confirm:")
+        { Owner = Window.GetWindow(this) };
+
+        if (dlg.ShowDialog() != true) return;
+        if (!string.Equals(dlg.Value, "CLEAR ALL DATA", StringComparison.Ordinal))
+        {
+            ShowClearAllStatus("Cancelled — confirmation text did not match.");
+            return;
+        }
+
+        var result = vm.ClearAllData();
+        AuditService.Log("ClearAll", "Database", details: result);
+
+        MessageBox.Show(
+            result + "\n\nThe application will now close. Reopen it to continue — you'll be prompted to create a new Super Admin account.",
+            "Clear ALL Data Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+        Application.Current.Shutdown();
+    }
+
+    private void ShowClearAllStatus(string message)
+    {
+        TxtClearAllStatus.Text       = message;
+        TxtClearAllStatus.Visibility = Visibility.Visible;
     }
 
     private void BtnForcePush_Click(object sender, RoutedEventArgs e)

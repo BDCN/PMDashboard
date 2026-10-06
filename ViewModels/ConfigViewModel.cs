@@ -227,6 +227,28 @@ public partial class ConfigViewModel : ObservableObject
     [ObservableProperty] private double _skillBase         = 0.40;  // floor factor for eff_capacity
     [ObservableProperty] private double _skillPerPoint     = 0.06;  // increment per multiplier point
 
+    // ── Forecast Timeline schedule-conflict settings — see ScheduleConflict doc on
+    // ForecastTimelineViewModel ──
+    [ObservableProperty] private int _cxWindowDays             = 14; // days before PFHO treated as the CX/cutover window
+    [ObservableProperty] private int _maxConcurrentCxPerRegion = 1;  // sites one PM may have in a region's CX window at once before flagging
+
+    // Coverage Planner (see Services/CoveragePlanner.cs)
+    [ObservableProperty] private double _coverageCapacityPerPm = CoverageDefaults.CapacityPerPm;
+    [ObservableProperty] private double _coverageBuildWeight   = CoverageDefaults.BuildWeight;
+    [ObservableProperty] private double _coverageCxWeight      = CoverageDefaults.CxWeight;
+    [ObservableProperty] private int    _coverageHireLeadDays  = CoverageDefaults.HireLeadDays;
+    [ObservableProperty] private int    _coverageHorizonWeeks  = CoverageDefaults.HorizonWeeks;
+
+    /// <summary>The defaults "Reset to defaults" restores, spelled out for the card's hint line.</summary>
+    public string CoverageDefaultsText =>
+        $"Defaults: capacity {CoverageDefaults.CapacityPerPm:0.##} · build {CoverageDefaults.BuildWeight:0.##}/day · " +
+        $"CX {CoverageDefaults.CxWeight:0.##}/day · CX window {CoverageDefaults.CxWindowDays} days · " +
+        $"hire lead {CoverageDefaults.HireLeadDays} days · horizon {CoverageDefaults.HorizonWeeks} weeks";
+
+    /// <summary>Set by MainViewModel when another page asks to open Configuration at a specific
+    /// card ("Coverage"); ConfigPage scrolls there on load and clears it.</summary>
+    public string? PendingScrollTarget { get; set; }
+
     // ── Delete local data ────────────────────────────────────────────────────
 
     /// <summary>
@@ -235,7 +257,7 @@ public partial class ConfigViewModel : ObservableObject
     /// </summary>
     private static readonly string[] LocalDataTables =
     {
-        "RompEquipmentTypes", "Romps", "Sites", "Locations",
+        "RompEquipmentTypes", "AssignmentHistories", "Romps", "Sites", "Campuses", "Locations",
         "Orders", "CustomRows", "CustomColumns", "SavedReports", "EquipmentWeights",
     };
 
@@ -246,8 +268,12 @@ public partial class ConfigViewModel : ObservableObject
         var counts = new Dictionary<string, int>();
         foreach (var table in LocalDataTables)
         {
+            // table comes from the hardcoded LocalDataTables array, never user input, and a
+            // table name can't be parameterized via SqlQuery anyway — EF1002 suppressed.
+#pragma warning disable EF1002
             try { counts[table] = db.Database.SqlQueryRaw<int>($"SELECT COUNT(*) AS Value FROM {table}").AsEnumerable().First(); }
             catch { counts[table] = 0; }   // table missing on an older schema
+#pragma warning restore EF1002
         }
         return counts;
     }
@@ -281,9 +307,13 @@ public partial class ConfigViewModel : ObservableObject
         {
             try
             {
+                // table comes from the hardcoded LocalDataTables array, never user input, and a
+                // table name can't be parameterized via ExecuteSql/SqlQuery anyway — EF1002 suppressed.
+#pragma warning disable EF1002
                 var before = db.Database.SqlQueryRaw<int>($"SELECT COUNT(*) AS Value FROM {table}").AsEnumerable().First();
                 if (before == 0) continue;
                 db.Database.ExecuteSqlRaw($"DELETE FROM {table}");
+#pragma warning restore EF1002
                 total += before;
                 cleared.Add($"{table} ({before:N0})");
             }
@@ -305,23 +335,102 @@ public partial class ConfigViewModel : ObservableObject
             : $"Deleted {total:N0} record(s): {string.Join(", ", cleared)}.";
     }
 
-    // ── Manage users ─────────────────────────────────────────────────────────
-
-    private readonly UserService _userService = new();
-
-    [ObservableProperty] private ObservableCollection<User> _users = new();
-
-    /// <summary>Gates the Manage Users card — a real per-person check, independent of the shared admin-gate password.</summary>
-    public bool IsSuperAdmin => CurrentUser.IsSuperAdmin;
-
-    public void LoadUsers() => Users = new ObservableCollection<User>(_userService.AllUsers());
-
-    public void SetUserActive(User user, bool active)
+    /// <summary>
+    /// Every table in the schema, in FK-safe order (children first) — unlike
+    /// <see cref="LocalDataTables"/>, nothing is held back. Used by ClearAllData, which (unlike
+    /// DeleteLocalData) also wipes the cloud copy in Cloud mode, so this is a genuine full
+    /// factory reset: every machine, every user account, every setting, gone for good.
+    /// </summary>
+    private static readonly string[] AllDataTables =
     {
-        _userService.SetActive(user.Id, active);
-        AuditService.Log(active ? "Activate" : "Deactivate", "User", user.Id, $"{(active ? "Activated" : "Deactivated")} {user.Email}");
-        LoadUsers();
+        "RompEquipmentTypes", "AssignmentHistories", "EquipmentKeywords", "Romps", "Sites", "Campuses", "Locations", "TeamMembers", "SubRegions", "PMs",
+        "Orders", "CustomRows", "CustomColumns", "SavedReports", "EquipmentWeights",
+        "EquipmentCategories", "RompStatuses", "AssignmentRules", "AuditEntries", "Users", "AppConfigs",
+    };
+
+    /// <summary>Row counts (local) for the confirmation prompt — used as a representative total; in a
+    /// working Cloud-mode system local and cloud counts should already match.</summary>
+    public Dictionary<string, int> GetAllDataCounts()
+    {
+        using var db = new AppDbContext();
+        var counts = new Dictionary<string, int>();
+        foreach (var table in AllDataTables)
+        {
+#pragma warning disable EF1002
+            try { counts[table] = db.Database.SqlQueryRaw<int>($"SELECT COUNT(*) AS Value FROM {table}").AsEnumerable().First(); }
+            catch { counts[table] = 0; }
+#pragma warning restore EF1002
+        }
+        return counts;
     }
+
+    /// <summary>
+    /// Full factory reset: every table, this machine AND (in Cloud mode) the shared cloud
+    /// database — including PMs, Users, and every setting, none of which DeleteLocalData
+    /// touches. There is no self-heal from a subsequent sync here, because there is nothing
+    /// left anywhere to sync back from. The caller (ConfigPage.xaml.cs) is expected to shut the
+    /// app down immediately after this succeeds — the signed-in Super Admin's own account is
+    /// gone too, and the app has no "you were just signed out, please re-authenticate" flow
+    /// mid-session, only the first-run Create-Admin-Account path a full restart lands on.
+    /// </summary>
+    public string ClearAllData()
+    {
+        int totalLocal = ClearAllTables(forceCloud: false);
+
+        if (!DatabaseConfig.IsCloud) return $"Cleared {totalLocal:N0} local record(s). Everything, including accounts, has been wiped.";
+
+        try
+        {
+            int totalCloud = ClearAllTables(forceCloud: true);
+            return $"Cleared {totalLocal:N0} local record(s) and {totalCloud:N0} cloud record(s). Everything, including accounts, has been wiped everywhere.";
+        }
+        catch (Exception ex)
+        {
+            return $"Cleared {totalLocal:N0} local record(s), but clearing the cloud database failed: {ex.Message}\n\n" +
+                   "Local and cloud are now out of sync. Fix the connection and run this again, or the next sync may pull the old cloud data back down.";
+        }
+    }
+
+    private static int ClearAllTables(bool forceCloud)
+    {
+        using var db = forceCloud ? new AppDbContext(forceCloud: true) : new AppDbContext();
+
+        // Disable FK enforcement for the duration rather than relying solely on AllDataTables'
+        // ordering — cheap insurance against a future schema change adding a constraint this
+        // list wasn't updated for.
+        try { db.Database.ExecuteSqlRaw(forceCloud ? "SET FOREIGN_KEY_CHECKS=0" : "PRAGMA foreign_keys=OFF"); }
+        catch { /* best-effort */ }
+
+        int total = 0;
+        foreach (var table in AllDataTables)
+        {
+#pragma warning disable EF1002
+            try
+            {
+                var before = db.Database.SqlQueryRaw<int>($"SELECT COUNT(*) AS Value FROM {table}").AsEnumerable().First();
+                if (before == 0) continue;
+                db.Database.ExecuteSqlRaw($"DELETE FROM {table}");
+                total += before;
+            }
+            catch { /* table absent on this schema — nothing to clear */ }
+#pragma warning restore EF1002
+        }
+
+        if (forceCloud)
+        {
+            try { db.Database.ExecuteSqlRaw("SET FOREIGN_KEY_CHECKS=1"); } catch { /* best-effort */ }
+        }
+        else
+        {
+            try { db.Database.ExecuteSqlRaw("DELETE FROM sqlite_sequence"); } catch { /* no AUTOINCREMENT tables */ }
+            try { db.Database.ExecuteSqlRaw("PRAGMA foreign_keys=ON"); } catch { /* best-effort */ }
+        }
+
+        return total;
+    }
+
+    /// <summary>Gates the whole Configuration page and every card on it — Manage Users has moved to its own page (see UserManagementViewModel), so this is Super Admin only again.</summary>
+    public bool IsSuperAdmin => CurrentUser.IsSuperAdmin;
 
     public void SaveWorkloadParams()
     {
@@ -334,6 +443,42 @@ public partial class ConfigViewModel : ObservableObject
         cs.Set(ConfigKeys.SkillBase,         SkillBase.ToString("F3", ic));
         cs.Set(ConfigKeys.SkillPerPoint,     SkillPerPoint.ToString("F4", ic));
         ScoreConfig.Reload();
+    }
+
+    public void SaveCoverageSettings()
+    {
+        var ic = System.Globalization.CultureInfo.InvariantCulture;
+        var cs = new ConfigService();
+        cs.Set(ConfigKeys.CoverageCapacityPerPm, Math.Max(0.01, CoverageCapacityPerPm).ToString("0.###", ic));
+        cs.Set(ConfigKeys.CoverageBuildWeight,   Math.Max(0, CoverageBuildWeight).ToString("0.###", ic));
+        cs.Set(ConfigKeys.CoverageCxWeight,      Math.Max(0, CoverageCxWeight).ToString("0.###", ic));
+        cs.Set(ConfigKeys.CoverageHireLeadDays,  Math.Max(0, CoverageHireLeadDays).ToString());
+        cs.Set(ConfigKeys.CoverageHorizonWeeks,  Math.Clamp(CoverageHorizonWeeks, 4, 520).ToString());
+        // CX window is shared with the Forecast Timeline's conflict rule — this card edits the same setting.
+        cs.Set(ConfigKeys.CxWindowDays,          Math.Max(0, CxWindowDays).ToString());
+        AuditService.Log("Update", "Config", null,
+            $"Coverage planning: capacity {CoverageCapacityPerPm}, build {CoverageBuildWeight}/day, CX {CoverageCxWeight}/day, " +
+            $"CX window {CxWindowDays} days, hire lead {CoverageHireLeadDays} days, horizon {CoverageHorizonWeeks} weeks");
+    }
+
+    /// <summary>Puts every Coverage Planner variable back to <see cref="CoverageDefaults"/> and saves.</summary>
+    public void ResetCoverageSettings()
+    {
+        CoverageCapacityPerPm = CoverageDefaults.CapacityPerPm;
+        CoverageBuildWeight   = CoverageDefaults.BuildWeight;
+        CoverageCxWeight      = CoverageDefaults.CxWeight;
+        CxWindowDays          = CoverageDefaults.CxWindowDays;
+        CoverageHireLeadDays  = CoverageDefaults.HireLeadDays;
+        CoverageHorizonWeeks  = CoverageDefaults.HorizonWeeks;
+        SaveCoverageSettings();
+        AuditService.Log("Reset", "Config", null, "Coverage planning settings reset to defaults");
+    }
+
+    public void SaveScheduleConflictSettings()
+    {
+        var cs = new ConfigService();
+        cs.Set(ConfigKeys.CxWindowDays,            Math.Max(0, CxWindowDays).ToString());
+        cs.Set(ConfigKeys.MaxConcurrentCxPerRegion, Math.Max(1, MaxConcurrentCxPerRegion).ToString());
     }
 
     /// <summary>
@@ -355,8 +500,32 @@ public partial class ConfigViewModel : ObservableObject
         return $"Sync complete — {newCount} equipment type assignments created from orders.";
     }
 
+    // ── Versions in use (Database card) ──
+    public string ThisVersion => AppVersion.Full;
+    [ObservableProperty] private List<ClientVersionRow> _clientVersions = new();
+
+    private void LoadClientVersions()
+    {
+        try
+        {
+            var newest = CloudSyncService.ClientVersions()
+                .Select(c => c.ParsedVersion).Where(v => v != null).DefaultIfEmpty(AppVersion.Version).Max()!;
+            if (AppVersion.Version > newest) newest = AppVersion.Version;
+            ClientVersions = CloudSyncService.ClientVersions()
+                .Select(c => new ClientVersionRow(
+                    c.Machine,
+                    "v" + c.Info.Version,
+                    c.ParsedVersion is { } v && v < newest,
+                    $"{c.Info.User}  ·  last started {c.Info.LastSeenUtc.ToLocalTime():yyyy-MM-dd HH:mm}"
+                        + (c.Machine == Environment.MachineName ? "  (this computer)" : "")))
+                .ToList();
+        }
+        catch { ClientVersions = new(); }
+    }
+
     public void Load()
     {
+        LoadClientVersions();
         var cs = new ConfigService();
         SourceDataType          = cs.Get(ConfigKeys.SourceDataType, "VADATA");
         IsSemiAutomatic         = cs.Get(ConfigKeys.UploadMethod) == "SemiAutomatic";
@@ -370,6 +539,14 @@ public partial class ConfigViewModel : ObservableObject
         OverloadThreshold = double.TryParse(cs.Get(ConfigKeys.OverloadThreshold, "1.00"),  System.Globalization.NumberStyles.Any, ic, out var ol) ? ol : 1.00;
         SkillBase         = double.TryParse(cs.Get(ConfigKeys.SkillBase,         "0.40"),  System.Globalization.NumberStyles.Any, ic, out var sb) ? sb : 0.40;
         SkillPerPoint     = double.TryParse(cs.Get(ConfigKeys.SkillPerPoint,     "0.06"),  System.Globalization.NumberStyles.Any, ic, out var sp) ? sp : 0.06;
+        CxWindowDays             = int.TryParse(cs.Get(ConfigKeys.CxWindowDays,             "14"), out var cx) ? cx : 14;
+        MaxConcurrentCxPerRegion = int.TryParse(cs.Get(ConfigKeys.MaxConcurrentCxPerRegion, "1"),  out var mc) ? mc : 1;
+        var cov = CoverageDataService.LoadSettings();
+        CoverageCapacityPerPm = cov.CapacityPerPm;
+        CoverageBuildWeight   = cov.BuildWeight;
+        CoverageCxWeight      = cov.CxWeight;
+        CoverageHireLeadDays  = cov.HireLeadDays;
+        CoverageHorizonWeeks  = cov.HorizonWeeks;
         CloudSyncInterval       = cs.Get(ConfigKeys.CloudSyncInterval, "30");
         StatusMessage           = "";
         LoadDatabaseSettings();
@@ -379,7 +556,6 @@ public partial class ConfigViewModel : ObservableObject
         LoadRules();
         LoadRompStatuses();
         LoadEquipmentWeights();
-        LoadUsers();
     }
 
     public void SaveUploadMethod()
@@ -494,18 +670,54 @@ public partial class ConfigViewModel : ObservableObject
         RompStatuses = new ObservableCollection<RompStatus>(statuses);
     }
 
-    public void SaveRompStatus(RompStatus status)
+    /// <summary>
+    /// Super Admin can now rename/retune any status, built-in included. Returns an error message
+    /// (and leaves the name unchanged) instead of applying a rename that would corrupt data: an
+    /// empty or duplicate name, or a change that doesn't propagate to ROMPs already on this
+    /// status, since Romp.Status stores the status NAME directly (no FK) — any ROMP left on the
+    /// old name would become invisible to StatusConfig/scoring (silently scores as 0) instead of
+    /// following the rename.
+    /// </summary>
+    public string? SaveRompStatus(RompStatus status)
     {
         using var db = new AppDbContext();
         var tracked = db.RompStatuses.Find(status.Id);
-        if (tracked == null) return;
+        if (tracked == null) return "Status no longer exists.";
+
+        var newName = status.Name.Trim();
+        string? error = null;
+
+        if (newName != tracked.Name)
+        {
+            if (string.IsNullOrWhiteSpace(newName))
+            {
+                error = "Status name can't be blank.";
+            }
+            else if (db.RompStatuses.Any(r => r.Id != status.Id && r.Name.ToLower() == newName.ToLower()))
+            {
+                error = $"A status named \"{newName}\" already exists.";
+            }
+            else
+            {
+                // Carry every existing ROMP on the old name forward to the new one so none of
+                // them fall out of StatusConfig's lists (and silently drop to a 0 score weight).
+                foreach (var romp in db.Romps.Where(r => r.Status == tracked.Name))
+                    romp.Status = newName;
+                tracked.Name = newName;
+            }
+        }
+
         tracked.IsComplete     = status.IsComplete;
         tracked.CountsAsActive = status.CountsAsActive;
         tracked.ScoreWeight    = status.ScoreWeight;
-        if (!tracked.IsBuiltIn) tracked.Name = status.Name;
+        tracked.IsDisabled     = status.IsDisabled;
+        tracked.Color          = string.IsNullOrWhiteSpace(status.Color) ? tracked.Color : status.Color;
         db.SaveChanges();
         StatusConfig.Reload();
         ScoreConfig.Reload();
+        LoadRompStatuses(); // re-pull from DB so a rejected rename reverts in the UI too
+
+        return error;
     }
 
     public void AddCustomStatus(string name, bool isComplete, bool countsAsActive)
@@ -522,14 +734,29 @@ public partial class ConfigViewModel : ObservableObject
         LoadRompStatuses();
     }
 
-    public void DeleteRompStatus(RompStatus status)
+    /// <summary>
+    /// Super Admin can now delete any status, built-in included — but not out from under data
+    /// still using it: a ROMP's Status is a plain string, not an FK, so deleting a status that
+    /// ROMPs still reference would leave them pointing at a name StatusConfig no longer knows
+    /// about (same silent-0-score-weight problem as an uncascaded rename). Returns an error
+    /// message instead, naming how many ROMPs are blocking it; null on success.
+    /// </summary>
+    public string? DeleteRompStatus(RompStatus status)
     {
-        if (status.IsBuiltIn) return;
         using var db = new AppDbContext();
+
+        if (db.RompStatuses.Count() <= 1)
+            return "At least one status must remain.";
+
+        var inUseCount = db.Romps.Count(r => r.Status == status.Name);
+        if (inUseCount > 0)
+            return $"\"{status.Name}\" is still used by {inUseCount} ROMP(s) — change their status before deleting it.";
+
         var tracked = db.RompStatuses.Find(status.Id);
         if (tracked != null) { db.RompStatuses.Remove(tracked); db.SaveChanges(); }
         StatusConfig.Reload();
         LoadRompStatuses();
+        return null;
     }
 
     public void MoveRompStatusUp(RompStatus status)   => SwapRompStatusOrder(status, -1);
@@ -665,3 +892,5 @@ public partial class ConfigViewModel : ObservableObject
         LoadEquipmentWeights();
     }
 }
+
+public record ClientVersionRow(string Machine, string Version, bool IsOutdated, string Details);

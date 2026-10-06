@@ -24,12 +24,12 @@
                 <StackPanel Grid.Column="0">
                     <TextBlock Text="First Name" FontSize="12" FontWeight="SemiBold"
                                Foreground="#374151" Margin="0,0,0,6"/>
-                    <TextBox x:Name="TxtFirstName" Style="{StaticResource FormTextBoxStyle}"/>
+                    <TextBox x:Name="TxtFirstName" Style="{StaticResource FormTextBoxStyle}" TextChanged="TxtName_TextChanged"/>
                 </StackPanel>
                 <StackPanel Grid.Column="2">
                     <TextBlock Text="Last Name" FontSize="12" FontWeight="SemiBold"
                                Foreground="#374151" Margin="0,0,0,6"/>
-                    <TextBox x:Name="TxtLastName" Style="{StaticResource FormTextBoxStyle}"/>
+                    <TextBox x:Name="TxtLastName" Style="{StaticResource FormTextBoxStyle}" TextChanged="TxtName_TextChanged"/>
                 </StackPanel>
             </Grid>
 
@@ -64,7 +64,7 @@
             <!-- Data Name -->
             <TextBlock Text="Data Name" FontSize="12" FontWeight="SemiBold"
                        Foreground="#374151" Margin="0,0,0,6"/>
-            <TextBox x:Name="TxtDataName" Style="{StaticResource FormTextBoxStyle}" Margin="0,0,0,16"/>
+            <TextBox x:Name="TxtDataName" Style="{StaticResource FormTextBoxStyle}" Margin="0,0,0,16" TextChanged="TxtDataName_TextChanged"/>
 
             <!-- Capacity & Ideal Utilization — hidden entirely in Site Count Only mode -->
             <Grid x:Name="CapacityRow" Margin="0,0,0,16">

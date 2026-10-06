@@ -16,6 +16,11 @@ public class PM
     // null → treat as 1.0 factor (no adjustment). Default 10 = full capacity for new/existing PMs.
     public int?   PmMultiplier { get; set; } = 10;
 
+    /// <summary>The PE this Platform Manager reports to. The PE's sub-region limits which clusters
+    /// this PM can be assigned (TeamRules).</summary>
+    public int?        PeId { get; set; }
+    public TeamMember? Pe   { get; set; }
+
     public bool     IsActive     { get; set; } = true;
     public DateTime LastModified { get; set; }
 

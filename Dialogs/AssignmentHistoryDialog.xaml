@@ -1,0 +1,59 @@
+<Window x:Class="PMDashboard.Dialogs.AssignmentHistoryDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Assignment History"
+        Width="820" Height="500"
+        WindowStartupLocation="CenterOwner"
+        Background="#F8FAFC"
+        FontFamily="Segoe UI">
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="0,0,0,14">
+            <TextBlock x:Name="TxtHeading" FontSize="17" FontWeight="SemiBold" Foreground="#0F172A"/>
+            <TextBlock x:Name="TxtSubtitle" FontSize="12" Foreground="#64748B" Margin="0,4,0,0"
+                       TextWrapping="Wrap"/>
+        </StackPanel>
+
+        <Border Grid.Row="1" CornerRadius="10" BorderBrush="#E2E8F0" BorderThickness="1"
+                Background="White" ClipToBounds="True">
+            <DataGrid x:Name="HistoryGrid"
+                      Style="{StaticResource AppDataGridStyle}"
+                      CellStyle="{StaticResource DataGridCellStyle}"
+                      ColumnHeaderStyle="{StaticResource DataGridColumnHeaderStyle}"
+                      AutoGenerateColumns="False" IsReadOnly="True" BorderThickness="0">
+                <DataGrid.Columns>
+                    <DataGridTextColumn x:Name="ColSubject" Header="Site" Width="200" Binding="{Binding Subject}"/>
+                    <DataGridTextColumn Header="Assigned" Width="150"
+                                        Binding="{Binding AssignedLocal, StringFormat='yyyy-MM-dd HH:mm'}"/>
+                    <DataGridTextColumn Header="Unassigned" Width="150"
+                                        Binding="{Binding UnassignedText}"/>
+                    <DataGridTextColumn Header="Assigned By" Width="160" Binding="{Binding AssignedBy}"/>
+                    <DataGridTextColumn Header="Unassigned By" Width="*" Binding="{Binding UnassignedBy}"/>
+                </DataGrid.Columns>
+                <DataGrid.RowStyle>
+                    <Style TargetType="DataGridRow">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                <Setter Property="Background" Value="#F0FDF4"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </DataGrid.RowStyle>
+            </DataGrid>
+        </Border>
+
+        <TextBlock x:Name="TxtEmpty" Grid.Row="1" Visibility="Collapsed"
+                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                   FontSize="13" Foreground="#94A3B8" TextWrapping="Wrap"
+                   MaxWidth="460" TextAlignment="Center"/>
+
+        <Button Grid.Row="2" Content="Close" HorizontalAlignment="Right" Margin="0,16,0,0"
+                Style="{StaticResource PrimaryButtonStyle}" Click="BtnClose_Click"/>
+    </Grid>
+</Window>

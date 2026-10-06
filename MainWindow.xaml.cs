@@ -20,13 +20,64 @@ public partial class MainWindow : Window
         InitializeComponent();
         DataContext = _vm;
 
-        Loaded += (_, _) => { FitToWorkArea(); RefreshCurrentUser(); };
+        Loaded += (_, _) => { FitToWorkArea(); RefreshCurrentUser(); UpdateSyncIndicator(); };
+
+        // Keep the sidebar highlight on whichever page is showing — including pages reached from
+        // another page rather than the sidebar (e.g. Coverage Planner → "Model settings" opens
+        // Configuration). PM Detail has no sidebar entry and is reached from Workload, so it
+        // keeps Workload highlighted.
+        _vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName != nameof(MainViewModel.CurrentPage)) return;
+            RadioButton? nav = _vm.CurrentPage switch
+            {
+                WorkloadViewModel or PmDetailViewModel => NavWorkload,
+                AssignmentViewModel       => NavAssignment,
+                SitesViewModel            => NavSites,
+                PmMaintenanceViewModel    => NavPm,
+                TeamsViewModel            => NavTeams,
+                ReportBuilderViewModel    => NavReportBuilder,
+                CustomDataViewModel       => NavCustomData,
+                OrdersViewModel           => NavOrders,
+                ForecastPlanningViewModel => NavForecastPlanning,
+                ForecastTimelineViewModel => NavForecastTimeline,
+                CoveragePlannerViewModel  => NavCoveragePlanner,
+                UserManagementViewModel   => NavUserManagement,
+                ConfigViewModel           => NavConfig,
+                _                         => null,
+            };
+            if (nav != null && nav.IsChecked != true) nav.IsChecked = true;
+        };
 
         // App-lifetime subscriptions to the background sync service — never unsubscribed,
         // since MainWindow itself lives for the life of the app.
-        App.CloudSync.DataChanged   += OnCloudDataChanged;
-        App.CloudSync.StatusChanged += OnCloudSyncStatusForLastUpdated;
+        App.CloudSync.DataChanged     += OnCloudDataChanged;
+        App.CloudSync.StatusChanged   += OnCloudSyncStatusForLastUpdated;
+        App.CloudSync.StatusChanged   += OnCloudSyncStatusForIndicator;
+        App.CloudSync.ProgressChanged += OnCloudSyncProgress;
+        App.CloudSync.VersionWarningChanged += () => Dispatcher.InvokeAsync(UpdateVersionBanner);
+
+        Title                 = $"SAT - Site Assignment Tracker  {AppVersion.Short}";
+        TxtAppVersion.Text    = AppVersion.Short;
+        TxtAppVersion.ToolTip = AppVersion.Full;
+        UpdateVersionBanner();
     }
+
+    private void UpdateVersionBanner()
+    {
+        if (App.CloudSync.NewerVersionInUse is { } newer)
+        {
+            TxtUpdateBanner.Text =
+                $"A newer version of SAT is in use ({newer}). This computer is running {AppVersion.Short} — " +
+                "please install the latest version so changes from other computers sync correctly.";
+            UpdateBanner.Visibility = Visibility.Visible;
+        }
+        else
+            UpdateBanner.Visibility = Visibility.Collapsed;
+    }
+
+    private void BtnDismissUpdateBanner_Click(object sender, RoutedEventArgs e) =>
+        UpdateBanner.Visibility = Visibility.Collapsed;
 
     /// <summary>Non-distracting cross-user notification — see requirement 4 (CloudSyncService.DataChanged).</summary>
     private void OnCloudDataChanged(string summary) =>
@@ -41,6 +92,63 @@ public partial class MainWindow : Window
     {
         if (App.CloudSync.LastSyncTime is not { } when) return;
         Dispatcher.InvokeAsync(() => SetLastUpdated(when));
+    }
+
+    private void OnCloudSyncStatusForIndicator(string _) => Dispatcher.InvokeAsync(UpdateSyncIndicator);
+    private void OnCloudSyncProgress()                   => Dispatcher.InvokeAsync(UpdateSyncIndicator);
+
+    /// <summary>
+    /// Sidebar "syncing…" indicator — see MainWindow.xaml's SyncIndicator for layout. Hidden
+    /// entirely outside Cloud mode. While CloudSyncService.IsSyncing (the initial pull every
+    /// launch does, or the one-time-per-machine full push — see its ProgressChanged doc for why
+    /// ordinary ticks don't populate progress), shows a percent + bar + ETA; otherwise shows a
+    /// compact "Synced HH:mm:ss" line.
+    /// </summary>
+    private void UpdateSyncIndicator()
+    {
+        if (!CloudSyncService.IsAvailable)
+        {
+            SyncIndicator.Visibility = Visibility.Collapsed;
+            return;
+        }
+        SyncIndicator.Visibility = Visibility.Visible;
+
+        if (App.CloudSync.IsSyncing)
+        {
+            SyncActivePanel.Visibility = Visibility.Visible;
+            SyncIdlePanel.Visibility   = Visibility.Collapsed;
+
+            if (App.CloudSync.SyncPercent is { } percent)
+            {
+                TxtSyncPercent.Text = $"{percent:0}%";
+                ColFill.Width = new GridLength(percent, GridUnitType.Star);
+                ColRest.Width = new GridLength(100 - percent, GridUnitType.Star);
+            }
+            else
+            {
+                TxtSyncPercent.Text = "";
+                ColFill.Width = new GridLength(0, GridUnitType.Star);
+                ColRest.Width = new GridLength(100, GridUnitType.Star);
+            }
+
+            TxtSyncEta.Text = App.CloudSync.SyncEta is { } eta ? $"~{FormatEta(eta)} remaining" : "";
+        }
+        else
+        {
+            SyncActivePanel.Visibility = Visibility.Collapsed;
+            SyncIdlePanel.Visibility   = Visibility.Visible;
+            TxtSyncIdle.Text = App.CloudSync.LastSyncTime is { } when
+                ? $"Synced {when:HH:mm:ss}"
+                : "Connecting…";
+        }
+    }
+
+    private static string FormatEta(TimeSpan eta)
+    {
+        if (eta.TotalSeconds < 1)   return "a few seconds";
+        if (eta.TotalMinutes < 1)   return $"{eta.Seconds}s";
+        if (eta.TotalHours < 1)     return $"{eta.Minutes}m {eta.Seconds}s";
+        return $"{(int)eta.TotalHours}h {eta.Minutes}m";
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -81,7 +189,8 @@ public partial class MainWindow : Window
     private void RefreshCurrentUser()
     {
         TxtCurrentUser.Text     = CurrentUser.DisplayName;
-        TxtCurrentUserRole.Text = CurrentUser.IsSuperAdmin ? "Super Admin" : "Signed in";
+        TxtCurrentUserRole.Text = CurrentUser.IsSuperAdmin ? "Super Admin"
+            : CurrentUser.IsDirector ? "Director" : "Signed in";
     }
 
     private void BtnProfile_Click(object sender, RoutedEventArgs e)
@@ -89,6 +198,14 @@ public partial class MainWindow : Window
         new Dialogs.UserProfileDialog { Owner = this }.ShowDialog();
         RefreshCurrentUser();
     }
+
+    /// <summary>
+    /// Manual "sync right now" — runs the same push+pull cycle as the periodic timer, just
+    /// on demand, for troubleshooting ("did my upload actually reach the cloud yet?") instead
+    /// of waiting out the ~30s tick. Button stays clickable during the sync; the result shows
+    /// up via the usual StatusChanged → "Synced HH:mm:ss (↑N ↓M)" text once it finishes.
+    /// </summary>
+    private async void BtnSyncNow_Click(object sender, RoutedEventArgs e) => await App.CloudSync.SyncNowAsync();
 
     /// <summary>
     /// Small, non-modal, auto-dismissing notification — deliberately not a MessageBox or
@@ -114,12 +231,17 @@ public partial class MainWindow : Window
         TxtLastUpdated.Text = $"Last updated: {whenLocal:HH:mm}";
 
     private void NavPm_Click(object sender, RoutedEventArgs e)       => _vm.NavigateToPm();
+    private void NavTeams_Click(object sender, RoutedEventArgs e)    => _vm.NavigateToTeams();
     private void NavSites_Click(object sender, RoutedEventArgs e)    => _vm.NavigateToSites();
     private void NavOrders_Click(object sender, RoutedEventArgs e)   => _vm.NavigateToOrders();
+    private void NavForecastPlanning_Click(object sender, RoutedEventArgs e) => _vm.NavigateToForecastPlanning();
+    private void NavForecastTimeline_Click(object sender, RoutedEventArgs e) => _vm.NavigateToForecastTimeline();
+    private void NavCoveragePlanner_Click(object sender, RoutedEventArgs e) => _vm.NavigateToCoveragePlanner();
     private void NavReportBuilder_Click(object sender, RoutedEventArgs e) => _vm.NavigateToReportBuilder();
     private void NavCustomData_Click(object sender, RoutedEventArgs e) => _vm.NavigateToCustomData();
     private void NavWorkload_Click(object sender, RoutedEventArgs e) => _vm.NavigateToWorkload();
     private void NavConfig_Click(object sender, RoutedEventArgs e)      => _vm.NavigateToConfig();
+    private void NavUserManagement_Click(object sender, RoutedEventArgs e) => _vm.NavigateToUserManagement();
     private void NavAssignment_Click(object sender, RoutedEventArgs e) => _vm.NavigateToAssignment();
 
     private void CboGeoFilter_SelectionChanged(object sender, SelectionChangedEventArgs e)

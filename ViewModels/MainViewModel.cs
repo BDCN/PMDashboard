@@ -5,6 +5,7 @@ namespace PMDashboard.ViewModels;
 public partial class MainViewModel : ObservableObject
 {
     private readonly PmMaintenanceViewModel _pmVm         = new();
+    private readonly TeamsViewModel         _teamsVm      = new();
     private readonly SitesViewModel         _sitesVm      = new();
     private readonly OrdersViewModel        _ordersVm     = new();
     private readonly WorkloadViewModel      _workloadVm   = new();
@@ -13,6 +14,10 @@ public partial class MainViewModel : ObservableObject
     private readonly PmDetailViewModel      _pmDetailVm   = new();
     private readonly ReportBuilderViewModel _reportBuilderVm = new();
     private readonly CustomDataViewModel    _customDataVm    = new();
+    private readonly UserManagementViewModel _userManagementVm = new();
+    private readonly ForecastPlanningViewModel _forecastPlanningVm = new();
+    private readonly ForecastTimelineViewModel _forecastTimelineVm = new();
+    private readonly CoveragePlannerViewModel  _coveragePlannerVm  = new();
 
     [ObservableProperty]
     private object _currentPage;
@@ -24,19 +29,56 @@ public partial class MainViewModel : ObservableObject
     {
         _workloadVm.Load();
         _currentPage = _workloadVm;
+        _coveragePlannerVm.OpenSettings = () =>
+        {
+            _configVm.PendingScrollTarget = "Coverage";
+            NavigateToConfig();
+        };
+
+        // App-lifetime subscription (this VM lives as long as MainWindow). Workload has its own.
+        App.CloudSync.DataChanged += OnCloudDataChanged;
     }
+
+    /// <summary>
+    /// Another computer's changes just landed in the local DB — reload the page on screen so it
+    /// doesn't silently show stale data until the user navigates away and back. Only pages whose
+    /// reload preserves what the user was doing; PM Maintenance (inline-edit grid), Custom Data,
+    /// Config and the import/report pages are skipped so a background tick can't discard a
+    /// half-finished edit. Every other page picks the change up on its next navigation anyway.
+    /// </summary>
+    private void OnCloudDataChanged(string _) =>
+        System.Windows.Application.Current?.Dispatcher.InvokeAsync(() =>
+        {
+            try
+            {
+                if      (CurrentPage == _sitesVm)      _sitesVm.RefreshFromSync();
+                else if (CurrentPage == _assignmentVm) _assignmentVm.RefreshFromSync();
+                else if (CurrentPage == _pmDetailVm)   _pmDetailVm.Load(_pmDetailVm.CurrentPmId);
+                else if (CurrentPage == _coveragePlannerVm) _coveragePlannerVm.Load();
+                else if (CurrentPage == _teamsVm)      _teamsVm.Load();
+            }
+            catch { /* a background refresh must never crash the app — next navigation reloads */ }
+        });
 
     partial void OnGeoFilterChanged(string value)
     {
         _pmVm.ApplyGeoFilter(value);
         _sitesVm.ApplyGeoFilter(value);
         _workloadVm.ApplyGeoFilter(value);
+        _forecastTimelineVm.ApplyGeoFilter(value);
+        if (CurrentPage == _coveragePlannerVm) _coveragePlannerVm.ApplyGeoFilter(value);
     }
 
     public void NavigateToPm()
     {
         _pmVm.ApplyGeoFilter(GeoFilter);
         CurrentPage = _pmVm;
+    }
+
+    public void NavigateToTeams()
+    {
+        _teamsVm.Load();
+        CurrentPage = _teamsVm;
     }
 
     public void NavigateToSites()
@@ -73,6 +115,31 @@ public partial class MainViewModel : ObservableObject
     {
         _configVm.Load();
         CurrentPage = _configVm;
+    }
+
+    public void NavigateToUserManagement()
+    {
+        _userManagementVm.Load();
+        CurrentPage = _userManagementVm;
+    }
+
+    public void NavigateToForecastPlanning()
+    {
+        _forecastPlanningVm.Load();
+        CurrentPage = _forecastPlanningVm;
+    }
+
+    public void NavigateToForecastTimeline()
+    {
+        _forecastTimelineVm.ApplyGeoFilter(GeoFilter);
+        CurrentPage = _forecastTimelineVm;
+    }
+
+    public void NavigateToCoveragePlanner()
+    {
+        _coveragePlannerVm.SetGeoFilter(GeoFilter);
+        _coveragePlannerVm.Load(); // always recalculate on entry — assignments may have changed elsewhere
+        CurrentPage = _coveragePlannerVm;
     }
 
     public void NavigateToAssignment()

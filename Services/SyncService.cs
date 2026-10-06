@@ -27,8 +27,11 @@ public static class SyncService
     // Integer-PK tables in FK-safe order (parents before children)
     private static readonly string[] _intPkTables =
     [
+        "SubRegions",
         "PMs",
+        "TeamMembers",
         "Locations",
+        "Campuses",
         "EquipmentCategories",
         "EquipmentKeywords",
         "RompStatuses",
@@ -36,12 +39,18 @@ public static class SyncService
         "Sites",
         "Romps",
         "RompEquipmentTypes",
+        "AssignmentHistories",
+        "ForecastTypes",
+        "ForecastFields",
+        "ForecastHeaderMappings",
         "Orders",
         "SavedReports",
         "CustomColumns",
         "CustomRows",
         "Users",
         "AuditEntries",
+        "ForecastImports",
+        "ForecastRows",
     ];
 
     // ── Before travel ─────────────────────────────────────────────────────────
@@ -313,6 +322,8 @@ public static class SyncService
             `ScoreWeight`    DOUBLE      NOT NULL DEFAULT 0,
             `SortOrder`      INT         NOT NULL DEFAULT 0,
             `IsBuiltIn`      TINYINT(1)  NOT NULL DEFAULT 0,
+            `IsDisabled`     TINYINT(1)  NOT NULL DEFAULT 0,
+            `Color`          VARCHAR(9)  NOT NULL DEFAULT '#94A3B8',
             `LastModified`   DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
                              ON UPDATE CURRENT_TIMESTAMP(3),
             PRIMARY KEY (`Id`)
@@ -381,6 +392,100 @@ public static class SyncService
                 FOREIGN KEY (`RompId`) REFERENCES `Romps`(`Id`) ON DELETE CASCADE,
             CONSTRAINT `FK_RompEquipmentTypes_Categories`
                 FOREIGN KEY (`EquipmentCategoryId`) REFERENCES `EquipmentCategories`(`Id`) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+        -- Assignment history — survives reassignment and site closure; written only by
+        -- AssignmentHistoryService ─────────────────────────────────────────
+        CREATE TABLE IF NOT EXISTS `AssignmentHistories` (
+            `Id`              INT         NOT NULL AUTO_INCREMENT,
+            `SiteId`          INT         NOT NULL,
+            `PmId`            INT         NOT NULL,
+            `AssignedAtUtc`   DATETIME(3) NOT NULL,
+            `UnassignedAtUtc` DATETIME(3) NULL,
+            `AssignedBy`      LONGTEXT    NOT NULL,
+            `UnassignedBy`    LONGTEXT    NULL,
+            `LastModified`    DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+                              ON UPDATE CURRENT_TIMESTAMP(3),
+            PRIMARY KEY (`Id`),
+            CONSTRAINT `FK_AssignmentHistories_Sites`
+                FOREIGN KEY (`SiteId`) REFERENCES `Sites`(`Id`) ON DELETE CASCADE,
+            CONSTRAINT `FK_AssignmentHistories_PMs`
+                FOREIGN KEY (`PmId`) REFERENCES `PMs`(`Id`) ON DELETE RESTRICT
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+        -- Forecast Planning ─────────────────────────────────────────────────
+        CREATE TABLE IF NOT EXISTS `ForecastTypes` (
+            `Id`           INT         NOT NULL AUTO_INCREMENT,
+            `Code`         LONGTEXT    NOT NULL,
+            `Name`         LONGTEXT    NOT NULL,
+            `SortOrder`    INT         NOT NULL DEFAULT 0,
+            `IsBuiltIn`    TINYINT(1)  NOT NULL DEFAULT 0,
+            `LastModified` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+                           ON UPDATE CURRENT_TIMESTAMP(3),
+            PRIMARY KEY (`Id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+        CREATE TABLE IF NOT EXISTS `ForecastFields` (
+            `Id`             INT         NOT NULL AUTO_INCREMENT,
+            `ForecastTypeId` INT         NULL,
+            `Name`           LONGTEXT    NOT NULL,
+            `Key`            VARCHAR(50) NOT NULL,
+            `FieldType`      VARCHAR(20) NOT NULL DEFAULT 'Text',
+            `IsSiteKey`      TINYINT(1)  NOT NULL DEFAULT 0,
+            `IsIgnored`      TINYINT(1)  NOT NULL DEFAULT 0,
+            `SortOrder`      INT         NOT NULL DEFAULT 0,
+            `LastModified`   DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+                             ON UPDATE CURRENT_TIMESTAMP(3),
+            PRIMARY KEY (`Id`),
+            CONSTRAINT `FK_ForecastFields_Types`
+                FOREIGN KEY (`ForecastTypeId`) REFERENCES `ForecastTypes`(`Id`) ON DELETE RESTRICT
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+        CREATE TABLE IF NOT EXISTS `ForecastHeaderMappings` (
+            `Id`              INT         NOT NULL AUTO_INCREMENT,
+            `ForecastTypeId`  INT         NOT NULL,
+            `SourceHeader`    LONGTEXT    NOT NULL,
+            `ColumnIndex`     INT         NOT NULL DEFAULT -1,
+            `ForecastFieldId` INT         NOT NULL,
+            `LastModified`    DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+                              ON UPDATE CURRENT_TIMESTAMP(3),
+            PRIMARY KEY (`Id`),
+            CONSTRAINT `FK_ForecastHeaderMappings_Types`
+                FOREIGN KEY (`ForecastTypeId`) REFERENCES `ForecastTypes`(`Id`) ON DELETE CASCADE,
+            CONSTRAINT `FK_ForecastHeaderMappings_Fields`
+                FOREIGN KEY (`ForecastFieldId`) REFERENCES `ForecastFields`(`Id`) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+        CREATE TABLE IF NOT EXISTS `ForecastImports` (
+            `Id`             INT         NOT NULL AUTO_INCREMENT,
+            `ForecastTypeId` INT         NOT NULL,
+            `FileName`       LONGTEXT    NOT NULL,
+            `UploadedBy`     LONGTEXT    NOT NULL,
+            `UploadedAtUtc`  DATETIME(3) NOT NULL,
+            `RowCount`       INT         NOT NULL DEFAULT 0,
+            `LastModified`   DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+                             ON UPDATE CURRENT_TIMESTAMP(3),
+            PRIMARY KEY (`Id`),
+            CONSTRAINT `FK_ForecastImports_Types`
+                FOREIGN KEY (`ForecastTypeId`) REFERENCES `ForecastTypes`(`Id`) ON DELETE RESTRICT
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+        CREATE TABLE IF NOT EXISTS `ForecastRows` (
+            `Id`               INT         NOT NULL AUTO_INCREMENT,
+            `ForecastImportId` INT         NOT NULL,
+            `ForecastTypeId`   INT         NOT NULL,
+            `SiteCode`         LONGTEXT    NULL,
+            `SiteId`           INT         NULL,
+            `ValuesJson`       LONGTEXT    NOT NULL,
+            `LastModified`     DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+                               ON UPDATE CURRENT_TIMESTAMP(3),
+            PRIMARY KEY (`Id`),
+            CONSTRAINT `FK_ForecastRows_Imports`
+                FOREIGN KEY (`ForecastImportId`) REFERENCES `ForecastImports`(`Id`) ON DELETE CASCADE,
+            CONSTRAINT `FK_ForecastRows_Types`
+                FOREIGN KEY (`ForecastTypeId`) REFERENCES `ForecastTypes`(`Id`) ON DELETE RESTRICT,
+            CONSTRAINT `FK_ForecastRows_Sites`
+                FOREIGN KEY (`SiteId`) REFERENCES `Sites`(`Id`) ON DELETE SET NULL
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
         -- Assignment rules ───────────────────────────────────────────────
@@ -537,6 +642,73 @@ public static class SyncService
 
         -- IsClosed — explicit close flag for a Site (see Site.cs; needed for zero-ROMP sites)
         ALTER TABLE `Sites`  ADD COLUMN IF NOT EXISTS `IsClosed` TINYINT(1) NOT NULL DEFAULT 0;
+
+        -- StatusWhenEmpty — stand-in status for a zero-ROMP campus, set via "Set All ROMPs to
+        -- Status" when there are no ROMPs to actually carry it (see Site.cs).
+        ALTER TABLE `Sites`  ADD COLUMN IF NOT EXISTS `StatusWhenEmpty` LONGTEXT NULL;
+
+        -- Campuses: Cluster → Campus → Site → ROMP (SAT also creates these itself on startup —
+        -- see CloudSyncService.EnsureCloudSchema).
+        CREATE TABLE IF NOT EXISTS `Campuses` (
+            `Id`             INT          NOT NULL AUTO_INCREMENT,
+            `Name`           VARCHAR(255) NOT NULL,
+            `LocationId`     INT          NOT NULL,
+            `AssignedPmId`   INT          NULL,
+            `LastModified`   DATETIME(6)  NOT NULL DEFAULT '2000-01-01 00:00:00',
+            `LastModifiedBy` VARCHAR(255) NOT NULL DEFAULT '',
+            PRIMARY KEY (`Id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        ALTER TABLE `Sites`  ADD COLUMN IF NOT EXISTS `CampusId` INT NULL;
+        ALTER TABLE `Sites`  ADD COLUMN IF NOT EXISTS `CampusManual` TINYINT(1) NOT NULL DEFAULT 0;
+        ALTER TABLE `Sites`  ADD COLUMN IF NOT EXISTS `PmOverride` TINYINT(1) NOT NULL DEFAULT 0;
+        ALTER TABLE `ForecastFields` ADD COLUMN IF NOT EXISTS `IsCampusField` TINYINT(1) NOT NULL DEFAULT 0;
+
+        -- Teams: Director › PE (sub-region) › PM (PMs.PeId) › PA; clusters map to a sub-region
+        -- (Locations.SubRegionId). SAT also creates these itself on startup.
+        CREATE TABLE IF NOT EXISTS `SubRegions` (
+            `Id`           INT          NOT NULL AUTO_INCREMENT,
+            `Name`         VARCHAR(255) NOT NULL,
+            `Region`       VARCHAR(64)  NOT NULL DEFAULT '',
+            `SortOrder`    INT          NOT NULL DEFAULT 0,
+            `LastModified` DATETIME(6)  NOT NULL DEFAULT '2000-01-01 00:00:00',
+            PRIMARY KEY (`Id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        CREATE TABLE IF NOT EXISTS `TeamMembers` (
+            `Id`           INT          NOT NULL AUTO_INCREMENT,
+            `Role`         VARCHAR(32)  NOT NULL,
+            `FirstName`    VARCHAR(255) NOT NULL DEFAULT '',
+            `LastName`     VARCHAR(255) NOT NULL DEFAULT '',
+            `Email`        VARCHAR(255) NOT NULL DEFAULT '',
+            `Phone`        VARCHAR(64)  NOT NULL DEFAULT '',
+            `Region`       VARCHAR(64)  NOT NULL DEFAULT '',
+            `SubRegionId`  INT          NULL,
+            `PmId`         INT          NULL,
+            `IsActive`     TINYINT(1)   NOT NULL DEFAULT 1,
+            `LastModified` DATETIME(6)  NOT NULL DEFAULT '2000-01-01 00:00:00',
+            PRIMARY KEY (`Id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        ALTER TABLE `PMs`       ADD COLUMN IF NOT EXISTS `PeId` INT NULL;
+        ALTER TABLE `Locations` ADD COLUMN IF NOT EXISTS `SubRegionId` INT NULL;
+        ALTER TABLE `Campuses`  ADD COLUMN IF NOT EXISTS `SubRegionId` INT NULL;
+
+        -- Location.AssignedPmId — direct "owner" PM for a cluster with no campuses to carry a
+        -- per-Site assignment instead (see Location.cs).
+        ALTER TABLE `Locations` ADD COLUMN IF NOT EXISTS `AssignedPmId` INT NULL;
+
+        -- Romp.AssignedPmId — individual-ROMP PM override (see AssignmentResolver); and
+        -- AssignmentHistories.RompId so the same history table records ROMP-level overrides
+        -- alongside campus-level ones (see AssignmentHistoryService.RecordRompChange).
+        ALTER TABLE `Romps` ADD COLUMN IF NOT EXISTS `AssignedPmId` INT NULL;
+        ALTER TABLE `AssignmentHistories` ADD COLUMN IF NOT EXISTS `RompId` INT NULL;
+
+        -- RompStatuses.IsDisabled — hides a status from "assign a status" pickers without
+        -- touching ROMPs already on it (StatusConfig.Selectable vs .All).
+        ALTER TABLE `RompStatuses` ADD COLUMN IF NOT EXISTS `IsDisabled` TINYINT(1) NOT NULL DEFAULT 0;
+
+        -- RompStatuses.Color — indicator-dot color for Campus/ROMP lists (Configuration page
+        -- color picker). See Color's doc on the RompStatus model for the seeding story; this
+        -- ALTER just adds the column, the app seeds real values from local SQLite on next sync.
+        ALTER TABLE `RompStatuses` ADD COLUMN IF NOT EXISTS `Color` VARCHAR(9) NOT NULL DEFAULT '#94A3B8';
 
         -- ================================================================
         -- Done. Connect the app using:

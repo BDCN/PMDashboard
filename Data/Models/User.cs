@@ -12,7 +12,11 @@ public class User
     public string LastName     { get; set; } = "";
     public string PasswordHash { get; set; } = "";   // PasswordHasher format; never the plaintext
 
-    /// <summary>"SuperAdmin" | "User". SuperAdmin can manage other accounts.</summary>
+    /// <summary>
+    /// "SuperAdmin" | "Director" | "User". SuperAdmin can manage other accounts and the full
+    /// Configuration page. Director can manage other accounts (Manage Users only, not the rest
+    /// of Configuration) but cannot create, reset, or deactivate a SuperAdmin account.
+    /// </summary>
     public string Role { get; set; } = "User";
 
     public bool IsActive { get; set; } = true;
@@ -27,4 +31,5 @@ public class User
     public string FullName    => $"{FirstName} {LastName}".Trim();
     public string DisplayName => string.IsNullOrWhiteSpace(FullName) ? Email : FullName;
     public bool   IsSuperAdmin => Role == "SuperAdmin";
+    public bool   IsDirector   => Role == "Director";
 }

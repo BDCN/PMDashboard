@@ -56,12 +56,12 @@ public partial class OrdersViewModel : ObservableObject
         LastImportHeadline = $"{result.Added:N0} added  ·  {result.Updated:N0} updated  ·  {result.Skipped:N0} unchanged";
 
         var created = new List<string>();
-        if (result.LocationsCreated > 0) created.Add($"{result.LocationsCreated:N0} location(s)");
+        if (result.LocationsCreated > 0) created.Add($"{result.LocationsCreated:N0} cluster(s)");
         if (result.SitesCreated     > 0) created.Add($"{result.SitesCreated:N0} site(s)");
         if (result.RompsCreated     > 0) created.Add($"{result.RompsCreated:N0} ROMP(s)");
         LastImportDetails = created.Count > 0
             ? $"Created: {string.Join(", ", created)}"
-            : "No new locations, sites, or ROMPs created.";
+            : "No new clusters, sites, or ROMPs created.";
 
         LastImportWhen = DateTime.Now.ToString("MMM d, yyyy  h:mm tt");
         LastImportBy   = by;
@@ -92,8 +92,10 @@ public partial class OrdersViewModel : ObservableObject
             .ToDictionary(o => (o.CustomerOrder!, o.OrdLine!));
 
         // Location / Site caches — tracked so EF can wire up FK relationships for new children.
-        var locationCache = db.Locations.ToDictionary(l => l.Name, StringComparer.OrdinalIgnoreCase);
-        var siteCache     = db.Sites.ToDictionary(s => s.Name,     StringComparer.OrdinalIgnoreCase);
+        // Safe against duplicate names (no DB-level uniqueness on Location/Site.Name) — see
+        // ToSafeNameDictionary.
+        var locationCache = db.Locations.AsEnumerable().ToSafeNameDictionary(l => l.Name, l => l.LastModified);
+        var siteCache     = db.Sites.AsEnumerable().ToSafeNameDictionary(s => s.Name,     s => s.LastModified);
 
         // Existing ROMP dedup — projection only, no entity tracking needed.
         var existingRompSet = db.Romps
@@ -166,8 +168,10 @@ public partial class OrdersViewModel : ObservableObject
         SetLastImportResult(result, CurrentUser.DisplayName);
         AuditService.Log("Import", "Orders", details:
             $"Imported orders: {added} added, {updated} updated, {skipped} unchanged, " +
-            $"{locationsCreated} location(s), {sitesCreated} site(s), {rompsCreated} ROMP(s) created");
+            $"{locationsCreated} cluster(s), {sitesCreated} site(s), {rompsCreated} ROMP(s) created");
         Load();
+        // New sites go into campuses — the forecast campus if known, else one of their own name.
+        if (sitesCreated > 0) try { CampusArrangementService.Arrange(); } catch { /* best-effort; runs again at next startup/sync */ }
         return result;
     }
 

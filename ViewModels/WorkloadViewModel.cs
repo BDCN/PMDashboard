@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using PMDashboard.Data;
 using PMDashboard.Data.Models;
 using PMDashboard.Services;
+using PMDashboard; // App.CloudSync
 
 namespace PMDashboard.ViewModels;
 
@@ -34,12 +35,80 @@ public class AxisTick
     public bool   IsMajor { get; init; }
 }
 
+/// <summary>One Card-view tile — a PM's cluster/campus/ROMP counts plus the breakdown of which
+/// clusters they're assigned into. Built from the same sitesByPm/rompsByPm data as the chart
+/// rows, so the two views can never disagree on the numbers.</summary>
+public class PmCardRow
+{
+    public string PmName       { get; init; } = "";
+    public string Region       { get; init; } = "";   // PM's own GeographicalLocation, for the Region sort
+    public int    ClusterCount { get; init; }
+    public int    CampusCount  { get; init; }   // sites (named before the Campus level existed)
+    public int    RealCampusCount { get; init; } // distinct campuses those sites belong to
+    public int    RompCount    { get; init; }
+    public List<PmCardClusterRow> Clusters { get; init; } = new();
+
+    public int  TotalAssignments => ClusterCount + CampusCount + RompCount;
+    public bool HasNoAssignments => TotalAssignments == 0;
+}
+
+public class PmCardClusterRow
+{
+    public int    LocationId  { get; init; }
+    public string ClusterName { get; init; } = "";
+    public string Region      { get; init; } = "";
+    public int    CampusCount { get; init; }
+    public List<PmCardCampusRow> Campuses { get; init; } = new();
+
+    // True for a cluster assigned directly via Location.AssignedPmId (the Assignment page's
+    // "Assign PM to Cluster" action for a cluster with no campuses) rather than derived from any
+    // actual campus assignment — CampusCount is always 0 for these.
+    public bool IsDirectAssignment { get; init; }
+}
+
+public class PmCardCampusRow
+{
+    public string       CampusName { get; init; } = "";
+    public List<string> RompNames  { get; init; } = new();
+
+    // Comma-joined for display — a campus's ROMPs are shown as wrapped text rather than one
+    // row each, since a single campus can carry dozens of ROMPs.
+    public string RompNamesText => RompNames.Count > 0 ? string.Join(", ", RompNames) : "No active ROMPs";
+}
+
 public partial class WorkloadViewModel : ObservableObject
 {
     [ObservableProperty] private ObservableCollection<PmWorkloadRow> _rows  = new();
     [ObservableProperty] private ObservableCollection<AxisTick>      _ticks = new();
+    [ObservableProperty] private ObservableCollection<PmCardRow>     _cardRows = new();
+    [ObservableProperty] private bool                                _isCardView;
+
+    // Card view sort — re-sorts the already-built card list in place, no DB reload needed.
+    public static readonly string[] CardSortOptions =
+        ["Region", "Clusters", "Campuses", "Sites", "ROMPs", "Total Assignments"];
+    [ObservableProperty] private string _cardSortBy = "Region";
+    private List<PmCardRow> _unsortedCardRows = new();
+
+    partial void OnCardSortByChanged(string value) => ApplyCardSort();
+
+    private void ApplyCardSort()
+    {
+        IEnumerable<PmCardRow> sorted = CardSortBy switch
+        {
+            "Clusters"           => _unsortedCardRows.OrderByDescending(c => c.ClusterCount),
+            "Campuses"           => _unsortedCardRows.OrderByDescending(c => c.RealCampusCount),
+            "Sites"              => _unsortedCardRows.OrderByDescending(c => c.CampusCount),
+            "ROMPs"              => _unsortedCardRows.OrderByDescending(c => c.RompCount),
+            "Total Assignments"  => _unsortedCardRows.OrderByDescending(c => c.TotalAssignments),
+            _                    => _unsortedCardRows
+                                        .OrderBy(c => c.Region)
+                                        .ThenBy(c => c.PmName),
+        };
+        CardRows = new ObservableCollection<PmCardRow>(sorted);
+    }
 
     [ObservableProperty] private int    _pmCount;
+    [ObservableProperty] private int    _totalClusters;
     [ObservableProperty] private int    _totalSites;
     [ObservableProperty] private int    _totalRomps;
 
@@ -61,6 +130,30 @@ public partial class WorkloadViewModel : ObservableObject
 
     private string _geoFilter = "All";
 
+    /// <summary>Fired after a background-sync-triggered reload finishes, so the page can
+    /// reapply the chart's actual current width (Load() always calls ApplyScale with a
+    /// placeholder) and redraw the canvas background lines — neither of which happens from
+    /// property-changed bindings alone. See the constructor subscription below.</summary>
+    public event Action? DataRefreshed;
+
+    public WorkloadViewModel()
+    {
+        // This VM is created once and held for the app's lifetime (MainViewModel field), so a
+        // permanent subscription here — never unsubscribed — is the same convention MainWindow
+        // uses for its own App.CloudSync.DataChanged subscription. Without this, a background
+        // sync that pulls in someone else's new assignment (a cluster, a site, anything feeding
+        // Load()'s queries) never reaches this page until the user navigates away and back, or
+        // restarts the app — the page just goes stale and silently shows whatever it last loaded.
+        App.CloudSync.DataChanged += OnCloudDataChanged;
+    }
+
+    private void OnCloudDataChanged(string _) =>
+        System.Windows.Application.Current?.Dispatcher.InvokeAsync(() =>
+        {
+            Load();
+            DataRefreshed?.Invoke();
+        });
+
     private record RawPmRow(
         PM Pm, int Sites, int Romps, int ActiveSites,
         double UtilPct, double IdealPct, double Capacity,
@@ -68,7 +161,8 @@ public partial class WorkloadViewModel : ObservableObject
         double PmLoad,         // result of new formula: site_factor × Σromp_scores
         double Availability,   // max(0, 1 − utilization)
         string PmStatus,       // Overloaded / Near Full / Has Capacity
-        double EffCapacity);   // target_capacity × skill_factor (score mode denominator)
+        double EffCapacity,    // target_capacity × skill_factor (score mode denominator)
+        int Clusters);         // distinct clusters among this PM's assigned campuses
 
     private List<RawPmRow> _rawData = new();
 
@@ -86,11 +180,14 @@ public partial class WorkloadViewModel : ObservableObject
         var completeSet = StatusConfig.Complete.ToHashSet(StringComparer.OrdinalIgnoreCase);
         var pmIdSet     = pms.Select(p => p.Id).ToHashSet();
 
-        // Load non-complete sites with their ROMPs and each ROMP's equipment types
+        // Load non-complete sites with their ROMPs and each ROMP's equipment types — still the
+        // source of campus-level stats (Active Campuses, Total Campuses, campus_factor), which
+        // stay governed by Site.AssignedPmId regardless of any ROMP-level override below.
         var allSites = db.Sites.AsNoTracking()
                                .Include(s => s.Romps)
                                    .ThenInclude(r => r.EquipmentTypes)
                                        .ThenInclude(et => et.Category)
+                               .Include(s => s.Location)
                                .Where(s => s.AssignedPmId != null && pmIdSet.Contains(s.AssignedPmId!.Value))
                                .AsEnumerable()
                                .Where(s => s.SiteStatus != "Complete")
@@ -98,6 +195,108 @@ public partial class WorkloadViewModel : ObservableObject
 
         var sitesByPm = allSites.GroupBy(s => s.AssignedPmId!.Value)
                                 .ToDictionary(g => g.Key, g => g.ToList());
+
+        // Clusters assigned directly (Location.AssignedPmId — the Assignment page's "Assign PM
+        // to Cluster" action, used for a cluster with no campuses for a per-Site assignment to
+        // attach to). These contribute 0 campuses/ROMPs but must still count as a cluster —
+        // without this, a PM whose only assignment is an empty cluster shows "0 clusters" here
+        // despite having one on the Assignment page.
+        var directClustersByPm = db.Locations.AsNoTracking()
+            .Where(l => l.AssignedPmId != null && pmIdSet.Contains(l.AssignedPmId!.Value))
+            .ToList()
+            .GroupBy(l => l.AssignedPmId!.Value)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        // ROMP-level score/count attribution — respects a ROMP's own AssignedPmId override (see
+        // AssignmentResolver). Most ROMPs are picked up via allSites above (their Campus's PM);
+        // a second, narrower query catches ROMPs whose override points at a PM other than the
+        // one their own Campus is assigned to (including a Campus with no PM assigned at all) —
+        // allSites alone would never visit those ROMPs' Sites.
+        var orphanOverriddenRomps = db.Romps.AsNoTracking()
+            .Include(r => r.EquipmentTypes).ThenInclude(et => et.Category)
+            .Include(r => r.Site)
+            .Where(r => r.AssignedPmId != null && pmIdSet.Contains(r.AssignedPmId.Value)
+                     && (r.Site.AssignedPmId == null || !pmIdSet.Contains(r.Site.AssignedPmId.Value)))
+            .AsEnumerable()
+            .Where(r => !completeSet.Contains(r.Status))
+            .ToList();
+
+        var rompsByPm = new Dictionary<int, List<Romp>>();
+        void AddRomp(int pmId, Romp romp)
+        {
+            if (!rompsByPm.TryGetValue(pmId, out var list)) rompsByPm[pmId] = list = new List<Romp>();
+            list.Add(romp);
+        }
+        foreach (var site in allSites)
+            foreach (var romp in site.Romps.Where(r => !completeSet.Contains(r.Status)))
+            {
+                var effectivePmId = AssignmentResolver.EffectivePmId(romp.AssignedPmId, site.AssignedPmId);
+                if (effectivePmId.HasValue && pmIdSet.Contains(effectivePmId.Value))
+                    AddRomp(effectivePmId.Value, romp);
+            }
+        foreach (var romp in orphanOverriddenRomps)
+            AddRomp(romp.AssignedPmId!.Value, romp);
+
+        // ── Card view — same sitesByPm/rompsByPm data as the chart, just grouped by cluster
+        // instead of flattened to a single count, so the two views can never disagree. ──
+        _unsortedCardRows =
+            pms.Select(pm =>
+            {
+                var pmSites = sitesByPm.TryGetValue(pm.Id, out var sl) ? sl : new List<Site>();
+                var pmRomps = rompsByPm.TryGetValue(pm.Id, out var rl) ? rl : new List<Romp>();
+                var clusters = pmSites
+                    .GroupBy(s => s.LocationId)
+                    .Select(g => new PmCardClusterRow
+                    {
+                        LocationId  = g.Key,
+                        ClusterName = g.First().Location?.Name ?? "—",
+                        Region      = g.First().Location?.GeographicalLocation ?? "",
+                        CampusCount = g.Count(),
+                        // Per-campus ROMPs, filtered to the ones that actually count toward
+                        // THIS PM (a ROMP overridden to a different PM is excluded here the
+                        // same way it's excluded from the top-level RompCount above).
+                        Campuses = g.OrderBy(s => s.Name).Select(s => new PmCardCampusRow
+                        {
+                            CampusName = s.Name,
+                            RompNames = s.Romps
+                                .Where(r => !completeSet.Contains(r.Status)
+                                         && AssignmentResolver.EffectivePmId(r.AssignedPmId, s.AssignedPmId) == pm.Id)
+                                .OrderBy(r => r.Name)
+                                .Select(r => r.Name)
+                                .ToList(),
+                        }).ToList(),
+                    })
+                    .ToList();
+
+                // Clusters assigned directly (Location.AssignedPmId) with no campuses of their
+                // own yet — add any not already covered by the campus-grouped list above, so a
+                // PM whose only assignment is an empty cluster still shows it instead of nothing.
+                var coveredLocationIds = clusters.Select(c => c.LocationId).ToHashSet();
+                if (directClustersByPm.TryGetValue(pm.Id, out var directLocs))
+                    foreach (var loc in directLocs.Where(l => !coveredLocationIds.Contains(l.Id)))
+                        clusters.Add(new PmCardClusterRow
+                        {
+                            LocationId         = loc.Id,
+                            ClusterName        = loc.Name,
+                            Region             = loc.GeographicalLocation,
+                            CampusCount        = 0,
+                            IsDirectAssignment = true,
+                        });
+
+                clusters = clusters.OrderBy(c => c.ClusterName).ToList();
+
+                return new PmCardRow
+                {
+                    PmName       = $"{pm.FirstName} {pm.LastName}".Trim(),
+                    Region       = pm.GeographicalLocation ?? "",
+                    ClusterCount = clusters.Count,
+                    CampusCount  = pmSites.Count,
+                    RealCampusCount = pmSites.Select(s => s.CampusId ?? -s.Id).Distinct().Count(),
+                    RompCount    = pmRomps.Count,
+                    Clusters     = clusters,
+                };
+            }).ToList();
+        ApplyCardSort();
 
         var  pctMode  = new ConfigService().Get(ConfigKeys.PercentageCalculation, "Sites");
         bool useScore = pctMode == "Score";
@@ -110,24 +309,22 @@ public partial class WorkloadViewModel : ObservableObject
         _rawData = pms.Select(pm =>
         {
             var pmSites  = sitesByPm.TryGetValue(pm.Id, out var sl) ? sl : new List<Site>();
-            var romps    = pmSites.SelectMany(s => s.Romps.Where(r => !completeSet.Contains(r.Status))).ToList();
+            var romps    = rompsByPm.TryGetValue(pm.Id, out var rl) ? rl : new List<Romp>();
             int active   = pmSites.Count(s => s.SiteStatus == "Active");
             var byStatus = romps.GroupBy(r => r.Status)
                                 .ToDictionary(rg => rg.Key, rg => rg.Count())
                                 as IReadOnlyDictionary<string, int>;
 
             // New scoring formula: romp_score = activity_weight × equip_weight_sum
-            var rompScores = pmSites.SelectMany(site =>
-                site.Romps.Where(r => !completeSet.Contains(r.Status)).Select(r =>
-                {
-                    double activity  = StatusConfig.ScoreWeights.TryGetValue(r.Status, out var aw) ? aw : 0;
-                    double equipSum  = ScoreConfig.EquipmentWeightSum(
-                                           r.EquipmentTypes.Select(et => et.Category.Name));
-                    return ScoringEngine.RompScore(activity, equipSum);
-                })
-            ).ToList();
+            var rompScores = romps.Select(r =>
+            {
+                double activity  = StatusConfig.ScoreWeights.TryGetValue(r.Status, out var aw) ? aw : 0;
+                double equipSum  = ScoreConfig.EquipmentWeightSum(
+                                       r.EquipmentTypes.Select(et => et.Category.Name));
+                return ScoringEngine.RompScore(activity, equipSum);
+            }).ToList();
 
-            // pm_load = site_factor × Σromp_scores  (distinct non-complete site count drives site_factor)
+            // pm_load = campus_factor × Σromp_scores  (distinct non-complete campus count drives campus_factor)
             double pmLoad   = ScoringEngine.PmLoad(rompScores, pmSites.Count, p);
             // eff_capacity = target_capacity × skill_factor — scales denominator per PM experience
             double effCap   = ScoringEngine.EffectiveCapacity(p, pm.PmMultiplier);
@@ -139,8 +336,15 @@ public partial class WorkloadViewModel : ObservableObject
             double cap      = useScore ? effCap : pm.Capacity;
             double ideal    = pm.IdealUtilization > 0 ? pm.IdealUtilization : 80.0;
 
+            // Union with any cluster assigned directly (Location.AssignedPmId) and not already
+            // covered by a real campus — see directClustersByPm's doc above.
+            var clusterIds = pmSites.Select(s => s.LocationId).ToHashSet();
+            if (directClustersByPm.TryGetValue(pm.Id, out var directLocs))
+                foreach (var loc in directLocs) clusterIds.Add(loc.Id);
+            int clusterCount = clusterIds.Count;
+
             return new RawPmRow(pm, pmSites.Count, romps.Count, active, util, ideal, cap,
-                                byStatus, pmLoad, avail, pmStatus, effCap);
+                                byStatus, pmLoad, avail, pmStatus, effCap, clusterCount);
         // Site Count Only mode: no capacity/utilization math exists to sort by, so order by
         // raw assigned-site count instead — fewest sites first, same "least loaded at top"
         // convention the other two modes already use.
@@ -148,6 +352,9 @@ public partial class WorkloadViewModel : ObservableObject
 
         // ── KPI summary ──
         PmCount   = pms.Count;
+        TotalClusters = sitesByPm.Values.SelectMany(sl => sl).Select(s => s.LocationId)
+            .Concat(directClustersByPm.Values.SelectMany(ls => ls).Select(l => l.Id))
+            .Distinct().Count();
         TotalSites = sitesByPm.Values.Sum(sl => sl.Count);
         TotalRomps = _rawData.Sum(r => r.Romps);
 
@@ -191,7 +398,20 @@ public partial class WorkloadViewModel : ObservableObject
 
     public void ApplyScale(double availableWidth)
     {
-        if (_rawData.Count == 0 || availableWidth <= 0) return;
+        // Returning here without clearing Rows/Ticks left whatever was rendered for the
+        // PREVIOUS filter still on screen — e.g. switching the sidebar's geo filter to a region
+        // with zero matching PMs kept showing the last non-empty region's bars, since nothing
+        // ever told the chart the list was now empty. PmCount/TotalSites/TotalRomps (set earlier
+        // in Load(), independent of this method) correctly showed 0, which is what made it look
+        // like a data bug rather than a stale render.
+        if (_rawData.Count == 0)
+        {
+            Rows  = new ObservableCollection<PmWorkloadRow>();
+            Ticks = new ObservableCollection<AxisTick>();
+            HundredPctX = -1;
+            return;
+        }
+        if (availableWidth <= 0) return;
 
         bool   countMode = IsCountMode;
         double scale;
@@ -242,7 +462,7 @@ public partial class WorkloadViewModel : ObservableObject
 
                 if (countMode)
                 {
-                    label = $"{raw.Sites} site{(raw.Sites == 1 ? "" : "s")} · {raw.Romps} ROMP{(raw.Romps == 1 ? "" : "s")}";
+                    label = $"{raw.Clusters} cluster{(raw.Clusters == 1 ? "" : "s")} · {raw.Sites} site{(raw.Sites == 1 ? "" : "s")} · {raw.Romps} ROMP{(raw.Romps == 1 ? "" : "s")}";
                     barWidth    = raw.Sites * scale;
                     fillFracPct = raw.Sites / maxSiteCount * 100.0;
                 }
@@ -252,16 +472,16 @@ public partial class WorkloadViewModel : ObservableObject
                     string warnFlag = over ? " ⚠" : "";
                     string availPct = $"{raw.Availability * 100.0:F1}%";
                     label = raw.Capacity > 0
-                        ? $"Score: {raw.PmLoad:F2}{warnFlag}  ·  {raw.UtilPct:F1}% util  ·  {availPct} avail  ·  {raw.Sites} sites / {raw.Romps} ROMPs"
-                        : $"Score: {raw.PmLoad:F2}  ·  No capacity  ·  {raw.Sites} sites / {raw.Romps} ROMPs";
+                        ? $"Score: {raw.PmLoad:F2}{warnFlag}  ·  {raw.UtilPct:F1}% util  ·  {availPct} avail  ·  {raw.Clusters} clusters / {raw.Sites} sites / {raw.Romps} ROMPs"
+                        : $"Score: {raw.PmLoad:F2}  ·  No capacity  ·  {raw.Clusters} clusters / {raw.Sites} sites / {raw.Romps} ROMPs";
                     fillFracPct = raw.UtilPct;
                 }
                 else
                 {
                     string activeTxt = raw.Sites > 0 ? $" / {activePct:F0}% active" : "";
                     label = raw.Capacity > 0
-                        ? $"{raw.UtilPct:F1}%{(over ? " ⚠" : "")} / {raw.Sites} sites{activeTxt} / {raw.Romps} ROMPs"
-                        : $"No capacity · {raw.Sites} sites";
+                        ? $"{raw.UtilPct:F1}%{(over ? " ⚠" : "")} / {raw.Clusters} clusters / {raw.Sites} sites{activeTxt} / {raw.Romps} ROMPs"
+                        : $"No capacity · {raw.Clusters} clusters · {raw.Sites} sites";
                     fillFracPct = raw.UtilPct;
                 }
 
@@ -273,6 +493,7 @@ public partial class WorkloadViewModel : ObservableObject
                     : "not set (factor 1.00)";
                 string tooltip = string.Join(Environment.NewLine, statusLines)
                                + Environment.NewLine + "─────────────────"
+                               + Environment.NewLine + $"Clusters: {raw.Clusters}"
                                + (countMode
                                    ? Environment.NewLine + $"Assigned sites: {raw.Sites}"
                                    + Environment.NewLine + $"Total ROMPs: {raw.Romps}"

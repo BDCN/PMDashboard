@@ -23,6 +23,7 @@ public class PmSiteRow
     public int    LocationId  { get; init; }
     public string SiteName    { get; init; } = "";
     public string Location    { get; init; } = "";
+    public string Campus      { get; init; } = "";
     public string SiteStatus  { get; init; } = "";
     public int    TotalRomps  { get; init; }
     public int    ActiveRomps { get; init; }
@@ -64,6 +65,11 @@ public partial class PmDetailViewModel : ObservableObject
     /// <summary>Site Count Only mode — hides every capacity/score figure on this page (see Configuration).</summary>
     [ObservableProperty] private bool _isCountMode;
 
+    // Clusters assigned to this PM directly (Location.AssignedPmId — zero-campus clusters, see
+    // AssignmentViewModel.AssignPmToCluster). They have no campus rows, so without this they'd
+    // be invisible on this page. Empty string hides the line.
+    [ObservableProperty] private string _directClusters = "";
+
     public string UtilizationText =>
         Capacity > 0 ? $"{UtilizationPct:F1}%" : "No capacity set";
 
@@ -101,7 +107,7 @@ public partial class PmDetailViewModel : ObservableObject
         using var db = new AppDbContext();
         var site = db.Sites.Find(siteId);
         if (site == null) return;
-        site.AssignedPmId = null;
+        AssignmentHistoryService.RecordChange(db, site, null);
         db.SaveChanges();
         Load(_currentPmId);
     }
@@ -113,7 +119,7 @@ public partial class PmDetailViewModel : ObservableObject
         foreach (var id in siteIds)
         {
             var site = db.Sites.Find(id);
-            if (site != null) site.AssignedPmId = null;
+            if (site != null) AssignmentHistoryService.RecordChange(db, site, null);
         }
         db.SaveChanges();
         Load(_currentPmId);
@@ -141,9 +147,18 @@ public partial class PmDetailViewModel : ObservableObject
                                 .ThenInclude(r => r.EquipmentTypes)
                                     .ThenInclude(et => et.Category)
                             .Include(s => s.Location)
+                            .Include(s => s.Campus)
                             .Where(s => s.AssignedPmId == pmId)
                             .OrderBy(s => s.Name)
                             .ToList();
+
+        var directClusterNames = db.Locations.AsNoTracking()
+                                   .Where(l => l.AssignedPmId == pmId)
+                                   .OrderBy(l => l.Name)
+                                   .Select(l => l.Name)
+                                   .ToList();
+        DirectClusters = directClusterNames.Count == 0 ? ""
+            : $"Clusters assigned directly ({directClusterNames.Count}): {string.Join(", ", directClusterNames)}";
 
         var completeSet    = StatusConfig.Complete.ToHashSet(StringComparer.OrdinalIgnoreCase);
         var activeSites    = sites.Where(s => s.SiteStatus != "Complete").ToList();
@@ -152,7 +167,23 @@ public partial class PmDetailViewModel : ObservableObject
         ActiveSiteCount    = activeSites.Count;
         CompletedSiteCount = completedSites.Count;
 
-        var allRomps    = sites.SelectMany(s => s.Romps).ToList();
+        // ROMP-level override awareness (see AssignmentResolver): a ROMP under one of this PM's
+        // own campuses but overridden to a DIFFERENT PM no longer counts here; conversely, a
+        // ROMP under someone else's campus but overridden TO this PM does — even though its
+        // campus never appears in the "Assigned Campuses" table below, since that table reflects
+        // campus-level ownership, not individual ROMP credit.
+        bool CountsHere(Romp r, int siteAssignedPmId) =>
+            AssignmentResolver.EffectivePmId(r.AssignedPmId, siteAssignedPmId) == pmId;
+
+        var orphanOverriddenRomps = db.Romps.AsNoTracking()
+            .Include(r => r.EquipmentTypes).ThenInclude(et => et.Category)
+            .Include(r => r.Site)
+            .Where(r => r.AssignedPmId == pmId && r.Site.AssignedPmId != pmId)
+            .ToList();
+
+        var allRomps    = sites.SelectMany(s => s.Romps.Where(r => CountsHere(r, pmId)))
+                                .Concat(orphanOverriddenRomps)
+                                .ToList();
         var activeRomps = allRomps.Where(r => !completeSet.Contains(r.Status)).ToList();
         ActiveRompCount = activeRomps.Count;
         TotalRompCount  = allRomps.Count;
@@ -167,14 +198,15 @@ public partial class PmDetailViewModel : ObservableObject
             return ScoringEngine.RompScore(activity, equipSum);
         }
 
-        // Compute per-site scores for the sites table — active (non-complete) sites only
+        // Compute per-site scores for the sites table — active (non-complete) campuses only.
+        // A ROMP overridden away to a different PM is excluded here too (CountsHere), so a
+        // campus's displayed ROMP count/score only reflects what actually counts toward this PM.
         Sites = new ObservableCollection<PmSiteRow>(
             activeSites.OrderBy(s => s.Name)
                  .Select(s =>
                  {
-                     // Only count non-complete ROMPs; complete ROMs are excluded from this view
                      var activeRompsForSite = s.Romps
-                         .Where(r => !completeSet.Contains(r.Status))
+                         .Where(r => !completeSet.Contains(r.Status) && CountsHere(r, pmId))
                          .ToList();
                      double siteScore = activeRompsForSite.Sum(r => RompScoreFor(r));
                      return new PmSiteRow
@@ -183,6 +215,7 @@ public partial class PmDetailViewModel : ObservableObject
                          LocationId  = s.LocationId,
                          SiteName    = s.Name,
                          Location    = s.Location?.Name ?? "",
+                         Campus      = s.Campus?.Name ?? "",
                          SiteStatus  = s.SiteStatus,
                          TotalRomps  = activeRompsForSite.Count,
                          ActiveRomps = activeRompsForSite.Count,
@@ -190,10 +223,9 @@ public partial class PmDetailViewModel : ObservableObject
                      };
                  }));
 
-        // Overall PM load
-        var rompScoresList = activeSites.SelectMany(s =>
-            s.Romps.Where(r => !completeSet.Contains(r.Status)).Select(r => RompScoreFor(r))
-        ).ToList();
+        // Overall PM load — activeRomps already reflects override attribution (built above,
+        // includes orphanOverriddenRomps from campuses this PM doesn't otherwise own).
+        var rompScoresList = activeRomps.Select(r => RompScoreFor(r)).ToList();
 
         RompScoreSum      = rompScoresList.Sum();
         SiteFactorValue   = ScoringEngine.SiteFactor(activeSites.Count, p);
@@ -212,17 +244,19 @@ public partial class PmDetailViewModel : ObservableObject
             ? util * 100.0
             : (Capacity > 0 ? ActiveSiteCount / Capacity * 100.0 : 0);
 
-        // Per-status breakdown: show activity multiplier and actual total score per status group
+        // Per-status breakdown: show activity multiplier and actual total score per status group.
+        // Selectable (not All) — a disabled status is meant to disappear from the app entirely
+        // going forward, this breakdown included, not just from "assign a status" pickers.
         int maxCount = allRomps.Count > 0 ? allRomps.Count : 1;
         RompBreakdown = new ObservableCollection<PmStatusRow>(
-            StatusConfig.All.Select(status =>
+            StatusConfig.Selectable.Select(status =>
             {
                 int    cnt        = allRomps.Count(r => r.Status == status);
                 double actMult    = StatusConfig.ScoreWeights.TryGetValue(status, out var w) ? w : 0;
                 // Actual score contribution: sum of romp_scores for active ROMPs in this status
-                double statusScore = activeSites
-                    .SelectMany(s => s.Romps.Where(r => r.Status == status
-                                                     && !completeSet.Contains(r.Status)))
+                // (activeRomps already reflects override attribution, orphans included)
+                double statusScore = activeRomps
+                    .Where(r => r.Status == status)
                     .Sum(r => RompScoreFor(r));
                 return new PmStatusRow
                 {

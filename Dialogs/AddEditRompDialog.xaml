@@ -19,7 +19,7 @@
                        Foreground="#374151" Margin="0,0,0,6"/>
             <TextBox x:Name="TxtName" Style="{StaticResource FormTextBoxStyle}" Margin="0,0,0,16"/>
 
-            <!-- Parent Site -->
+            <!-- Parent Campus -->
             <TextBlock Text="Parent Site" FontSize="12" FontWeight="SemiBold"
                        Foreground="#374151" Margin="0,0,0,6"/>
             <ComboBox x:Name="CboSite" Style="{StaticResource FormComboBoxStyle}"
@@ -33,6 +33,10 @@
             <!-- Status (items loaded dynamically from StatusConfig in code-behind) -->
             <TextBlock Text="Status" FontSize="12" FontWeight="SemiBold"
                        Foreground="#374151" Margin="0,0,0,6"/>
+            <!-- Current value, for an edit — the dropdown below is pre-selected to this too, but
+                 a plain label makes it obvious at a glance without reading the dropdown. -->
+            <TextBlock x:Name="TxtCurrentStatus" FontSize="11" Foreground="#64748B"
+                       Margin="0,0,0,4" Visibility="Collapsed"/>
             <ComboBox x:Name="CboStatus" Style="{StaticResource FormComboBoxStyle}"
                       Margin="0,0,0,12"/>
 

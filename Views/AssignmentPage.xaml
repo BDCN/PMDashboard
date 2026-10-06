@@ -18,7 +18,7 @@
             <StackPanel Grid.Column="0">
                 <TextBlock Text="Assignment" FontSize="22" FontWeight="Bold"
                            Foreground="#0F172A" FontFamily="Segoe UI Semibold"/>
-                <TextBlock Text="Select a location and site, then assign a PM from the ranked suggestion list"
+                <TextBlock Text="Select a cluster and one or more campuses, then assign a PM from the ranked suggestion list. A campus's PM covers all of its sites."
                            FontSize="13" Foreground="#64748B" Margin="0,4,0,0"/>
             </StackPanel>
             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
@@ -34,13 +34,15 @@
         <!-- ── Two-panel body ── -->
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="360"/>  <!-- Target selection -->
+                <ColumnDefinition Width="380"/>  <!-- Target selection -->
                 <ColumnDefinition Width="20"/>
                 <ColumnDefinition Width="*"/>    <!-- PM recommendations -->
             </Grid.ColumnDefinitions>
 
-            <!-- ══ LEFT: Target Selection ══ -->
-            <StackPanel Grid.Column="0">
+            <!-- ══ LEFT: Target Selection (scrolls — the site/ROMP override panels make it tall) ══ -->
+            <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                          Padding="0,0,6,0">
+            <StackPanel>
 
                 <!-- Location + Site + ROMP selectors -->
                 <Border Background="White" CornerRadius="10" BorderBrush="#E2E8F0"
@@ -54,8 +56,8 @@
                                   FontSize="12" FontFamily="Segoe UI" Foreground="#374151"
                                   Margin="0,0,0,16"/>
 
-                        <!-- Location -->
-                        <TextBlock Text="Location" FontSize="11" FontWeight="SemiBold"
+                        <!-- Cluster -->
+                        <TextBlock Text="Cluster" FontSize="11" FontWeight="SemiBold"
                                    Foreground="#374151" Margin="0,0,0,5"/>
                         <Grid Margin="0,0,0,14">
                             <Grid.ColumnDefinitions>
@@ -68,7 +70,7 @@
                                       Style="{StaticResource FormComboBoxStyle}"/>
                             <Button Grid.Column="1" Content="+ New" Margin="8,0,0,0"
                                     Style="{StaticResource SecondaryButtonStyle}" Padding="10,8"
-                                    Click="BtnNewLocation_Click"/>
+                                    Click="BtnNewLocation_Click" ToolTipService.ToolTip="New Cluster"/>
                         </Grid>
 
                         <!-- Geographic region badge — shown when a location is selected -->
@@ -112,19 +114,32 @@
                             </TextBlock>
                         </Border>
 
-                        <!-- Site header row: label + quick-select buttons + New -->
+                        <!-- Team boundary: who may be assigned to this cluster (TeamRules) -->
+                        <TextBlock Text="{Binding TeamScopeInfo}" FontSize="11" Foreground="#475569"
+                                   TextWrapping="Wrap" Margin="0,-4,0,12">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding TeamScopeInfo}" Value="">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+
+                        <!-- Campus header row: label + quick-select buttons + New -->
                         <Grid Margin="0,0,0,6">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Site" FontSize="11" FontWeight="SemiBold"
+                            <TextBlock Grid.Column="0" Text="Campus" FontSize="11" FontWeight="SemiBold"
                                        Foreground="#374151" VerticalAlignment="Center"/>
-                            <!-- Quick-select pill buttons -->
                             <StackPanel Grid.Column="1" Orientation="Horizontal"
                                         HorizontalAlignment="Center" VerticalAlignment="Center">
-                                <Button Content="All" Click="BtnSelectAllSites_Click"
+                                <Button Content="All" Click="BtnSelectAllCampuses_Click"
                                         Style="{StaticResource SecondaryButtonStyle}"
                                         Padding="8,3" FontSize="10" Margin="8,0,4,0"
                                         IsEnabled="{Binding SelectedLocation, Converter={StaticResource NullToBoolConverter}}"/>
@@ -132,42 +147,53 @@
                                         Style="{StaticResource SecondaryButtonStyle}"
                                         Padding="8,3" FontSize="10" Margin="0,0,4,0"
                                         IsEnabled="{Binding SelectedLocation, Converter={StaticResource NullToBoolConverter}}"/>
-                                <Button Content="None" Click="BtnClearSites_Click"
+                                <Button Content="None" Click="BtnClearCampuses_Click"
                                         Style="{StaticResource SecondaryButtonStyle}"
                                         Padding="8,3" FontSize="10"
                                         IsEnabled="{Binding SelectedLocation, Converter={StaticResource NullToBoolConverter}}"/>
                             </StackPanel>
                             <Button Grid.Column="2" Content="+ New"
                                     Style="{StaticResource SecondaryButtonStyle}" Padding="8,4"
-                                    Click="BtnNewSite_Click"
+                                    Click="BtnNewCampus_Click" ToolTipService.ToolTip="New Campus"
                                     IsEnabled="{Binding SelectedLocation, Converter={StaticResource NullToBoolConverter}}"/>
                         </Grid>
 
-                        <!-- Multi-select site ListBox -->
+                        <!-- Multi-select campus ListBox: name, then its PM -->
                         <Border BorderBrush="#D1D5DB" BorderThickness="1" CornerRadius="6"
                                 MaxHeight="220" Margin="0,0,0,4"
                                 IsEnabled="{Binding SelectedLocation, Converter={StaticResource NullToBoolConverter}}">
-                            <ListBox x:Name="SitesListBox"
-                                     ItemsSource="{Binding Sites}"
-                                     DisplayMemberPath="Name"
+                            <ListBox x:Name="CampusesListBox"
+                                     ItemsSource="{Binding Campuses}"
                                      SelectionMode="Extended"
                                      BorderThickness="0" Background="White"
                                      FontSize="12" FontFamily="Segoe UI"
                                      ScrollViewer.VerticalScrollBarVisibility="Auto"
-                                     SelectionChanged="SitesListBox_SelectionChanged"/>
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     SelectionChanged="CampusesListBox_SelectionChanged">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock>
+                                            <Run Text="{Binding Name, Mode=OneWay}"/>
+                                            <Run Text="{Binding SiteCount, Mode=OneWay, StringFormat=' · {0} site(s)'}" Foreground="#94A3B8"/>
+                                            <Run Text="{Binding PmDisplay, Mode=OneWay, StringFormat=' · {0}'}" Foreground="#64748B"/>
+                                            <Run Text="{Binding SubRegion.Name, Mode=OneWay, StringFormat=' · {0}'}" Foreground="#7C3AED"/>
+                                        </TextBlock>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
                         </Border>
 
                         <!-- Selection count -->
-                        <TextBlock Text="{Binding SiteSelectionInfo}" FontSize="11"
+                        <TextBlock Text="{Binding CampusSelectionInfo}" FontSize="11"
                                    Foreground="#64748B" Margin="0,0,0,14"/>
 
-                        <!-- ROMP (optional — visible only when a single site is selected) -->
+                        <!-- Site + ROMP (optional — only when a single campus is selected) -->
                         <StackPanel>
                             <StackPanel.Style>
                                 <Style TargetType="StackPanel">
                                     <Setter Property="Visibility" Value="Collapsed"/>
                                     <Style.Triggers>
-                                        <DataTrigger Binding="{Binding IsRegularSiteSelected}" Value="True">
+                                        <DataTrigger Binding="{Binding IsSingleCampusSelected}" Value="True">
                                             <Setter Property="Visibility" Value="Visible"/>
                                         </DataTrigger>
                                     </Style.Triggers>
@@ -175,21 +201,51 @@
                             </StackPanel.Style>
                             <TextBlock FontSize="11" FontWeight="SemiBold"
                                        Foreground="#374151" Margin="0,0,0,5">
-                                ROMP <Run Foreground="#94A3B8" FontWeight="Normal">(optional)</Run>
+                                Site <Run Foreground="#94A3B8" FontWeight="Normal">(optional — to give one site its own PM)</Run>
                             </TextBlock>
-                            <Grid>
+                            <Grid Margin="0,0,0,12">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <ComboBox ItemsSource="{Binding Romps}"
+                                <ComboBox ItemsSource="{Binding CampusSites}"
                                           DisplayMemberPath="Name"
-                                          SelectedItem="{Binding SelectedRomp, Mode=TwoWay}"
+                                          SelectedItem="{Binding SelectedSite, Mode=TwoWay}"
                                           Style="{StaticResource FormComboBoxStyle}"/>
                                 <Button Grid.Column="1" Content="+ New" Margin="8,0,0,0"
                                         Style="{StaticResource SecondaryButtonStyle}" Padding="10,8"
-                                        Click="BtnNewRomp_Click"/>
+                                        Click="BtnNewSite_Click" ToolTipService.ToolTip="New Site in this campus"/>
                             </Grid>
+
+                            <StackPanel>
+                                <StackPanel.Style>
+                                    <Style TargetType="StackPanel">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding HasSiteSelected}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </StackPanel.Style>
+                                <TextBlock FontSize="11" FontWeight="SemiBold"
+                                           Foreground="#374151" Margin="0,0,0,5">
+                                    ROMP <Run Foreground="#94A3B8" FontWeight="Normal">(optional)</Run>
+                                </TextBlock>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <ComboBox ItemsSource="{Binding Romps}"
+                                              DisplayMemberPath="Name"
+                                              SelectedItem="{Binding SelectedRomp, Mode=TwoWay}"
+                                              Style="{StaticResource FormComboBoxStyle}"/>
+                                    <Button Grid.Column="1" Content="+ New" Margin="8,0,0,0"
+                                            Style="{StaticResource SecondaryButtonStyle}" Padding="10,8"
+                                            Click="BtnNewRomp_Click"/>
+                                </Grid>
+                            </StackPanel>
                         </StackPanel>
                     </StackPanel>
                 </Border>
@@ -218,45 +274,38 @@
                                 <TextBlock Text="{Binding BulkSelectionInfo}"
                                            FontSize="13" FontWeight="SemiBold" Foreground="#0F172A"
                                            TextWrapping="Wrap" Margin="0,0,0,4"/>
-                                <TextBlock Text="Clicking 'Assign →' will assign the chosen PM to all selected sites."
+                                <TextBlock Text="Clicking 'Assign →' will assign the chosen PM to all selected campuses and their sites (sites with their own PM keep it)."
                                            FontSize="11" Foreground="#64748B" TextWrapping="Wrap"/>
                             </StackPanel>
                         </Border>
 
-                        <!-- ── Single site: has PM ── -->
+                        <!-- ── Single campus: its PM ── -->
                         <StackPanel>
                             <StackPanel.Style>
                                 <Style TargetType="StackPanel">
                                     <Setter Property="Visibility" Value="Collapsed"/>
                                     <Style.Triggers>
-                                        <DataTrigger Binding="{Binding IsRegularSiteSelected}" Value="True">
+                                        <DataTrigger Binding="{Binding IsSingleCampusSelected}" Value="True">
                                             <Setter Property="Visibility" Value="Visible"/>
                                         </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
                             </StackPanel.Style>
-                            <TextBlock Text="{Binding SelectedSite.AssignedPm.FullName, TargetNullValue='No PM assigned'}"
-                                       FontSize="14" FontWeight="SemiBold"
-                                       Margin="0,0,0,6">
-                                <TextBlock.Style>
-                                    <Style TargetType="TextBlock">
-                                        <Setter Property="Foreground" Value="#94A3B8"/>
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding SelectedSite.AssignedPm}" Value="{x:Null}">
-                                                <Setter Property="Foreground" Value="#94A3B8"/>
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </TextBlock.Style>
-                            </TextBlock>
-                            <TextBlock Text="{Binding SelectedSite.AssignedPm.GeographicalLocation, StringFormat='Region: {0}'}"
-                                       FontSize="12" Foreground="#64748B" Margin="0,0,0,14"/>
+                            <TextBlock Text="{Binding SelectedCampus.Name, StringFormat='Campus {0}'}"
+                                       FontSize="11" Foreground="#64748B" Margin="0,0,0,2"/>
+                            <TextBlock Text="{Binding SelectedCampus.AssignedPm.FullName, TargetNullValue='No PM assigned'}"
+                                       FontSize="14" FontWeight="SemiBold" Foreground="#0F172A"
+                                       Margin="0,0,0,6"/>
+                            <TextBlock Text="{Binding SelectedCampus.AssignedPm.GeographicalLocation, StringFormat='Region: {0}'}"
+                                       FontSize="12" Foreground="#64748B" Margin="0,0,0,6"/>
+                            <TextBlock Text="{Binding SelectedCampusOverrideInfo}" FontSize="11" Foreground="#D97706"
+                                       TextWrapping="Wrap" Margin="0,0,0,8"/>
                             <Button Content="Unassign PM" Style="{StaticResource DangerButtonStyle}"
                                     HorizontalAlignment="Left" Click="BtnUnassign_Click"/>
                         </StackPanel>
 
                         <!-- ── No site selected ── -->
-                        <TextBlock Text="Select one or more sites from the list above, then click 'Assign →' on a PM."
+                        <TextBlock Text="Select one or more campuses from the list, then click 'Assign →' on a PM."
                                    FontSize="12" Foreground="#94A3B8" TextWrapping="Wrap">
                             <TextBlock.Style>
                                 <Style TargetType="TextBlock">
@@ -272,14 +321,208 @@
 
                         <!-- Override PM section -->
                         <Separator Margin="0,16,0,14" Background="#E2E8F0"/>
-                        <TextBlock Text="Override — assign any PM" FontSize="11" FontWeight="SemiBold"
+                        <TextBlock Text="Override — assign any PM on this cluster's team" FontSize="11" FontWeight="SemiBold"
                                    Foreground="#374151" Margin="0,0,0,6"/>
-                        <ComboBox ItemsSource="{Binding AllPms}"
+                        <ComboBox ItemsSource="{Binding EligiblePms}"
                                   DisplayMemberPath="FullName"
                                   SelectedItem="{Binding OverridePm, Mode=TwoWay}"
                                   Style="{StaticResource FormComboBoxStyle}" Margin="0,0,0,10"/>
                         <Button Content="Assign Override PM" Style="{StaticResource SecondaryButtonStyle}"
                                 HorizontalAlignment="Left" Click="BtnAssignOverride_Click"/>
+
+                        <!-- ── Assign PM to Cluster — only for a cluster with zero campuses,
+                             where there's nothing for the per-campus flow above to apply to.
+                             Reuses the same Override PM dropdown above rather than a second
+                             picker. See AssignmentViewModel.AssignPmToCluster /
+                             Location.AssignedPmId. ── -->
+                        <StackPanel>
+                            <StackPanel.Style>
+                                <Style TargetType="StackPanel">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding ClusterHasNoCampuses}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </StackPanel.Style>
+                            <Separator Margin="0,16,0,14" Background="#E2E8F0"/>
+                            <TextBlock Text="Assign PM to Cluster" FontSize="11" FontWeight="SemiBold"
+                                       Foreground="#374151" Margin="0,0,0,4"/>
+                            <TextBlock Text="This cluster has no campuses yet, so there's nothing for a per-campus assignment to apply to — assigns the PM chosen above directly to the cluster itself instead."
+                                       FontSize="11" Foreground="#94A3B8" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                            <TextBlock Text="{Binding ClusterAssignedPmName, StringFormat='Currently: {0}'}"
+                                       FontSize="12" FontWeight="SemiBold" Foreground="#0F172A" Margin="0,0,0,8">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding ClusterAssignedPmName}" Value="">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <StackPanel Orientation="Horizontal">
+                                <Button Content="Assign to Cluster" Style="{StaticResource SecondaryButtonStyle}"
+                                        Margin="0,0,8,0" Click="BtnAssignCluster_Click"/>
+                                <Button Content="Unassign" Click="BtnUnassignCluster_Click">
+                                    <Button.Style>
+                                        <Style TargetType="Button" BasedOn="{StaticResource DangerButtonStyle}">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding ClusterAssignedPmName}" Value="">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- ── Site-level override — visible when one site of the selected campus is
+                             picked. The site keeps this PM even when its campus is reassigned. ── -->
+                        <StackPanel>
+                            <StackPanel.Style>
+                                <Style TargetType="StackPanel">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding HasSiteSelected}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </StackPanel.Style>
+                            <Separator Margin="0,16,0,14" Background="#E2E8F0"/>
+                            <TextBlock Text="{Binding SelectedSite.Name, StringFormat='Site: {0}'}"
+                                       FontSize="13" FontWeight="SemiBold" Foreground="#0F172A" Margin="0,0,0,4"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
+                                <TextBlock Text="Currently: " FontSize="12" Foreground="#64748B"/>
+                                <TextBlock Text="{Binding SelectedSite.AssignedPm.FullName, TargetNullValue='Unassigned'}"
+                                           FontSize="12" FontWeight="SemiBold" Foreground="#0F172A"/>
+                            </StackPanel>
+                            <TextBlock Text="⚡ Has its own PM — different from the campus's PM"
+                                       FontSize="11" Foreground="#D97706" Margin="0,2,0,10" TextWrapping="Wrap">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding SiteHasOwnOverride}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <TextBlock Text="Follows the campus's PM"
+                                       FontSize="11" Foreground="#94A3B8" Margin="0,2,0,10">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding SiteHasOwnOverride}" Value="True">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <ComboBox ItemsSource="{Binding EligiblePms}"
+                                      DisplayMemberPath="FullName"
+                                      SelectedItem="{Binding SiteOverridePm, Mode=TwoWay}"
+                                      Style="{StaticResource FormComboBoxStyle}" Margin="0,0,0,10"/>
+                            <StackPanel Orientation="Horizontal">
+                                <Button Content="Assign to This Site Only" Style="{StaticResource SecondaryButtonStyle}"
+                                        Click="BtnAssignSiteOverride_Click" Margin="0,0,8,0"/>
+                                <Button Content="Use Campus PM" Click="BtnClearSiteOverride_Click">
+                                    <Button.Style>
+                                        <Style TargetType="Button" BasedOn="{StaticResource DangerButtonStyle}">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding SiteHasOwnOverride}" Value="True">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- ── ROMP-level assignment — visible only when a single ROMP is picked
+                             in the left panel's ROMP (optional) dropdown. Independent of the
+                             site's PM: this ROMP's score counts toward whichever PM is set here
+                             — see AssignmentResolver. ── -->
+                        <StackPanel>
+                            <StackPanel.Style>
+                                <Style TargetType="StackPanel">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding HasRompSelected}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </StackPanel.Style>
+                            <Separator Margin="0,16,0,14" Background="#E2E8F0"/>
+                            <TextBlock Text="{Binding SelectedRomp.Name, StringFormat='Individual ROMP: {0}'}"
+                                       FontSize="13" FontWeight="SemiBold" Foreground="#0F172A" Margin="0,0,0,4"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
+                                <TextBlock Text="Currently counts toward: " FontSize="12" Foreground="#64748B"/>
+                                <TextBlock Text="{Binding RompEffectivePm.FullName, TargetNullValue='Unassigned'}"
+                                           FontSize="12" FontWeight="SemiBold" Foreground="#0F172A"/>
+                            </StackPanel>
+                            <TextBlock Text="⚡ Independent ROMP override — different from the site's PM"
+                                       FontSize="11" Foreground="#D97706" Margin="0,2,0,10" TextWrapping="Wrap">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding RompHasOwnOverride}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <TextBlock Text="Not overridden — follows the site's PM"
+                                       FontSize="11" Foreground="#94A3B8" Margin="0,2,0,10">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding RompHasOwnOverride}" Value="True">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+
+                            <ComboBox ItemsSource="{Binding EligiblePms}"
+                                      DisplayMemberPath="FullName"
+                                      SelectedItem="{Binding RompOverridePm, Mode=TwoWay}"
+                                      Style="{StaticResource FormComboBoxStyle}" Margin="0,0,0,10"/>
+                            <StackPanel Orientation="Horizontal">
+                                <Button Content="Assign to This ROMP Only" Style="{StaticResource SecondaryButtonStyle}"
+                                        Click="BtnAssignRompOverride_Click" Margin="0,0,8,0"/>
+                                <Button Content="Remove Override"
+                                        Click="BtnUnassignRomp_Click">
+                                    <Button.Style>
+                                        <Style TargetType="Button" BasedOn="{StaticResource DangerButtonStyle}">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding RompHasOwnOverride}" Value="True">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                            </StackPanel>
+                        </StackPanel>
 
                         <!-- Status message -->
                         <TextBlock Text="{Binding StatusMessage}" FontSize="12" Foreground="#16A34A"
@@ -287,6 +530,7 @@
                     </StackPanel>
                 </Border>
             </StackPanel>
+            </ScrollViewer>
 
             <!-- ══ RIGHT: PM Recommendations ══ -->
             <Grid Grid.Column="2">
@@ -302,7 +546,7 @@
                         <TextBlock FontSize="11" Foreground="#94A3B8" Margin="0,2,0,0">
                             <Run Text="Ranked by"/>
                             <Run Text="{Binding ActiveRuleCount}" FontWeight="SemiBold" Foreground="#2563EB"/>
-                            <Run Text="active rules · select a site to see recommendations"/>
+                            <Run Text="active rules · select a campus to see recommendations"/>
                         </TextBlock>
                     </StackPanel>
                 </Grid>
@@ -345,7 +589,7 @@
                             <DataGridTextColumn Header="#"    Binding="{Binding Rank}"         Width="40"/>
                             <DataGridTextColumn Header="Name" Binding="{Binding Pm.FullName}"  Width="160"/>
                             <DataGridTextColumn Header="Region" Binding="{Binding Pm.GeographicalLocation}" Width="70"/>
-                            <DataGridTextColumn Header="Sites" Binding="{Binding CurrentSites}" Width="55"/>
+                            <DataGridTextColumn Header="Sites" Binding="{Binding CurrentSites}" Width="70"/>
                             <DataGridTextColumn x:Name="ColUtil" Header="Util"  Binding="{Binding UtilText}"    Width="60"/>
                             <DataGridTextColumn Header="Score" Binding="{Binding ScoreText}"   Width="65"/>
                             <DataGridTextColumn Header="Why" Binding="{Binding Reasons}"       Width="*"/>

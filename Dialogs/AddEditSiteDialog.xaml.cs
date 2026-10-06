@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
+using PMDashboard.Data;
 using PMDashboard.Data.Models;
 using PMDashboard.Services;
 
@@ -17,9 +18,11 @@ public partial class AddEditSiteDialog : Window
         InitializeComponent();
         _existing = existing;
 
-        // Populate bulk ROMP status dropdown: "No change" + all configured statuses
+        // Populate bulk ROMP status dropdown: "No change" + statuses available to assign
+        // (disabled statuses are excluded — this is a prospective bulk-assignment picker, not a
+        // display of current state)
         var bulkItems = new List<string> { "No change" };
-        bulkItems.AddRange(StatusConfig.All);
+        bulkItems.AddRange(StatusConfig.Selectable);
         CboBulkRompStatus.ItemsSource   = bulkItems;
         CboBulkRompStatus.SelectedIndex = 0; // default: No change
 
@@ -34,6 +37,7 @@ public partial class AddEditSiteDialog : Window
             BulkRompSection.Visibility = Visibility.Visible; // only show for edits
             CloseSiteSection.Visibility = Visibility.Visible; // only show for edits
             ChkCloseAll.IsChecked = existing.IsClosed; // reflect current state — unchecking reopens it
+            ShowCurrentStatuses(existing.Id, existing.StatusWhenEmpty);
         }
         else
         {
@@ -41,10 +45,47 @@ public partial class AddEditSiteDialog : Window
         }
     }
 
+    /// <summary>
+    /// Shows a quick "what's here right now" breakdown next to the bulk-status picker — a campus
+    /// can have ROMPs on several different statuses at once, so there's no single "current
+    /// status" to pre-select the way AddEditRompDialog does for one ROMP; this gives the same
+    /// visibility before you overwrite it. Ordered by StatusConfig.All so it reads consistently
+    /// with every other status list in the app, not just whatever order GroupBy happens to return.
+    /// </summary>
+    private void ShowCurrentStatuses(int siteId, string? statusWhenEmpty)
+    {
+        using var db = new AppDbContext();
+        var counts = db.Romps.Where(r => r.SiteId == siteId)
+            .GroupBy(r => r.Status)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        if (counts.Count == 0)
+        {
+            // No ROMPs to summarize — but a zero-ROMP campus can still have a stand-in status
+            // (Site.StatusWhenEmpty) driving its color/classification; say so if set.
+            if (!string.IsNullOrEmpty(statusWhenEmpty))
+            {
+                TxtCurrentStatuses.Text = $"Currently: no ROMPs — acting as \"{statusWhenEmpty}\"";
+                TxtCurrentStatuses.Visibility = Visibility.Visible;
+            }
+            return;
+        }
+
+        var parts = StatusConfig.All
+            .Where(s => counts.ContainsKey(s))
+            .Select(s => $"{counts[s]} {s}")
+            .Concat(counts.Keys.Except(StatusConfig.All, System.StringComparer.OrdinalIgnoreCase)
+                .Select(s => $"{counts[s]} {s}")); // defensive — a status removed from config but still on a ROMP
+
+        var total = counts.Values.Sum();
+        TxtCurrentStatuses.Text = $"Currently: {string.Join(", ", parts)}  ({total} ROMP{(total == 1 ? "" : "s")} total)";
+        TxtCurrentStatuses.Visibility = Visibility.Visible;
+    }
+
     private void CboLocation_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (CboLocation.SelectedItem is Location loc && !string.IsNullOrEmpty(loc.GeographicalLocation))
-            TxtRegionHint.Text = $"Region: {loc.GeographicalLocation} (inherited from location)";
+            TxtRegionHint.Text = $"Region: {loc.GeographicalLocation} (inherited from cluster)";
         else
             TxtRegionHint.Text = "";
     }
@@ -55,7 +96,7 @@ public partial class AddEditSiteDialog : Window
 
         if (CboLocation.SelectedItem is not Location selectedLocation)
         {
-            TxtError.Text = "Please select a location.";
+            TxtError.Text = "Please select a cluster.";
             TxtError.Visibility = Visibility.Visible;
             return;
         }
@@ -92,11 +133,12 @@ public partial class AddEditSiteDialog : Window
 
         Result = new Site
         {
-            Id           = _existing?.Id ?? 0,
-            Name         = TxtName.Text.Trim(),
-            LocationId   = selectedLocation.Id,
-            AssignedPmId = _existing?.AssignedPmId, // preserve PM assignment — SetValues copies ALL scalars
-            IsClosed     = nowClosed,
+            Id              = _existing?.Id ?? 0,
+            Name            = TxtName.Text.Trim(),
+            LocationId      = selectedLocation.Id,
+            AssignedPmId    = _existing?.AssignedPmId,    // preserve PM assignment — SetValues copies ALL scalars
+            IsClosed        = nowClosed,
+            StatusWhenEmpty = _existing?.StatusWhenEmpty, // preserve too — UpdateSite overwrites it only when BulkRompStatus is actually set
         };
 
         DialogResult = true;
