@@ -70,6 +70,31 @@ public partial class TeamsPage : UserControl
             vm.DeleteMember(m);
     }
 
+    private void CboBulkPe_DropDownOpened(object? sender, EventArgs e)
+    {
+        if (Vm is { } vm) CboBulkPe.ItemsSource = vm.PeOptions(); // fresh each time (PEs may have just been added)
+    }
+
+    private void BtnBulkSetPe_Click(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm) return;
+        var pms = PeopleGrid.SelectedItems.OfType<PersonRow>().Where(r => r.Pm != null).Select(r => r.Pm!).ToList();
+        if (pms.Count == 0)
+        {
+            MessageBox.Show("Select one or more PMs in the list first (Ctrl+Click / Shift+Click). Tip: set Role to PM to list only PMs.",
+                "No PMs Selected", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        if (CboBulkPe.SelectedItem is not SubRegionOption opt)
+        {
+            MessageBox.Show("Choose a PE to put them under.", "No PE", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        if (MessageBox.Show($"Put {pms.Count} PM(s) under {opt.Name}?\n\n{string.Join(", ", pms.Select(p => p.FullName))}",
+                "Set PE", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+        vm.SetPmsPe(pms, opt.Id == 0 ? null : opt.Id);
+    }
+
     // ── Sub-regions ──
 
     private void BtnEditSubRegion_Click(object sender, RoutedEventArgs e)

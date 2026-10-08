@@ -240,12 +240,20 @@
                                      Style="{StaticResource FormTextBoxStyle}" ToolTipService.ToolTip="Name, email, sub-region or manager"/>
                             <CheckBox Content="Show inactive" IsChecked="{Binding ShowInactive, Mode=TwoWay}" FontSize="12"
                                       Foreground="#374151" VerticalAlignment="Center" Margin="16,0,0,0"/>
+                            <!-- Bulk: put the selected PMs under one PE -->
+                            <StackPanel Orientation="Horizontal" Margin="24,0,0,0" Style="{StaticResource EditOnly}">
+                                <TextBlock Text="Selected PMs report to" FontSize="12" Foreground="#374151" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <ComboBox x:Name="CboBulkPe" DisplayMemberPath="Name" Width="230" Height="32" VerticalAlignment="Center"
+                                          Style="{StaticResource FormComboBoxStyle}" DropDownOpened="CboBulkPe_DropDownOpened"/>
+                                <Button Content="Set PE" Style="{StaticResource PrimaryButtonStyle}" Margin="6,0,0,0"
+                                        VerticalAlignment="Center" Click="BtnBulkSetPe_Click"/>
+                            </StackPanel>
                         </StackPanel>
                         <Border Grid.Row="1" CornerRadius="8" BorderBrush="#E2E8F0" BorderThickness="1" ClipToBounds="True">
-                            <DataGrid Style="{StaticResource AppDataGridStyle}"
+                            <DataGrid x:Name="PeopleGrid" Style="{StaticResource AppDataGridStyle}"
                                       CellStyle="{StaticResource DataGridCellStyle}"
                                       ColumnHeaderStyle="{StaticResource DataGridColumnHeaderStyle}"
-                                      ItemsSource="{Binding FilteredPeople}" BorderThickness="0">
+                                      ItemsSource="{Binding FilteredPeople}" SelectionMode="Extended" BorderThickness="0">
                                 <DataGrid.Columns>
                                     <DataGridTextColumn Header="Role" Binding="{Binding Role}" Width="85"/>
                                     <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="170"/>

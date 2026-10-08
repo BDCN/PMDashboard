@@ -446,6 +446,37 @@ public partial class TeamsViewModel : ObservableObject
         Load();
     }
 
+    /// <summary>Puts several Platform Managers under one PE at once (or removes their team).</summary>
+    public void SetPmsPe(IEnumerable<PM> pms, int? peId)
+    {
+        if (!IsEditable) return;
+        var ids = pms.Select(p => p.Id).Distinct().ToList();
+        if (ids.Count == 0) return;
+        using var db = new AppDbContext();
+        var tracked = db.PMs.Where(p => ids.Contains(p.Id)).ToList();
+        foreach (var p in tracked) p.PeId = peId;
+        db.SaveChanges();
+        var pe = peId is { } id ? db.TeamMembers.Include(t => t.SubRegion).FirstOrDefault(t => t.Id == id) : null;
+        var peName = pe == null ? "no PE" : pe.FullName + (pe.SubRegion != null ? $" ({pe.SubRegion.Name})" : "");
+        AuditService.Log("Update", "PM", ids.Count == 1 ? ids[0] : null,
+            $"{string.Join(", ", tracked.Select(p => p.FullName))} now report to {peName}");
+        StatusMessage = $"{tracked.Count} PM(s) now report to {peName}." + ConflictNote(db);
+        Load();
+    }
+
+    /// <summary>PE choices for the People tab's bulk "Set PE" (Id 0 = no team).</summary>
+    public List<SubRegionOption> PeOptions()
+    {
+        using var db = new AppDbContext();
+        return new[] { new SubRegionOption(0, "— no team —") }
+            .Concat(db.TeamMembers.AsNoTracking().Include(t => t.SubRegion)
+                      .Where(t => t.Role == TeamRoles.Pe && t.IsActive)
+                      .OrderBy(t => t.SubRegion != null ? t.SubRegion.Name : "~").ThenBy(t => t.LastName)
+                      .AsEnumerable()
+                      .Select(t => new SubRegionOption(t.Id, t.SubRegion != null ? $"{t.SubRegion.Name} — {t.FullName}" : $"{t.FullName} (no sub-region)")))
+            .ToList();
+    }
+
     // ── Sub-region actions ──
 
     public void SaveSubRegion(SubRegion s)

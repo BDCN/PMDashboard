@@ -92,14 +92,43 @@ public partial class AssignmentViewModel : ObservableObject
     /// <summary>"Cluster IAD is in East 1 — only East 1 team PMs can be assigned." (or region-only text).</summary>
     [ObservableProperty] private string _teamScopeInfo = "";
 
+    /// <summary>Why nobody can be suggested/picked for the current selection (the team rule left
+    /// no eligible PM), with what to do about it — or "" when someone is eligible.</summary>
+    [ObservableProperty] private string _noEligibleMessage = "";
+    public bool HasNoEligiblePms => NoEligibleMessage != "";
+    partial void OnNoEligibleMessageChanged(string value) => OnPropertyChanged(nameof(HasNoEligiblePms));
+
     /// <summary>
     /// Who may be assigned here: with campuses selected, the PMs allowed on every one of them (a
     /// cluster can be split across sub-regions — see Campus.SubRegionId); with none, the cluster's
     /// own rule (used by "Assign PM to Cluster").
     /// </summary>
+    private static string NoEligibleText(List<(string SubRegion, string Region)> areas)
+    {
+        if (areas.Count > 1)
+            return $"No PM is on all of these teams ({string.Join(", ", areas.Select(a => a.SubRegion != "" ? a.SubRegion : a.Region))}). " +
+                   "Select campuses from one sub-region at a time.";
+        var (sub, region) = areas[0];
+        if (sub != "")
+        {
+            using var db = new AppDbContext();
+            var pes = db.TeamMembers.AsNoTracking()
+                        .Where(t => t.Role == TeamRoles.Pe && t.IsActive && t.SubRegion != null && t.SubRegion.Name == sub)
+                        .Select(t => (t.FirstName + " " + t.LastName).Trim()).ToList();
+            var peText = pes.Count == 0 ? $"{sub} has no PE yet — add one, then put PMs under them"
+                                        : $"put PMs under {string.Join(" or ", pes)} ({sub}'s PE)";
+            return $"Nobody is on the {sub} team yet, so no PM can be assigned here. On the Teams page, {peText} " +
+                   "(People tab → select PMs → Set PE), or change this cluster's sub-region on Sub-regions & Clusters.";
+        }
+        return string.IsNullOrWhiteSpace(region)
+            ? "No active PMs found. Add or activate PMs in PM Maintenance."
+            : $"No active PM in {region} can take this (PMs on a team can only take their own sub-region's clusters plus unmapped ones in their region). " +
+              "Check the PMs' regions in PM Maintenance and their teams on the Teams page.";
+    }
+
     private void RefreshEligiblePms()
     {
-        if (SelectedLocation is not { } loc) { EligiblePms = new(); TeamScopeInfo = ""; return; }
+        if (SelectedLocation is not { } loc) { EligiblePms = new(); TeamScopeInfo = ""; NoEligibleMessage = ""; return; }
         var rules = TeamRules.Current();
         var campusIds = _selectedCampusIds.ToList();
         EligiblePms = new ObservableCollection<PM>(rules.EligibleForAll(AllPms, loc.Id, campusIds));
@@ -122,6 +151,8 @@ public partial class AssignmentViewModel : ObservableObject
                 : $"{where} {(campusIds.Count > 1 ? "have" : "has")} no sub-region yet — any {areas[0].Region} PM can be assigned ({EligiblePms.Count} active). Set it on the Teams page.";
         if (campusIds.Count == 0 && rules.IsSplit(loc.Id))
             TeamScopeInfo += " This cluster is split across sub-regions — select campuses to see who can take them.";
+
+        NoEligibleMessage = EligiblePms.Count > 0 ? "" : NoEligibleText(areas);
         // Keep a picked PM only if they're still allowed here.
         if (OverridePm     is { } o && !EligiblePms.Any(p => p.Id == o.Id)) OverridePm     = null;
         if (SiteOverridePm is { } s && !EligiblePms.Any(p => p.Id == s.Id)) SiteOverridePm = null;

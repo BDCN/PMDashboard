@@ -576,6 +576,29 @@
                     </StackPanel>
                 </Border>
 
+                <!-- Team rule left nobody eligible — say why and what to do, instead of an empty grid -->
+                <Border Grid.Row="1" Background="#FFFBEB" BorderBrush="#FDE68A" BorderThickness="1"
+                        CornerRadius="8" Padding="16,12" VerticalAlignment="Top" Margin="0,44,0,0" Panel.ZIndex="1">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <MultiDataTrigger>
+                                    <MultiDataTrigger.Conditions>
+                                        <Condition Binding="{Binding HasNoEligiblePms}" Value="True"/>
+                                        <Condition Binding="{Binding HasSelection}" Value="True"/>
+                                    </MultiDataTrigger.Conditions>
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </MultiDataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <DockPanel>
+                        <TextBlock Text="⚠" FontSize="14" Foreground="#B45309" Margin="0,0,8,0" DockPanel.Dock="Left"/>
+                        <TextBlock Text="{Binding NoEligibleMessage}" FontSize="12" Foreground="#92400E" TextWrapping="Wrap"/>
+                    </DockPanel>
+                </Border>
+
                 <!-- Candidates DataGrid -->
                 <Border Grid.Row="1" CornerRadius="10" BorderBrush="#E2E8F0" BorderThickness="1"
                         Background="White" ClipToBounds="True">
