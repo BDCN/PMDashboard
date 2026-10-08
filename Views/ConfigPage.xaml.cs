@@ -558,6 +558,52 @@ public partial class ConfigPage : UserControl
         TxtDeleteLocalStatus.Visibility = Visibility.Visible;
     }
 
+    // ── Danger zone — clear every PM assignment ──────────────────────────────
+
+    private void BtnClearAssignments_Click(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm) return;
+        if (!CurrentUser.IsSuperAdmin)
+        {
+            MessageBox.Show("Only a Super Admin can clear all assignments.", "Not Allowed", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var (sites, campuses, romps, clusters) = vm.GetAssignmentCounts();
+        if (sites + campuses + romps + clusters == 0)
+        {
+            ShowClearAssignmentsStatus("There are no assignments to clear.");
+            return;
+        }
+
+        var scope = DatabaseConfig.IsCloud
+            ? "You are in Cloud mode, so this is sent to the cloud and every other computer loses these assignments too."
+            : "This can't be undone, except by re-importing an assignments file.";
+        var first = MessageBox.Show(
+            $"Remove every PM assignment?\n\n    Sites: {sites:N0}\n    Campuses: {campuses:N0}\n    ROMP overrides: {romps:N0}\n    Clusters (direct): {clusters:N0}\n\n" +
+            $"PMs, teams, clusters, sites, ROMPs and assignment history are kept.\n\n{scope}\n\n" +
+            "Tip: Assignment page → Download Assignments Template first, to keep a copy.",
+            "Clear All Assignments", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (first != MessageBoxResult.Yes) return;
+
+        var dlg = new TextInputDialog("Confirm Clear Assignments", "This unassigns every PM from everything.\n\nType CLEAR to confirm:")
+            { Owner = Window.GetWindow(this) };
+        if (dlg.ShowDialog() != true) return;
+        if (!string.Equals(dlg.Value, "CLEAR", StringComparison.Ordinal))
+        {
+            ShowClearAssignmentsStatus("Cancelled — confirmation text did not match.");
+            return;
+        }
+
+        ShowClearAssignmentsStatus(vm.ClearAllAssignments());
+    }
+
+    private void ShowClearAssignmentsStatus(string message)
+    {
+        TxtClearAssignmentsStatus.Text       = message;
+        TxtClearAssignmentsStatus.Visibility = Visibility.Visible;
+    }
+
     // ── Danger zone — clear EVERYTHING, cloud included ───────────────────────
 
     private void BtnClearAllData_Click(object sender, RoutedEventArgs e)

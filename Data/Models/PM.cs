@@ -25,4 +25,7 @@ public class PM
     public DateTime LastModified { get; set; }
 
     public string FullName => $"{FirstName} {LastName}".Trim();
+
+    /// <summary>Display only (EF-ignored): "East1 — Brenda Meade-Nolan", filled by PM Maintenance.</summary>
+    public string TeamLabel { get; set; } = "";
 }

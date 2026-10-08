@@ -1562,6 +1562,22 @@
                                     <TextBlock x:Name="TxtDeleteLocalStatus" FontSize="11" Foreground="#7F1D1D"
                                                TextWrapping="Wrap" Margin="0,8,0,0" Visibility="Collapsed"/>
 
+                                    <!-- Clear All Assignments — unassigns every PM everywhere; data stays -->
+                                    <Separator Background="#FECACA" Margin="0,14,0,12"/>
+                                    <TextBlock Text="Clear All Assignments" FontSize="13" FontWeight="SemiBold"
+                                               Foreground="#991B1B" Margin="0,0,0,4"/>
+                                    <TextBlock FontSize="11" Foreground="#7F1D1D" TextWrapping="Wrap"
+                                               Margin="0,0,0,10"
+                                               Text="Removes every PM assignment — from every site, campus, ROMP override and cluster — so you can start assigning again. PMs, teams, clusters, sites, ROMPs and assignment history are kept. In Cloud mode this syncs to every computer. Tip: on the Assignment page, Download Assignments Template first to keep a copy of the current assignments."/>
+                                    <Button Content="Clear All Assignments"
+                                            Click="BtnClearAssignments_Click"
+                                            Padding="12,6" FontSize="12"
+                                            HorizontalAlignment="Left"
+                                            Style="{StaticResource DangerButtonStyle}"
+                                            ToolTipService.ToolTip="Unassigns every PM from everything. Cannot be undone (except by re-importing assignments)."/>
+                                    <TextBlock x:Name="TxtClearAssignmentsStatus" FontSize="11" Foreground="#7F1D1D"
+                                               TextWrapping="Wrap" Margin="0,8,0,0" Visibility="Collapsed"/>
+
                                     <!-- Clear ALL Data — the one above only ever touches this machine and
                                          self-heals from the cloud on the next sync; this one does not.
                                          Solid (not outline) button deliberately looks more alarming than

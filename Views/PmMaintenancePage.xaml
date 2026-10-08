@@ -151,6 +151,26 @@
                         </DataGridTemplateColumn.CellEditingTemplate>
                     </DataGridTemplateColumn>
 
+                    <!-- Team — the PE this PM reports to; the PE's sub-region is where they can be assigned -->
+                    <DataGridTemplateColumn Header="Team (PE)" Width="210" SortMemberPath="TeamLabel">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding TeamLabel}" Margin="12,0" TextTrimming="CharacterEllipsis"
+                                           VerticalAlignment="Center" FontFamily="Segoe UI" FontSize="13"/>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                        <DataGridTemplateColumn.CellEditingTemplate>
+                            <DataTemplate>
+                                <ComboBox ItemsSource="{Binding DataContext.PeOptions, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                          DisplayMemberPath="Name" SelectedValuePath="Id"
+                                          SelectedValue="{Binding PeId, UpdateSourceTrigger=PropertyChanged}"
+                                          IsEnabled="{Binding DataContext.CanEditTeams, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                          BorderThickness="0" Background="White"
+                                          FontFamily="Segoe UI" FontSize="13"/>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellEditingTemplate>
+                    </DataGridTemplateColumn>
+
                     <!-- More text fields -->
                     <DataGridTextColumn Header="Data Name"
                                         Binding="{Binding DataName, UpdateSourceTrigger=LostFocus}"

@@ -297,6 +297,44 @@ public partial class ConfigViewModel : ObservableObject
     /// In Cloud mode the next sync pulls the cloud's copy back down, which is the point: it
     /// makes the cloud authoritative for this machine.
     /// </summary>
+    /// <summary>How many PM assignments exist, by kind — for the Clear All Assignments confirmation.</summary>
+    public (int Sites, int Campuses, int Romps, int Clusters) GetAssignmentCounts()
+    {
+        using var db = new AppDbContext();
+        return (db.Sites.Count(s => s.AssignedPmId != null), db.Campuses.Count(c => c.AssignedPmId != null),
+                db.Romps.Count(r => r.AssignedPmId != null), db.Locations.Count(l => l.AssignedPmId != null));
+    }
+
+    /// <summary>
+    /// Unassigns every PM from every site, campus, ROMP override and cluster, and closes their open
+    /// assignment-history rows (the history itself is kept). Goes through SaveChanges, so the rows
+    /// are stamped and — in Cloud mode — pushed to every machine like any other edit. PMs, teams,
+    /// sites and everything else are untouched.
+    /// </summary>
+    public string ClearAllAssignments()
+    {
+        using var db = new AppDbContext();
+        var now = DateTime.UtcNow;
+        var who = CurrentUser.Email;
+
+        var sites = db.Sites.Where(s => s.AssignedPmId != null || s.PmOverride).ToList();
+        int siteCount = sites.Count(s => s.AssignedPmId != null);
+        foreach (var s in sites) { s.AssignedPmId = null; s.PmOverride = false; }
+        var campuses = db.Campuses.Where(c => c.AssignedPmId != null).ToList();
+        foreach (var c in campuses) c.AssignedPmId = null;
+        var romps = db.Romps.Where(r => r.AssignedPmId != null).ToList();
+        foreach (var r in romps) r.AssignedPmId = null;
+        var clusters = db.Locations.Where(l => l.AssignedPmId != null).ToList();
+        foreach (var l in clusters) l.AssignedPmId = null;
+        var open = db.AssignmentHistories.Where(h => h.UnassignedAtUtc == null).ToList();
+        foreach (var h in open) { h.UnassignedAtUtc = now; h.UnassignedBy = who; h.LastModified = now; }
+
+        db.SaveChanges();
+        var summary = $"Cleared {siteCount:N0} site, {campuses.Count:N0} campus, {romps.Count:N0} ROMP and {clusters.Count:N0} cluster assignment(s).";
+        AuditService.Log("Unassign", "AllAssignments", null, summary + $" Closed {open.Count:N0} assignment-history row(s).");
+        return summary;
+    }
+
     public string DeleteLocalData()
     {
         using var db = new AppDbContext();

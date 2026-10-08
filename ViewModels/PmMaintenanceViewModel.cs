@@ -40,8 +40,28 @@ public partial class PmMaintenanceViewModel : ObservableObject
         var list = query.OrderBy(p => p.LastName)
                         .ThenBy(p => p.FirstName)
                         .ToList();
+
+        // Team (PE) column: a PM's sub-region comes from the PE they report to (see TeamRules).
+        PeOptions = new[] { new PeOption(null, "— no team —") }
+            .Concat(db.TeamMembers.AsNoTracking().Include(t => t.SubRegion)
+                      .Where(t => t.Role == TeamRoles.Pe && t.IsActive)
+                      .AsEnumerable()
+                      .OrderBy(t => t.SubRegion?.Name ?? "~").ThenBy(t => t.LastName)
+                      .Select(t => new PeOption(t.Id, t.SubRegion != null ? $"{t.SubRegion.Name} — {t.FullName}" : $"{t.FullName} (no sub-region)")))
+            .ToList();
+        var labels = PeOptions.Where(o => o.Id != null).ToDictionary(o => o.Id!.Value, o => o.Name);
+        foreach (var p in list)
+            p.TeamLabel = p.PeId is { } pe && labels.TryGetValue(pe, out var l) ? l : "";
         Pms = new ObservableCollection<PM>(list);
     }
+
+    /// <summary>A PE choice for the Team column (Id null = no team).</summary>
+    public record PeOption(int? Id, string Name);
+
+    [ObservableProperty] private List<PeOption> _peOptions = new();
+
+    /// <summary>Teams can be changed by Super Admins and Directors (same as the Teams page).</summary>
+    public bool CanEditTeams => CurrentUser.IsSuperAdmin || CurrentUser.IsDirector;
 
     public void AddPm(PM pm)
     {
@@ -60,8 +80,15 @@ public partial class PmMaintenanceViewModel : ObservableObject
         using var db = new AppDbContext();
         var tracked = db.PMs.Find(updated.Id);
         if (tracked == null) return;
+        var oldPe = tracked.PeId;
         db.Entry(tracked).CurrentValues.SetValues(updated);
+        if (!CanEditTeams) tracked.PeId = oldPe; // the Team column is read-only for everyone else
         db.SaveChanges();
+        if (tracked.PeId != oldPe)
+        {
+            var peName = tracked.PeId is { } id ? db.TeamMembers.Find(id)?.FullName ?? "PE" : "no PE";
+            AuditService.Log("Update", "PM", tracked.Id, $"{tracked.FullName} now reports to {peName} (PM Maintenance)");
+        }
         Load();
     }
 

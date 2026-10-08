@@ -213,7 +213,8 @@ Site name in PmDetail → NavigateToSiteRompsFromPm(siteId, pmId) → SitesPage 
 
 ### PM Maintenance
 - **Live-edit DataGrid**: click a cell to edit inline; `RowEditEnding` → `UpdatePm(pm)` saves automatically
-- Columns: Active, First Name, Last Name, Home Office, Region, Data Name, **Site Cap**, **Score Cap**, **Multiplier**, Ideal Util (%)
+- Columns: Active, First Name, Last Name, Home Office, Region, **Team (PE)**, Data Name, **Site Cap**, **Score Cap**, **Multiplier**, Ideal Util (%)
+- **Team (PE)**: dropdown of active PEs labelled "East1 — Name" (`PmMaintenanceViewModel.PeOptions`), bound to `PM.PeId` — the same thing Teams → People sets; the PE's sub-region is where the PM can be assigned (`TeamRules`). Display text is `PM.TeamLabel` (EF-ignored, filled in `Load()`). Editable only for Super Admins/Directors (`CanEditTeams`; `UpdatePm` also keeps the old `PeId` for anyone else).
 - **Site Count Only mode**: the last four columns (Site Cap/Score Cap/Multiplier/Ideal Util) are hidden — `ColSiteCap`/`ColScoreCap`/`ColMultiplier`/`ColIdealUtil` `x:Name`s on the `DataGridColumn`s, collapsed in the `PmMaintenancePage` constructor. Same fields are hidden in `AddEditPmDialog` (`CapacityRow`/`PmMultiplierPanel`) — the underlying `PM.Capacity`/`IdealUtilization`/`PmMultiplier`/`ScoreCapacity` values are untouched either way (controls are hidden, not removed, so a new PM still saves its default 0/80/blank values and an existing PM keeps whatever it already had).
 
 ### Teams
@@ -299,6 +300,9 @@ Third `PercentageCalculation` value (`"Sites"` | `"Score"` | `"Count"`), set via
 
 #### Danger Zone — Delete Local Database Data
 `ConfigViewModel.GetLocalDataCounts()`/`DeleteLocalData()` empty `RompEquipmentTypes/Romps/Sites/Locations/Orders/CustomRows/CustomColumns/SavedReports/EquipmentWeights` from **this machine's local SQLite only**, via raw `DELETE FROM` (not EF `RemoveRange`, so 100k+ Orders rows never get tracked) plus `DELETE FROM sqlite_sequence` to reset autoincrement counters. PMs and all configuration tables (`AppConfigs`, `RompStatuses`, `EquipmentCategories`, `EquipmentKeywords`, `AssignmentRules`, `Users`) are deliberately preserved. Since raw `DELETE` never runs through `SaveChanges()`, no cloud push is triggered — in Cloud mode the next sync simply pulls the cloud's copy back down, making the cloud authoritative for this machine; in Local mode the data is genuinely gone. Two confirmations: a `MessageBox` showing the per-table breakdown, then a `TextInputDialog` requiring the literal text `DELETE` to be typed.
+
+#### Danger Zone — Clear All Assignments
+`ConfigViewModel.ClearAllAssignments()` unassigns every PM from every site (and clears `PmOverride`), campus, ROMP override and cluster (`Location.AssignedPmId`), and closes all open `AssignmentHistory` rows (history kept). Unlike Delete Local Data it goes through `SaveChanges()` — rows are stamped and **pushed to the cloud**, so every machine loses the assignments. Super Admin only; MessageBox with counts (`GetAssignmentCounts`) + type `CLEAR` to confirm; suggests downloading the Assignments template first as a backup. Audited as `Unassign`/`AllAssignments`.
 
 #### Manage Users
 `ConfigViewModel.Users` (`ObservableCollection<User>`, loaded via `UserService.AllUsers()`) bound to a `DataGrid` — Name, Email, Role, Last Login, Active. Actions per row: **Reset Password** (`ResetUserPasswordDialog` → `UserService.AdminResetPassword`) and **Activate/Deactivate** (`UserService.SetActive` — no hard delete, keeps audit history intact). **+ Add User** opens `AddEditUserDialog` → `UserService.CreateUser`. Every action logs via `AuditService.Log`. This card no longer carries its own visibility check — the whole page already requires `IsSuperAdmin`, so the card is simply always shown once you're on the page at all; the `Border.Style`/`DataTrigger` gating it individually is harmless leftover redundancy, not a second real gate.
