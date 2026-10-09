@@ -10,8 +10,9 @@ namespace PMDashboard.Services;
 public sealed class TeamRuleException(string message) : InvalidOperationException(message);
 
 /// <summary>
-/// The team boundary for assignments (hard rule, checked in AssignmentHistoryService and
-/// CampusService so no path can bypass it):
+/// The team boundary for assignments (checked in AssignmentHistoryService and CampusService so no
+/// path can bypass it; an out-of-team assignment needs an acknowledged warning — the UI retries
+/// inside <see cref="AllowOutsideTeam"/>, see AcknowledgeDialog.RunAssignment):
 ///   • a cluster mapped to a sub-region (Location.SubRegionId, or a campus's own) can only be
 ///     assigned to PMs on that sub-region — their default (PM.SubRegionId; for older data the
 ///     PE's sub-region via PM.PeId) or one of their others (PM.OtherSubRegionIds);
@@ -26,6 +27,7 @@ public sealed class TeamRules
     private sealed record PmInfo(string Name, string Region, int? SubRegionId, HashSet<int> All);
     private sealed record LocInfo(string Name, string Region, int? SubRegionId);
     private sealed record CampusInfo(string Name, int LocationId, int? SubRegionId);
+    private sealed record SiteInfo(string Name, int LocationId, int? CampusId, int SubRegionId);
 
     /// <summary>Where an assignment lands, team-wise: the sub-region that governs it (campus's own,
     /// else the cluster's), the region, and how to describe it in a message.</summary>
@@ -35,12 +37,38 @@ public sealed class TeamRules
     private readonly Dictionary<int, LocInfo>    _locs;
     private readonly Dictionary<int, CampusInfo> _campuses;
     private readonly Dictionary<int, SubRegion>  _subs;
+    private readonly Dictionary<int, SiteInfo>   _sites;   // only sites with their own sub-region
 
     private static readonly ConditionalWeakTable<AppDbContext, TeamRules> Cache = new();
 
     private TeamRules(Dictionary<int, PmInfo> pms, Dictionary<int, LocInfo> locs,
-                      Dictionary<int, CampusInfo> campuses, Dictionary<int, SubRegion> subs)
-        => (_pms, _locs, _campuses, _subs) = (pms, locs, campuses, subs);
+                      Dictionary<int, CampusInfo> campuses, Dictionary<int, SubRegion> subs, Dictionary<int, SiteInfo> sites)
+        => (_pms, _locs, _campuses, _subs, _sites) = (pms, locs, campuses, subs, sites);
+
+    // ── Acknowledged exceptions ──
+    // Assigning outside the team is allowed when the user has seen and acknowledged a warning
+    // (OutsideTeamDialog). The UI runs the action again inside this scope; Ensure then lets it
+    // through and records it in the audit log instead of throwing.
+    [ThreadStatic] private static int _allowOutside;
+    [ThreadStatic] private static HashSet<string>? _loggedInScope;   // one audit entry per distinct exception, not per site
+
+    /// <summary>Within this scope, out-of-team assignments are allowed (and audited).</summary>
+    public static IDisposable AllowOutsideTeam()
+    {
+        if (_allowOutside++ == 0) _loggedInScope = new();
+        return new Scope();
+    }
+    public static bool OutsideTeamAllowed => _allowOutside > 0;
+    private sealed class Scope : IDisposable
+    {
+        private bool _done;
+        public void Dispose()
+        {
+            if (_done) return;
+            _done = true;
+            if (--_allowOutside == 0) _loggedInScope = null;
+        }
+    }
 
     /// <summary>The rules as of this context's first use (cached per context).</summary>
     public static TeamRules For(AppDbContext db) => Cache.GetValue(db, Load);
@@ -82,17 +110,26 @@ public sealed class TeamRules
                          .Select(c => new { c.Id, c.Name, c.LocationId, c.SubRegionId })
                          .AsEnumerable()
                          .ToDictionary(c => c.Id, c => new CampusInfo(c.Name, c.LocationId, Valid(c.SubRegionId)));
-        return new TeamRules(pms, locs, campuses, subs);
+        var sites = db.Sites.AsNoTracking().Where(st => st.SubRegionId != null)
+                      .Select(st => new { st.Id, st.Name, st.LocationId, st.CampusId, st.SubRegionId })
+                      .AsEnumerable()
+                      .Where(st => Valid(st.SubRegionId) != null)
+                      .ToDictionary(st => st.Id, st => new SiteInfo(st.Name, st.LocationId, st.CampusId, st.SubRegionId!.Value));
+        return new TeamRules(pms, locs, campuses, subs, sites);
     }
 
-    /// <summary>A campus's own sub-region wins; otherwise the cluster's; otherwise the cluster's region.</summary>
-    private Area? AreaOf(int locationId, int? campusId)
+    /// <summary>The most specific own sub-region wins: site's, else campus's, else the cluster's;
+    /// otherwise the cluster's region. (Clusters and campuses can be split across sub-regions and
+    /// regions — the user acknowledges a warning when splitting.)</summary>
+    private Area? AreaOf(int locationId, int? campusId, int? siteId = null)
     {
         _locs.TryGetValue(locationId, out var loc);
         CampusInfo? campus = campusId is { } cid && _campuses.TryGetValue(cid, out var c) ? c : null;
         loc ??= campus != null && _locs.TryGetValue(campus.LocationId, out var cl) ? cl : null;
         if (loc == null) return null;
 
+        if (siteId is { } sid && _sites.TryGetValue(sid, out var site))
+            return new Area(site.SubRegionId, _subs[site.SubRegionId].Region, $"site {site.Name}");
         if (campus?.SubRegionId is { } own)
             return new Area(own, _subs[own].Region, $"campus {campus.Name}");
         if (loc.SubRegionId is { } inherited)
@@ -100,13 +137,13 @@ public sealed class TeamRules
         return new Area(null, loc.Region, campus != null ? $"campus {campus.Name} (cluster {loc.Name})" : $"cluster {loc.Name}");
     }
 
-    public bool Allows(int pmId, int locationId, int? campusId = null) => Reason(pmId, locationId, campusId) == null;
+    public bool Allows(int pmId, int locationId, int? campusId = null, int? siteId = null) => Reason(pmId, locationId, campusId, siteId) == null;
 
     /// <summary>Why this PM can't take this cluster/campus, or null when they can. Pass the campus
     /// whenever there is one — a campus can belong to a different sub-region than its cluster.</summary>
-    public string? Reason(int pmId, int locationId, int? campusId = null)
+    public string? Reason(int pmId, int locationId, int? campusId = null, int? siteId = null)
     {
-        if (AreaOf(locationId, campusId) is not { } area) return null;
+        if (AreaOf(locationId, campusId, siteId) is not { } area) return null;
         if (!_pms.TryGetValue(pmId, out var pm)) return null; // unknown PM — nothing to check against
 
         if (area.SubRegionId is { } sub)
@@ -124,15 +161,19 @@ public sealed class TeamRules
                "PMs can only be assigned within their own region (and sub-region, once there is one).";
     }
 
-    /// <summary>Throws <see cref="TeamRuleException"/> if this PM can't take this cluster/campus.</summary>
-    public void Ensure(int pmId, int locationId, int? campusId = null)
+    /// <summary>Throws <see cref="TeamRuleException"/> if this PM can't take this cluster/campus/site —
+    /// unless inside <see cref="AllowOutsideTeam"/>, where it's allowed and audited instead.</summary>
+    public void Ensure(int pmId, int locationId, int? campusId = null, int? siteId = null)
     {
-        if (Reason(pmId, locationId, campusId) is { } why) throw new TeamRuleException(why);
+        if (Reason(pmId, locationId, campusId, siteId) is not { } why) return;
+        if (!OutsideTeamAllowed) throw new TeamRuleException(why);
+        if (_loggedInScope?.Add($"{pmId}|{why}") != false)
+            AuditService.Log("OutsideTeam", "PM", pmId, "Assigned outside team (acknowledged): " + why);
     }
 
-    /// <summary>The PMs from <paramref name="pms"/> that can be assigned to this cluster/campus.</summary>
-    public List<PM> Eligible(IEnumerable<PM> pms, int locationId, int? campusId = null) =>
-        pms.Where(p => Allows(p.Id, locationId, campusId)).ToList();
+    /// <summary>The PMs from <paramref name="pms"/> that can be assigned to this cluster/campus/site.</summary>
+    public List<PM> Eligible(IEnumerable<PM> pms, int locationId, int? campusId = null, int? siteId = null) =>
+        pms.Where(p => Allows(p.Id, locationId, campusId, siteId)).ToList();
 
     /// <summary>PMs allowed on every campus of a cluster (and the cluster itself when it has none) —
     /// for actions that assign a whole cluster or several campuses at once.</summary>
@@ -170,14 +211,22 @@ public sealed class TeamRules
         _locs.TryGetValue(locationId, out var l) && l.SubRegionId is { } s ? _subs[s].Name : "";
 
     /// <summary>The sub-region that governs this campus/cluster ("" when none) and its region.</summary>
-    public (string SubRegion, string Region) EffectiveArea(int locationId, int? campusId = null) =>
-        AreaOf(locationId, campusId) is { } a ? (a.SubRegionId is { } s ? _subs[s].Name : "", a.Region) : ("", "");
+    public (string SubRegion, string Region) EffectiveArea(int locationId, int? campusId = null, int? siteId = null) =>
+        AreaOf(locationId, campusId, siteId) is { } a ? (a.SubRegionId is { } s ? _subs[s].Name : "", a.Region) : ("", "");
 
-    /// <summary>True when any campus in the cluster has its own sub-region different from the cluster's.</summary>
+    /// <summary>True when any campus or site in the cluster has its own sub-region different from the cluster's.</summary>
     public bool IsSplit(int locationId)
     {
         var clusterSub = _locs.TryGetValue(locationId, out var l) ? l.SubRegionId : null;
-        return _campuses.Values.Any(c => c.LocationId == locationId && c.SubRegionId != null && c.SubRegionId != clusterSub);
+        return _campuses.Values.Any(c => c.LocationId == locationId && c.SubRegionId != null && c.SubRegionId != clusterSub)
+            || _sites.Values.Any(st => st.LocationId == locationId && st.SubRegionId != clusterSub);
+    }
+
+    /// <summary>True when any site in the campus has its own sub-region different from the campus's area.</summary>
+    public bool IsCampusSplit(int locationId, int campusId)
+    {
+        var campusSub = AreaOf(locationId, campusId)?.SubRegionId;
+        return _sites.Values.Any(st => st.CampusId == campusId && st.SubRegionId != campusSub);
     }
 
     /// <summary>Sub-region for a forecast site not in the system: its campus code (if a campus

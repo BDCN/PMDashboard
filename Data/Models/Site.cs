@@ -28,6 +28,15 @@ public class Site
     /// the campus then leaves it alone. Maintained by AssignmentHistoryService.RecordChange.</summary>
     public bool PmOverride { get; set; }
 
+    /// <summary>Team sub-region for this site when it differs from its campus's/cluster's (a campus
+    /// split across sub-regions or regions). Null = same as its campus. See TeamRules.</summary>
+    public int?       SubRegionId { get; set; }
+    public SubRegion? SubRegion   { get; set; }
+
+    /// <summary>Display only (EF-ignored): the sub-region that governs this site, "(split)" when
+    /// it's the site's own. Filled by the Sites page.</summary>
+    public string TeamAreaLabel { get; set; } = "";
+
     /// <summary>Assigned PM's name, marked when it's a site-level override (EF-ignored).</summary>
     public string PmDisplay => AssignedPm == null ? "" : AssignedPm.FullName + (PmOverride ? "  (own PM)" : "");
     public DateTime LastModified { get; set; }

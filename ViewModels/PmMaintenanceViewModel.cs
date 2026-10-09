@@ -169,15 +169,15 @@ public partial class PmMaintenanceViewModel : ObservableObject
         if (toPmId is { } to)
         {
             var rules = TeamRules.For(db);
-            var places = sites.Select(s => (Loc: s.LocationId, Campus: s.CampusId))
-                              .Concat(romps.Select(r => (Loc: r.Site!.LocationId, Campus: r.Site.CampusId)))
-                              .Distinct().Where(x => !rules.Allows(to, x.Loc, x.Campus)).ToList();
+            var places = sites.Select(s => (Loc: s.LocationId, Campus: s.CampusId, Site: (int?)s.Id))
+                              .Concat(romps.Select(r => (Loc: r.Site!.LocationId, Campus: r.Site.CampusId, Site: (int?)r.SiteId)))
+                              .Distinct().Where(x => !rules.Allows(to, x.Loc, x.Campus, x.Site)).ToList();
             var blocked = places.Select(x => x.Loc).Distinct().ToList();
-            if (places.Count > 0)
+            if (places.Count > 0 && !TeamRules.OutsideTeamAllowed)
             {
                 var names = db.Locations.Where(l => blocked.Contains(l.Id)).Select(l => l.Name).OrderBy(n => n).ToList();
                 throw new TeamRuleException(
-                    $"{rules.Reason(to, places[0].Loc, places[0].Campus)}\n\nThe new PM can't take {names.Count} of this PM's clusters ({string.Join(", ", names)}). " +
+                    $"{rules.Reason(to, places[0].Loc, places[0].Campus, places[0].Site)}\n\nThe new PM can't take {names.Count} of this PM's clusters ({string.Join(", ", names)}). " +
                     "Nothing was changed — choose a PM on the same team, or unassign instead.");
             }
         }

@@ -3,6 +3,15 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              Background="#F1F5F9">
 
+    <UserControl.Resources>
+        <!-- PM name, plus "· outside team" in amber for PMs not on the selected place's team -->
+        <DataTemplate x:Key="PmPickTemplate">
+            <TextBlock>
+                <Run Text="{Binding FullName, Mode=OneWay}"/><Run Text="{Binding TeamLabel, Mode=OneWay}" Foreground="#B45309"/>
+            </TextBlock>
+        </DataTemplate>
+    </UserControl.Resources>
+
     <Grid Margin="32,28,32,28">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>  <!-- Title -->
@@ -321,10 +330,10 @@
 
                         <!-- Override PM section -->
                         <Separator Margin="0,16,0,14" Background="#E2E8F0"/>
-                        <TextBlock Text="Override — assign any PM on this cluster's team" FontSize="11" FontWeight="SemiBold"
+                        <TextBlock Text="Override — assign any PM (outside the team asks you to confirm)" FontSize="11" FontWeight="SemiBold"
                                    Foreground="#374151" Margin="0,0,0,6"/>
-                        <ComboBox ItemsSource="{Binding EligiblePms}"
-                                  DisplayMemberPath="FullName"
+                        <ComboBox ItemsSource="{Binding OverridePms}"
+                                  ItemTemplate="{StaticResource PmPickTemplate}"
                                   SelectedItem="{Binding OverridePm, Mode=TwoWay}"
                                   Style="{StaticResource FormComboBoxStyle}" Margin="0,0,0,10"/>
                         <Button Content="Assign Override PM" Style="{StaticResource SecondaryButtonStyle}"
@@ -429,8 +438,8 @@
                                     </Style>
                                 </TextBlock.Style>
                             </TextBlock>
-                            <ComboBox ItemsSource="{Binding EligiblePms}"
-                                      DisplayMemberPath="FullName"
+                            <ComboBox ItemsSource="{Binding OverridePms}"
+                                      ItemTemplate="{StaticResource PmPickTemplate}"
                                       SelectedItem="{Binding SiteOverridePm, Mode=TwoWay}"
                                       Style="{StaticResource FormComboBoxStyle}" Margin="0,0,0,10"/>
                             <StackPanel Orientation="Horizontal">
@@ -501,8 +510,8 @@
                                 </TextBlock.Style>
                             </TextBlock>
 
-                            <ComboBox ItemsSource="{Binding EligiblePms}"
-                                      DisplayMemberPath="FullName"
+                            <ComboBox ItemsSource="{Binding OverridePms}"
+                                      ItemTemplate="{StaticResource PmPickTemplate}"
                                       SelectedItem="{Binding RompOverridePm, Mode=TwoWay}"
                                       Style="{StaticResource FormComboBoxStyle}" Margin="0,0,0,10"/>
                             <StackPanel Orientation="Horizontal">

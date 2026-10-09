@@ -89,7 +89,7 @@ public partial class SitesPage : UserControl
         if (confirm != MessageBoxResult.Yes) return;
 
         var pmId = dlg.WasUnassigned ? (int?)null : dlg.SelectedPm!.Id;
-        vm.AssignPmToLocation(loc, pmId);
+        AcknowledgeDialog.RunAssignment(Window.GetWindow(this), () => vm.AssignPmToLocation(loc, pmId));
     }
 
     private void BtnDeleteLocation_Click(object sender, RoutedEventArgs e)
@@ -168,7 +168,7 @@ public partial class SitesPage : UserControl
                 "Sites With Their Own PM", MessageBoxButton.YesNo, MessageBoxImage.Question);
             if (go != MessageBoxResult.Yes) return;
         }
-        vm.AssignCampusPm(campus, pmId);
+        AcknowledgeDialog.RunAssignment(Window.GetWindow(this), () => vm.AssignCampusPm(campus, pmId));
     }
 
     private void BtnMoveSite_Click(object sender, RoutedEventArgs e)
@@ -179,7 +179,7 @@ public partial class SitesPage : UserControl
         var dlg = new MoveSiteDialog(site, campuses, vm.SelectedCampus?.Name) { Owner = Window.GetWindow(this) };
         if (dlg.ShowDialog() != true) return;
         if (dlg.CampusName == vm.SelectedCampus?.Name) return;
-        vm.MoveSiteToCampus(site, dlg.CampusName);
+        AcknowledgeDialog.RunAssignment(Window.GetWindow(this), () => vm.MoveSiteToCampus(site, dlg.CampusName));
     }
 
     // ── Site drill-down ──
@@ -251,7 +251,7 @@ public partial class SitesPage : UserControl
                     "Site Override", MessageBoxButton.YesNo, MessageBoxImage.Question);
                 if (go != MessageBoxResult.Yes) return;
             }
-            vm.AssignPm(site, pmId);
+            AcknowledgeDialog.RunAssignment(Window.GetWindow(this), () => vm.AssignPm(site, pmId));
         }
         catch (Exception ex)
         {
@@ -281,7 +281,7 @@ public partial class SitesPage : UserControl
             if (dlg.WasUnassigned)
                 vm.AssignRompPm(romp, null);
             else if (dlg.SelectedPm != null)
-                vm.AssignRompPm(romp, dlg.SelectedPm.Id);
+                AcknowledgeDialog.RunAssignment(Window.GetWindow(this), () => vm.AssignRompPm(romp, dlg.SelectedPm.Id));
         }
         catch (Exception ex)
         {

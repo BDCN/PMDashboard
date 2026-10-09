@@ -688,12 +688,12 @@ public partial class ForecastTimelineViewModel : ObservableObject
         // the system yet, the region rule.
         var rules = TeamRules.For(db);
         var at = forRow.SiteId is { } sid
-            ? db.Sites.Where(s => s.Id == sid).Select(s => new { Loc = (int?)s.LocationId, s.CampusId }).FirstOrDefault()
-            : db.Locations.Where(l => l.Name == forRow.ClusterName).Select(l => new { Loc = (int?)l.Id, CampusId = (int?)null }).FirstOrDefault();
+            ? db.Sites.Where(s => s.Id == sid).Select(s => new { Loc = (int?)s.LocationId, s.CampusId, SiteId = (int?)s.Id }).FirstOrDefault()
+            : db.Locations.Where(l => l.Name == forRow.ClusterName).Select(l => new { Loc = (int?)l.Id, CampusId = (int?)null, SiteId = (int?)null }).FirstOrDefault();
         int? locId = at?.Loc;
         var pms = db.PMs.AsNoTracking().Where(p => p.IsActive).AsEnumerable()
             .Where(p => locId is { } l
-                ? rules.Allows(p.Id, l, at!.CampusId)
+                ? rules.Allows(p.Id, l, at!.CampusId, at.SiteId)
                 : string.IsNullOrEmpty(forRow.Region) || string.Equals(rules.PmTeam(p.Id).Region, forRow.Region, StringComparison.OrdinalIgnoreCase))
             .ToList();
 

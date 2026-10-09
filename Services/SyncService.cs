@@ -690,6 +690,7 @@ public static class SyncService
         ALTER TABLE `PMs`       ADD COLUMN IF NOT EXISTS `PeId` INT NULL;
         ALTER TABLE `Locations` ADD COLUMN IF NOT EXISTS `SubRegionId` INT NULL;
         ALTER TABLE `Campuses`  ADD COLUMN IF NOT EXISTS `SubRegionId` INT NULL;
+        ALTER TABLE `Sites`     ADD COLUMN IF NOT EXISTS `SubRegionId` INT NULL;
         ALTER TABLE `PMs`       ADD COLUMN IF NOT EXISTS `SubRegionId` INT NULL;
         ALTER TABLE `PMs`       ADD COLUMN IF NOT EXISTS `OtherSubRegionIds` VARCHAR(1000) NOT NULL DEFAULT '';
 

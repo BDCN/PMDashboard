@@ -99,7 +99,10 @@ public partial class PmDetailPage : UserControl
         using var db2 = new AppDbContext();
         var tracked = db2.Sites.Find(row.SiteId);
         if (tracked == null) return;
+        // The dialog only manages name/cluster/status fields — keep placement, PM and team as they are.
+        var (campusId, campusManual, pmId, pmOverride, subId) = (tracked.CampusId, tracked.CampusManual, tracked.AssignedPmId, tracked.PmOverride, tracked.SubRegionId);
         db2.Entry(tracked).CurrentValues.SetValues(dlg.Result!);
+        (tracked.CampusId, tracked.CampusManual, tracked.AssignedPmId, tracked.PmOverride, tracked.SubRegionId) = (campusId, campusManual, pmId, pmOverride, subId);
         if (!string.IsNullOrEmpty(dlg.BulkRompStatus))
         {
             var romps = db2.Romps.Where(r => r.SiteId == row.SiteId).ToList();

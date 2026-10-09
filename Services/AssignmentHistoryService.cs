@@ -17,7 +17,7 @@ public static class AssignmentHistoryService
     {
         // Team boundary (hard rule): throws TeamRuleException before anything is changed.
         if (newPmId is { } checkPm && checkPm != site.AssignedPmId)
-            TeamRules.For(db).Ensure(checkPm, site.LocationId, site.CampusId);
+            TeamRules.For(db).Ensure(checkPm, site.LocationId, site.CampusId, site.Id);
 
         // Campus-level PM with site overrides (see Campus.cs): a site whose PM differs from its
         // campus's (assigned) PM is an override, so assigning the campus later leaves it alone.
@@ -78,7 +78,7 @@ public static class AssignmentHistoryService
         {
             var at = romp.Site is { } st ? new { st.LocationId, st.CampusId }
                    : db.Sites.Where(s => s.Id == romp.SiteId).Select(s => new { s.LocationId, s.CampusId }).First();
-            TeamRules.For(db).Ensure(checkPm, at.LocationId, at.CampusId);
+            TeamRules.For(db).Ensure(checkPm, at.LocationId, at.CampusId, romp.SiteId);
         }
 
         var now = DateTime.UtcNow;

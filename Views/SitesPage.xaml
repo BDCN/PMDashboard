@@ -421,6 +421,7 @@
 
                         <DataGridTextColumn Header="Assigned PM"
                                             Binding="{Binding PmDisplay}" Width="200"/>
+                        <DataGridTextColumn Header="Sub-region" Binding="{Binding TeamAreaLabel}" Width="130"/>
                         <DataGridTextColumn Header="ROMPs" Width="65">
                             <DataGridTextColumn.Binding>
                                 <Binding Path="Romps.Count"/>

@@ -85,9 +85,12 @@ public partial class AssignmentViewModel : ObservableObject
     [ObservableProperty] private ObservableCollection<PM> _allPms = new();
     [ObservableProperty] private PM?                      _overridePm;
 
-    /// <summary>The active PMs allowed on the selected cluster (TeamRules) — every PM dropdown on
-    /// the page uses this, so an out-of-area PM can't even be picked.</summary>
+    /// <summary>The active PMs allowed on the selected cluster/campuses (TeamRules).</summary>
     [ObservableProperty] private ObservableCollection<PM> _eligiblePms = new();
+
+    /// <summary>Override dropdowns: the team's PMs first, then everyone else marked "outside team"
+    /// (TeamLabel) — choosing one of those asks the user to acknowledge it.</summary>
+    [ObservableProperty] private ObservableCollection<PM> _overridePms = new();
 
     /// <summary>"Cluster IAD is in East 1 — only East 1 team PMs can be assigned." (or region-only text).</summary>
     [ObservableProperty] private string _teamScopeInfo = "";
@@ -118,7 +121,7 @@ public partial class AssignmentViewModel : ObservableObject
             var peText = pes.Count == 0 ? $" ({sub} has no PE yet either)" : $" (PE: {string.Join(", ", pes)})";
             return $"Nobody is on the {sub} team yet{peText}, so no PM can be assigned here. Add PMs to {sub}: " +
                    "Org Chart → Edit Org Chart and drag them in, or PM Maintenance → Sub-regions, or Teams → People → select PMs → Set. " +
-                   "Or change this cluster's sub-region on Teams → Sub-regions & Clusters.";
+                   "Or pick any PM under Override — you'll be asked to confirm an out-of-team assignment.";
         }
         return string.IsNullOrWhiteSpace(region)
             ? "No active PMs found. Add or activate PMs in PM Maintenance."
@@ -128,10 +131,13 @@ public partial class AssignmentViewModel : ObservableObject
 
     private void RefreshEligiblePms()
     {
-        if (SelectedLocation is not { } loc) { EligiblePms = new(); TeamScopeInfo = ""; NoEligibleMessage = ""; return; }
+        if (SelectedLocation is not { } loc) { EligiblePms = new(); OverridePms = new(AllPms); TeamScopeInfo = ""; NoEligibleMessage = ""; return; }
         var rules = TeamRules.Current();
         var campusIds = _selectedCampusIds.ToList();
         EligiblePms = new ObservableCollection<PM>(rules.EligibleForAll(AllPms, loc.Id, campusIds));
+        var onTeam = EligiblePms.Select(p => p.Id).ToHashSet();
+        foreach (var p in AllPms) p.TeamLabel = onTeam.Contains(p.Id) ? "" : "  · outside team";
+        OverridePms = new ObservableCollection<PM>(AllPms.OrderBy(p => onTeam.Contains(p.Id) ? 0 : 1));
 
         var areas = (campusIds.Count == 0 ? new List<int?> { null } : campusIds.Select(c => (int?)c).ToList())
             .Select(c => rules.EffectiveArea(loc.Id, c)).Distinct().ToList();
@@ -153,10 +159,7 @@ public partial class AssignmentViewModel : ObservableObject
             TeamScopeInfo += " This cluster is split across sub-regions — select campuses to see who can take them.";
 
         NoEligibleMessage = EligiblePms.Count > 0 ? "" : NoEligibleText(areas);
-        // Keep a picked PM only if they're still allowed here.
-        if (OverridePm     is { } o && !EligiblePms.Any(p => p.Id == o.Id)) OverridePm     = null;
-        if (SiteOverridePm is { } s && !EligiblePms.Any(p => p.Id == s.Id)) SiteOverridePm = null;
-        if (RompOverridePm is { } r && !EligiblePms.Any(p => p.Id == r.Id)) RompOverridePm = null;
+
     }
 
     // ── Site-level override (this site keeps its own PM when the campus is reassigned) ──

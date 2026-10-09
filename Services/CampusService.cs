@@ -36,8 +36,16 @@ public static class CampusService
 
         campus.AssignedPmId = pmId;
         int changed = 0;
+        var rules = TeamRules.For(db);
         foreach (var site in campus.Sites.Where(s => !s.PmOverride))
         {
+            // A site split off to a sub-region this PM doesn't cover keeps its own PM (an override)
+            // rather than failing the whole campus — unless the user acknowledged going outside the team.
+            if (pmId is { } p && !TeamRules.OutsideTeamAllowed && !rules.Allows(p, campus.LocationId, campus.Id, site.Id))
+            {
+                site.PmOverride = true;
+                continue;
+            }
             if (site.AssignedPmId != pmId) changed++;
             site.Campus = campus;
             AssignmentHistoryService.RecordChange(db, site, pmId);

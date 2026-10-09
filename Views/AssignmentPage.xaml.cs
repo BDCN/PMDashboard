@@ -164,7 +164,7 @@ public partial class AssignmentPage : UserControl
                 "Confirm Bulk Assignment", MessageBoxButton.YesNo, MessageBoxImage.Question);
             if (confirm != MessageBoxResult.Yes) return;
         }
-        vm.AssignCandidate(candidate); // re-selection happens via SelectionNeedsRestore
+        AcknowledgeDialog.RunAssignment(Window.GetWindow(this), () => vm.AssignCandidate(candidate)); // re-selection via SelectionNeedsRestore
     }
 
     private void BtnAssignOverride_Click(object sender, RoutedEventArgs e)
@@ -189,7 +189,7 @@ public partial class AssignmentPage : UserControl
                 "Confirm Bulk Assignment", MessageBoxButton.YesNo, MessageBoxImage.Question);
             if (confirm != MessageBoxResult.Yes) return;
         }
-        vm.AssignOverride();
+        AcknowledgeDialog.RunAssignment(Window.GetWindow(this), () => vm.AssignOverride());
     }
 
     private void BtnAssignCluster_Click(object sender, RoutedEventArgs e)
@@ -201,7 +201,8 @@ public partial class AssignmentPage : UserControl
                 "No PM Selected", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
-        vm.AssignPmToCluster(vm.OverridePm.Id);
+        var clusterPm = vm.OverridePm.Id;
+        AcknowledgeDialog.RunAssignment(Window.GetWindow(this), () => vm.AssignPmToCluster(clusterPm));
     }
 
     private void BtnUnassignCluster_Click(object sender, RoutedEventArgs e)
@@ -234,7 +235,8 @@ public partial class AssignmentPage : UserControl
                 "No PM Selected", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
-        vm.AssignSiteOverride(vm.SiteOverridePm.Id);
+        var sitePm = vm.SiteOverridePm.Id;
+        AcknowledgeDialog.RunAssignment(Window.GetWindow(this), () => vm.AssignSiteOverride(sitePm));
     }
 
     private void BtnClearSiteOverride_Click(object sender, RoutedEventArgs e)
@@ -259,7 +261,7 @@ public partial class AssignmentPage : UserControl
                 "No PM Selected", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
-        vm.AssignRompOverride();
+        AcknowledgeDialog.RunAssignment(Window.GetWindow(this), () => vm.AssignRompOverride());
     }
 
     private void BtnUnassignRomp_Click(object sender, RoutedEventArgs e)
@@ -339,10 +341,25 @@ public partial class AssignmentPage : UserControl
             if (confirm != MessageBoxResult.Yes) return;
 
             var (result, messages) = new SiteAssignmentImportService().ImportAssignments(dlg.FileName);
+            // Rows whose PM isn't on the team for that site are held back — offer them once, as a batch.
+            if (result.OutsideTeam > 0 && AcknowledgeDialog.ConfirmOutsideTeam(Window.GetWindow(this),
+                    $"{result.OutsideTeam} row(s) in this file assign a PM outside the team for that site:\n\n" +
+                    string.Join("\n", messages.Where(m => m.Contains("outside the team")).Take(8)) +
+                    (result.OutsideTeam > 8 ? $"\n…and {result.OutsideTeam - 8} more." : "")))
+            {
+                using (TeamRules.AllowOutsideTeam())
+                {
+                    var (second, secondMessages) = new SiteAssignmentImportService().ImportAssignments(dlg.FileName);
+                    result = result with { Assigned = result.Assigned + second.Assigned, OutsideTeam = 0 };
+                    messages = messages.Where(m => !m.Contains("outside the team")).ToList();
+                    messages.Add($"{second.Assigned} row(s) assigned outside their team (acknowledged).");
+                }
+            }
             vm.RefreshAfterImport();
 
             var summary = $"Assigned: {result.Assigned}\nUnchanged: {result.Unchanged}\n" +
-                          $"Conflicts (not changed): {result.Conflicts}\nErrors: {result.Errors}";
+                          $"Conflicts (not changed): {result.Conflicts}\nErrors: {result.Errors}" +
+                          (result.OutsideTeam > 0 ? $"\nOutside the team (not imported): {result.OutsideTeam}" : "");
             if (messages.Count > 0)
                 summary += "\n\nDetails:\n" + string.Join("\n", messages.Take(30))
                          + (messages.Count > 30 ? $"\n...and {messages.Count - 30} more." : "");

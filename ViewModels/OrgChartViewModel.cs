@@ -141,12 +141,15 @@ public partial class OrgChartViewModel : ObservableObject
                         .ToDictionary(x => x.Key, x => x.N);
 
         var locs = db.Locations.AsNoTracking().Select(l => new { l.Id, l.Name, l.SubRegionId }).ToList();
+        var splitSites = db.Sites.AsNoTracking().Where(st => st.SubRegionId != null)
+                           .Select(st => new { st.Name, Sub = st.SubRegionId!.Value }).ToList();
         var split = db.Campuses.AsNoTracking().Where(c => c.SubRegionId != null)
                       .Select(c => new { c.Name, c.LocationId, Sub = c.SubRegionId!.Value }).ToList();
         _clustersBySub = _subs.ToDictionary(s => s.Id, s =>
             locs.Where(l => l.SubRegionId == s.Id).Select(l => l.Name)
                 .Concat(split.Where(c => c.Sub == s.Id && locs.FirstOrDefault(l => l.Id == c.LocationId)?.SubRegionId != s.Id)
                              .Select(c => c.Name))
+                .Concat(splitSites.Where(x => x.Sub == s.Id).Select(x => x.Name))
                 .OrderBy(n => n).ToList());
 
         // Teams as the rules see them (handles older rows whose default is only known via the PE).
@@ -269,8 +272,8 @@ public partial class OrgChartViewModel : ObservableObject
         using var db = new AppDbContext();
         var rules = TeamRules.For(db);
         return db.Sites.AsNoTracking().Where(s => s.AssignedPmId != null)
-                 .Select(s => new { Pm = s.AssignedPmId!.Value, s.LocationId, s.CampusId }).AsEnumerable()
-                 .Count(s => !rules.Allows(s.Pm, s.LocationId, s.CampusId));
+                 .Select(s => new { Pm = s.AssignedPmId!.Value, s.LocationId, s.CampusId, s.Id }).AsEnumerable()
+                 .Count(s => !rules.Allows(s.Pm, s.LocationId, s.CampusId, s.Id));
     }
 
     // ── Build the tree from the working copy ──

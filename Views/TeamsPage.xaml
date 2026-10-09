@@ -425,12 +425,13 @@
                                     <Run Text="Campuses in "/><Run Text="{Binding SelectedCluster.Name, Mode=OneWay}"/>
                                 </TextBlock>
                                 <TextBlock Style="{StaticResource HintStyle}"
-                                           Text="&quot;Same as cluster&quot; follows the cluster's sub-region. Pick another sub-region (any region) to split the campus off — only that team's PMs can then be assigned to it."/>
+                                           Text="&quot;Same as cluster&quot; follows the cluster's sub-region. Pick another sub-region (any region) to split the campus off — you'll be asked to confirm. Select a campus to split individual sites."/>
                                 <Border CornerRadius="8" BorderBrush="#E2E8F0" BorderThickness="1" ClipToBounds="True" MaxHeight="240">
                                     <DataGrid Style="{StaticResource AppDataGridStyle}"
                                               CellStyle="{StaticResource DataGridCellStyle}"
                                               ColumnHeaderStyle="{StaticResource DataGridColumnHeaderStyle}"
-                                              ItemsSource="{Binding CampusRows}" BorderThickness="0">
+                                              ItemsSource="{Binding CampusRows}" BorderThickness="0"
+                                              SelectedItem="{Binding SelectedCampusRow, Mode=TwoWay}">
                                         <DataGrid.Columns>
                                             <DataGridTextColumn Header="Campus" Binding="{Binding Name}" Width="90"/>
                                             <DataGridTextColumn Header="Sites" Binding="{Binding Sites}" Width="55"/>
@@ -445,12 +446,45 @@
                                                     </DataTemplate>
                                                 </DataGridTemplateColumn.CellTemplate>
                                             </DataGridTemplateColumn>
-                                            <DataGridTextColumn Header="Governed by" Binding="{Binding Effective}" Width="150"/>
+                                            <DataGridTextColumn Header="Governed by" Binding="{Binding Effective}" Width="200"/>
                                             <DataGridTextColumn Header="PM" Binding="{Binding Pm}" Width="*"/>
                                             <DataGridTextColumn Header="Outside team" Binding="{Binding OutOfTeam}" Width="95"/>
                                         </DataGrid.Columns>
                                     </DataGrid>
                                 </Border>
+
+                                <!-- Sites of the selected campus: each can follow the campus or be split off -->
+                                <StackPanel Margin="0,12,0,0" Visibility="{Binding HasSelectedCampus, Converter={StaticResource BoolToVisibility}}">
+                                    <TextBlock FontSize="13" FontWeight="SemiBold" Foreground="#0F172A" Margin="0,0,0,2">
+                                        <Run Text="Sites in "/><Run Text="{Binding SelectedCampusRow.Name, Mode=OneWay}"/>
+                                    </TextBlock>
+                                    <TextBlock Style="{StaticResource HintStyle}"
+                                               Text="&quot;Same as campus&quot; follows the campus. Pick another sub-region to split a site off (you'll be asked to confirm); it keeps its PM, and assigning the campus later leaves it alone."/>
+                                    <Border CornerRadius="8" BorderBrush="#E2E8F0" BorderThickness="1" ClipToBounds="True" MaxHeight="220">
+                                        <DataGrid Style="{StaticResource AppDataGridStyle}"
+                                                  CellStyle="{StaticResource DataGridCellStyle}"
+                                                  ColumnHeaderStyle="{StaticResource DataGridColumnHeaderStyle}"
+                                                  ItemsSource="{Binding SiteRows}" BorderThickness="0">
+                                            <DataGrid.Columns>
+                                                <DataGridTextColumn Header="Site" Binding="{Binding Name}" Width="90"/>
+                                                <DataGridTemplateColumn Header="Sub-region" Width="190" SortMemberPath="SubRegionKey">
+                                                    <DataGridTemplateColumn.CellTemplate>
+                                                        <DataTemplate>
+                                                            <ComboBox ItemsSource="{Binding DataContext.SiteSubRegionOptions, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                      DisplayMemberPath="Name" SelectedValuePath="Id"
+                                                                      SelectedValue="{Binding SubRegionKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                                      IsEnabled="{Binding DataContext.IsEditable, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                      FontSize="12" Margin="0,2"/>
+                                                        </DataTemplate>
+                                                    </DataGridTemplateColumn.CellTemplate>
+                                                </DataGridTemplateColumn>
+                                                <DataGridTextColumn Header="Governed by" Binding="{Binding Effective}" Width="170"/>
+                                                <DataGridTextColumn Header="PM" Binding="{Binding Pm}" Width="*"/>
+                                                <DataGridTextColumn Header="Outside team" Binding="{Binding OutOfTeamText}" Width="95"/>
+                                            </DataGrid.Columns>
+                                        </DataGrid>
+                                    </Border>
+                                </StackPanel>
                             </StackPanel>
                         </Grid>
                     </Grid>
@@ -464,7 +498,7 @@
                             <RowDefinition Height="*"/>
                         </Grid.RowDefinitions>
                         <TextBlock Style="{StaticResource HintStyle}"
-                                   Text="Existing assignments that break the team rule — made before the teams were set up, or after a cluster's sub-region or a PM's PE changed. They still count, but can't be repeated. Reassign them on the Sites or Assignment page."/>
+                                   Text="Assignments outside the PM's team — acknowledged exceptions, ones made before the teams were set up, or ones left behind when a sub-region or a PM's team changed. They still count. Reassign them on the Sites or Assignment page if they shouldn't stay."/>
                         <Border Grid.Row="1" CornerRadius="8" BorderBrush="#E2E8F0" BorderThickness="1" ClipToBounds="True">
                             <DataGrid Style="{StaticResource AppDataGridStyle}"
                                       CellStyle="{StaticResource DataGridCellStyle}"

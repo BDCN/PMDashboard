@@ -6,7 +6,9 @@ using PMDashboard.Data.Models;
 namespace PMDashboard.Services;
 
 /// <summary>Result of a Site Assignments import run — see <see cref="SiteAssignmentImportService.ImportAssignments"/>.</summary>
-public record SiteAssignmentImportResult(int Assigned, int Unchanged, int Conflicts, int Errors);
+/// <summary>OutsideTeam = rows held back because the PM isn't on the team for that site (re-run
+/// inside TeamRules.AllowOutsideTeam to import them after the user acknowledges).</summary>
+public record SiteAssignmentImportResult(int Assigned, int Unchanged, int Conflicts, int Errors, int OutsideTeam = 0);
 
 /// <summary>
 /// Bulk-assigns PMs to already-existing Sites from an Excel sheet — for recording assignments
@@ -156,6 +158,7 @@ public class SiteAssignmentImportService
     {
         var messages = new List<string>();
         int assigned = 0, unchanged = 0, conflicts = 0, errors = 0;
+        int outsideTeam = 0;
 
         using var wb = new XLWorkbook(filePath);
         var ws = wb.Worksheets.FirstOrDefault(s => s.Name == SheetName) ?? wb.Worksheets.First();
@@ -226,10 +229,10 @@ public class SiteAssignmentImportService
                 continue;
             }
 
-            if (TeamRules.For(db).Reason(pm.Id, site.LocationId, site.CampusId) is { } why)
+            if (TeamRules.For(db).Reason(pm.Id, site.LocationId, site.CampusId, site.Id) is { } why && !TeamRules.OutsideTeamAllowed)
             {
-                messages.Add($"Row {row} ({siteName}): {why} — skipped.");
-                errors++;
+                messages.Add($"Row {row} ({siteName}): outside the team — {why} — not imported.");
+                outsideTeam++;
                 continue;
             }
 
@@ -239,7 +242,7 @@ public class SiteAssignmentImportService
 
         if (assigned > 0) db.SaveChanges();
 
-        var result = new SiteAssignmentImportResult(assigned, unchanged, conflicts, errors);
+        var result = new SiteAssignmentImportResult(assigned, unchanged, conflicts, errors, outsideTeam);
         AuditService.Log("Import", "SiteAssignments", details:
             $"Site assignment import: {assigned} assigned, {unchanged} unchanged, {conflicts} conflict(s), {errors} error(s)");
 

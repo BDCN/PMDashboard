@@ -190,6 +190,12 @@ public class AppDbContext : DbContext
             .HasForeignKey(p => p.PeId)
             .OnDelete(DeleteBehavior.SetNull)
             .IsRequired(false);
+        modelBuilder.Entity<Site>()
+            .HasOne(s => s.SubRegion)
+            .WithMany()
+            .HasForeignKey(s => s.SubRegionId)
+            .OnDelete(DeleteBehavior.SetNull)
+            .IsRequired(false);
         modelBuilder.Entity<Campus>()
             .HasOne(c => c.SubRegion)
             .WithMany()
@@ -255,6 +261,7 @@ public class AppDbContext : DbContext
             .Ignore(s => s.SiteStatus);
         modelBuilder.Entity<Site>()
             .Ignore(s => s.PmDisplay);
+        modelBuilder.Entity<Site>().Ignore(s => s.TeamAreaLabel);
         modelBuilder.Entity<Campus>().Ignore(c => c.SiteCount);
         modelBuilder.Entity<Campus>().Ignore(c => c.RompCount);
         modelBuilder.Entity<Campus>().Ignore(c => c.OverrideCount);

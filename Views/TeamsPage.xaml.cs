@@ -14,6 +14,13 @@ public partial class TeamsPage : UserControl
     {
         InitializeComponent();
         CboRoleFilter.ItemsSource = TeamsViewModel.RoleFilters;
+        // Splitting a campus/site off its parent's sub-region needs an acknowledged warning.
+        DataContextChanged += (_, e) =>
+        {
+            if (e.NewValue is TeamsViewModel vm)
+                vm.ConfirmSplit = (what, from, to, crossesRegion) =>
+                    AcknowledgeDialog.ConfirmSplit(Window.GetWindow(this), what, from, to, crossesRegion);
+        };
     }
 
     // ── Add ──

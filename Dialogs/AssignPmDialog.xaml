@@ -75,6 +75,14 @@
                 </DataGrid.CellStyle>
                 <DataGrid.Columns>
                     <DataGridTextColumn Header="Name"     Binding="{Binding FullName}"             Width="*"/>
+                    <DataGridTextColumn x:Name="ColTeam" Header="Team" Binding="{Binding TeamLabel}" Width="110">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Foreground" Value="#B45309"/>
+                                <Setter Property="VerticalAlignment" Value="Center"/>
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
                     <DataGridTextColumn Header="Region"   Binding="{Binding GeographicalLocation}"  Width="80"/>
                     <DataGridTextColumn Header="Home Office" Binding="{Binding HomeOffice}"         Width="100"/>
                     <DataGridTextColumn Header="Data Name"  Binding="{Binding DataName}"            Width="110"/>

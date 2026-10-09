@@ -330,6 +330,12 @@ public partial class SitesViewModel : ObservableObject
                      .Where(s => s.CampusId == campus.Id)
                      .OrderBy(s => s.Name)
                      .ToList();
+        var rules = TeamRules.For(db);
+        foreach (var s in list)
+        {
+            var (sub, region) = rules.EffectiveArea(s.LocationId, s.CampusId, s.Id);
+            s.TeamAreaLabel = (sub != "" ? sub : region) + (s.SubRegionId != null ? " (split)" : "");
+        }
         Sites = new ObservableCollection<Site>(list);
         Romps = new ObservableCollection<Romp>();
     }
@@ -409,7 +415,15 @@ public partial class SitesViewModel : ObservableObject
                         .ThenBy(p => p.LastName)
                         .ThenBy(p => p.FirstName)
                         .ToList();
-        return locationId is { } loc ? TeamRules.For(db).Eligible(pms, loc, campusId) : pms;
+        return locationId is { } loc ? TeamFirst(pms, p => TeamRules.For(db).Allows(p.Id, loc, campusId)) : pms;
+    }
+
+    /// <summary>The team's PMs first, then the rest labelled "outside team" — picking one of those
+    /// asks for an acknowledgement (AcknowledgeDialog.RunAssignment).</summary>
+    private static List<PM> TeamFirst(List<PM> pms, Func<PM, bool> onTeam)
+    {
+        foreach (var p in pms) p.TeamLabel = onTeam(p) ? "" : "outside team";
+        return pms.OrderBy(p => p.TeamLabel == "" ? 0 : 1).ToList();
     }
 
     /// <summary>PMs allowed on every campus of a cluster — for "Assign PM" on a whole cluster,
@@ -419,7 +433,8 @@ public partial class SitesViewModel : ObservableObject
         using var db = new AppDbContext();
         var rules = TeamRules.For(db);
         var pms = db.PMs.AsNoTracking().OrderBy(p => p.GeographicalLocation).ThenBy(p => p.LastName).ThenBy(p => p.FirstName).ToList();
-        return rules.EligibleForAll(pms, locationId, rules.CampusIdsIn(locationId));
+        var allowed = rules.EligibleForAll(pms, locationId, rules.CampusIdsIn(locationId)).Select(p => p.Id).ToHashSet();
+        return TeamFirst(pms, p => allowed.Contains(p.Id));
     }
 
     public void AssignPm(Site site, int? pmId)
@@ -465,6 +480,12 @@ public partial class SitesViewModel : ObservableObject
             campus.AssignedPmId = pmId;
             foreach (var site in campus.Sites.Where(s => !s.PmOverride))
             {
+                // Split-off site in another team: keeps its own PM (see CampusService.AssignCampus).
+                if (pmId is { } p && !TeamRules.OutsideTeamAllowed && !TeamRules.For(db).Allows(p, location.Id, campus.Id, site.Id))
+                {
+                    site.PmOverride = true;
+                    continue;
+                }
                 if (site.AssignedPmId != pmId) changed++;
                 site.Campus = campus;
                 AssignmentHistoryService.RecordChange(db, site, pmId);
@@ -656,9 +677,9 @@ public partial class SitesViewModel : ObservableObject
         if (tracked == null) return;
         // SetValues copies every scalar — keep the campus placement and PM/override as they are
         // (the edit dialog doesn't manage them; moving and assigning have their own actions).
-        var (campusId, campusManual, pmId, pmOverride) = (tracked.CampusId, tracked.CampusManual, tracked.AssignedPmId, tracked.PmOverride);
+        var (campusId, campusManual, pmId, pmOverride, subId) = (tracked.CampusId, tracked.CampusManual, tracked.AssignedPmId, tracked.PmOverride, tracked.SubRegionId);
         db.Entry(tracked).CurrentValues.SetValues(updated);
-        (tracked.CampusId, tracked.CampusManual, tracked.AssignedPmId, tracked.PmOverride) = (campusId, campusManual, pmId, pmOverride);
+        (tracked.CampusId, tracked.CampusManual, tracked.AssignedPmId, tracked.PmOverride, tracked.SubRegionId) = (campusId, campusManual, pmId, pmOverride, subId);
 
         if (!string.IsNullOrEmpty(bulkRompStatus))
         {

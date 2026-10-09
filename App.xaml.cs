@@ -532,6 +532,9 @@ public partial class App : Application
         catch { /* column already exists */ }
         try { db.Database.ExecuteSqlRaw("ALTER TABLE PMs ADD COLUMN OtherSubRegionIds TEXT NOT NULL DEFAULT ''"); }
         catch { /* column already exists */ }
+        // A site can belong to a different sub-region than its campus (split campuses).
+        try { db.Database.ExecuteSqlRaw("ALTER TABLE Sites ADD COLUMN SubRegionId INTEGER NULL"); }
+        catch { /* column already exists */ }
         // A campus can belong to a different sub-region than its cluster (split clusters).
         try { db.Database.ExecuteSqlRaw("ALTER TABLE Campuses ADD COLUMN SubRegionId INTEGER NULL"); }
         catch { /* column already exists */ }

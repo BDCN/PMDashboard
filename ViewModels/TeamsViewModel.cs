@@ -105,6 +105,22 @@ public partial class CampusTeamRow : ObservableObject
     partial void OnSubRegionKeyChanged(int value) => Changed?.Invoke(this);
 }
 
+/// <summary>A site in the selected campus; SubRegionKey 0 = same as its campus.</summary>
+public partial class SiteTeamRow : ObservableObject
+{
+    public Site   Site      { get; init; } = null!;
+    public string Name      => Site.Name;
+    public string Pm        { get; init; } = "";
+    public string Effective { get; init; } = "";
+    public bool   OutOfTeam { get; init; }
+    public string OutOfTeamText => OutOfTeam ? "Yes" : "";
+
+    [ObservableProperty] private int _subRegionKey;
+
+    public Action<SiteTeamRow>? Changed { get; set; }
+    partial void OnSubRegionKeyChanged(int value) => Changed?.Invoke(this);
+}
+
 public class ConflictRow
 {
     public string Cluster   { get; init; } = "";
@@ -133,6 +149,16 @@ public partial class TeamsViewModel : ObservableObject
     [ObservableProperty] private ClusterRow?                           _selectedCluster;
     [ObservableProperty] private ObservableCollection<CampusTeamRow>   _campusRows = new();
     [ObservableProperty] private List<SubRegionOption>                 _campusSubRegionOptions = new();
+    [ObservableProperty] private CampusTeamRow?                        _selectedCampusRow;
+    [ObservableProperty] private ObservableCollection<SiteTeamRow>     _siteRows = new();
+    [ObservableProperty] private List<SubRegionOption>                 _siteSubRegionOptions = new();
+
+    public bool HasSelectedCampus => SelectedCampusRow != null;
+    partial void OnSelectedCampusRowChanged(CampusTeamRow? value) => LoadSiteRows();
+
+    /// <summary>Set by the page: asks the user to acknowledge splitting something off its parent
+    /// (what, current area, new area, crosses a region?) — false leaves things as they were.</summary>
+    public Func<string, string, string, bool, bool>? ConfirmSplit { get; set; }
     [ObservableProperty] private List<SubRegionOption>                 _subRegionOptions = new();
     [ObservableProperty] private List<string>                          _regions = DefaultRegions.ToList();
 
@@ -176,7 +202,7 @@ public partial class TeamsViewModel : ObservableObject
         var sites   = db.Sites.AsNoTracking().Where(s => s.AssignedPmId != null)
                         .Select(s => new { s.Id, s.Name, s.LocationId, s.CampusId, PmId = s.AssignedPmId!.Value, s.IsClosed }).ToList();
         var romps   = db.Romps.AsNoTracking().Where(r => r.AssignedPmId != null)
-                        .Select(r => new { r.Name, SiteName = r.Site!.Name, r.Site.LocationId, r.Site.CampusId, PmId = r.AssignedPmId!.Value }).ToList();
+                        .Select(r => new { r.Name, r.SiteId, SiteName = r.Site!.Name, r.Site.LocationId, r.Site.CampusId, PmId = r.AssignedPmId!.Value }).ToList();
         var splitCampuses = db.Campuses.AsNoTracking().Where(c => c.SubRegionId != null)
                         .Select(c => new { c.Id, c.Name, c.LocationId, Sub = c.SubRegionId!.Value }).ToList();
         var rules   = TeamRules.For(db);
@@ -259,20 +285,20 @@ public partial class TeamsViewModel : ObservableObject
             g => g.Select(s => s.PmId).Distinct().Select(id => pmById.TryGetValue(id, out var p) ? p.FullName : "?").OrderBy(n => n).ToList());
         var conflicts = new List<ConflictRow>();
         foreach (var s in sites)
-            if (rules.Reason(s.PmId, s.LocationId, s.CampusId) is { } why)
+            if (rules.Reason(s.PmId, s.LocationId, s.CampusId, s.Id) is { } why)
                 conflicts.Add(new ConflictRow
                 {
                     Cluster = locs.FirstOrDefault(l => l.Id == s.LocationId)?.Name ?? "?",
-                    SubRegion = rules.EffectiveArea(s.LocationId, s.CampusId).SubRegion,
+                    SubRegion = rules.EffectiveArea(s.LocationId, s.CampusId, s.Id).SubRegion,
                     What = $"Site {s.Name}" + (s.IsClosed ? " (closed)" : ""),
                     Pm = pmById.TryGetValue(s.PmId, out var p) ? p.FullName : "?", Reason = why,
                 });
         foreach (var r in romps)
-            if (rules.Reason(r.PmId, r.LocationId, r.CampusId) is { } why)
+            if (rules.Reason(r.PmId, r.LocationId, r.CampusId, r.SiteId) is { } why)
                 conflicts.Add(new ConflictRow
                 {
                     Cluster = locs.FirstOrDefault(l => l.Id == r.LocationId)?.Name ?? "?",
-                    SubRegion = rules.EffectiveArea(r.LocationId, r.CampusId).SubRegion,
+                    SubRegion = rules.EffectiveArea(r.LocationId, r.CampusId, r.SiteId).SubRegion,
                     What = $"ROMP {r.SiteName} / {r.Name}",
                     Pm = pmById.TryGetValue(r.PmId, out var p) ? p.FullName : "?", Reason = why,
                 });
@@ -303,6 +329,8 @@ public partial class TeamsViewModel : ObservableObject
         Clusters = new(clusterRows);
         ApplyClusterFilter();
         CampusSubRegionOptions = new[] { new SubRegionOption(0, "— same as cluster —") }
+            .Concat(subs.Select(s => new SubRegionOption(s.Id, $"{s.Name}  ({s.Region})"))).ToList();
+        SiteSubRegionOptions = new[] { new SubRegionOption(0, "— same as campus —") }
             .Concat(subs.Select(s => new SubRegionOption(s.Id, $"{s.Name}  ({s.Region})"))).ToList();
         SelectedCluster = prevClusterId is { } pc ? FilteredClusters.FirstOrDefault(c => c.Location.Id == pc) : null;
         LoadCampusRows();
@@ -504,6 +532,7 @@ public partial class TeamsViewModel : ObservableObject
         foreach (var l in db.Locations.Where(l => l.SubRegionId == s.Id).ToList()) l.SubRegionId = null;
         foreach (var t in db.TeamMembers.Where(t => t.SubRegionId == s.Id).ToList()) t.SubRegionId = null;
         foreach (var c in db.Campuses.Where(c => c.SubRegionId == s.Id).ToList()) c.SubRegionId = null;
+        foreach (var st in db.Sites.Where(st => st.SubRegionId == s.Id).ToList()) st.SubRegionId = null;
         db.SubRegions.Remove(tracked);
         db.SaveChanges();
         AuditService.Log("Delete", "SubRegion", s.Id, $"Sub-region {s.Name} deleted");
@@ -561,13 +590,16 @@ public partial class TeamsViewModel : ObservableObject
                 Sites        = c.Sites.Count,
                 Pm           = c.PmDisplay,
                 SubRegionKey = c.SubRegionId ?? 0,
-                Effective    = sub != "" ? (c.SubRegionId != null ? sub : $"{sub} (cluster)")
-                             : region != "" ? $"{region} (no sub-region)" : "—",
-                OutOfTeam    = c.Sites.Count(s => s.AssignedPmId is { } pm && !rules.Allows(pm, c.LocationId, c.Id)),
+                Effective    = (sub != "" ? (c.SubRegionId != null ? sub : $"{sub} (cluster)")
+                                : region != "" ? $"{region} (no sub-region)" : "—")
+                               + (rules.IsCampusSplit(c.LocationId, c.Id) ? " · split by site" : ""),
+                OutOfTeam    = c.Sites.Count(s => s.AssignedPmId is { } pm && !rules.Allows(pm, c.LocationId, c.Id, s.Id)),
             };
         }).ToList();
         foreach (var r in rows) r.Changed = OnCampusSubRegionEdited;
+        var prevCampus = SelectedCampusRow?.Campus.Id;
         CampusRows = new(rows);
+        SelectedCampusRow = prevCampus is { } pc ? CampusRows.FirstOrDefault(r => r.Campus.Id == pc) : null;
     }
 
     private void OnCampusSubRegionEdited(CampusTeamRow row)
@@ -575,10 +607,92 @@ public partial class TeamsViewModel : ObservableObject
         void Apply()
         {
             if (!IsEditable) { StatusMessage = "Only Super Admins and Directors can change teams."; LoadCampusRows(); return; }
-            SetCampusSubRegion(new[] { row.Campus.Id }, row.SubRegionKey == 0 ? null : row.SubRegionKey);
+            int? newSub = row.SubRegionKey == 0 ? null : row.SubRegionKey;
+            var rules = TeamRules.Current();
+            var parent = rules.EffectiveArea(row.Campus.LocationId);              // the cluster's area
+            if (!ConfirmSplitOff($"campus {row.Name}", parent, newSub)) { LoadCampusRows(); return; }
+            SetCampusSubRegion(new[] { row.Campus.Id }, newSub);
         }
         if (System.Windows.Application.Current?.Dispatcher is { } d) d.InvokeAsync(Apply);
         else Apply();
+    }
+
+    /// <summary>
+    /// Asks for acknowledgement when <paramref name="newSub"/> puts something in a different
+    /// sub-region (or region) than its parent's area. Going back to "same as parent", or picking
+    /// the parent's own sub-region, isn't a split and needs no confirmation.
+    /// </summary>
+    private bool ConfirmSplitOff(string what, (string SubRegion, string Region) parent, int? newSub)
+    {
+        if (newSub is not { } id) return true;
+        var target = AllSubRegions().FirstOrDefault(s => s.Id == id);
+        if (target == null || target.Name == parent.SubRegion) return true;
+        var from = parent.SubRegion != "" ? $"{parent.SubRegion} ({parent.Region})"
+                 : parent.Region != "" ? $"{parent.Region} (no sub-region)" : "no region";
+        bool crossesRegion = !string.Equals(target.Region, parent.Region, StringComparison.OrdinalIgnoreCase) && parent.Region != "";
+        return ConfirmSplit?.Invoke(what, from, $"{target.Name} ({target.Region})", crossesRegion) ?? true;
+    }
+
+    // ── Site-level sub-regions (split campuses) ──
+
+    private void LoadSiteRows()
+    {
+        OnPropertyChanged(nameof(HasSelectedCampus));
+        if (SelectedCampusRow is not { } cr) { SiteRows = new(); return; }
+        using var db = new AppDbContext();
+        var rules = TeamRules.For(db);
+        var sites = db.Sites.AsNoTracking().Include(s => s.AssignedPm)
+                      .Where(s => s.CampusId == cr.Campus.Id).OrderBy(s => s.Name).ToList();
+        var rows = sites.Select(s =>
+        {
+            var (sub, region) = rules.EffectiveArea(s.LocationId, s.CampusId, s.Id);
+            return new SiteTeamRow
+            {
+                Site         = s,
+                Pm           = s.PmDisplay,
+                SubRegionKey = s.SubRegionId ?? 0,
+                Effective    = sub != "" ? (s.SubRegionId != null ? $"{sub} (split)" : $"{sub} (campus)")
+                             : region != "" ? $"{region} (no sub-region)" : "—",
+                OutOfTeam    = s.AssignedPmId is { } pm && !rules.Allows(pm, s.LocationId, s.CampusId, s.Id),
+            };
+        }).ToList();
+        foreach (var r in rows) r.Changed = OnSiteSubRegionEdited;
+        SiteRows = new(rows);
+    }
+
+    private void OnSiteSubRegionEdited(SiteTeamRow row)
+    {
+        void Apply()
+        {
+            if (!IsEditable) { StatusMessage = "Only Super Admins and Directors can change teams."; LoadSiteRows(); return; }
+            int? newSub = row.SubRegionKey == 0 ? null : row.SubRegionKey;
+            var parent = TeamRules.Current().EffectiveArea(row.Site.LocationId, row.Site.CampusId);   // the campus's area
+            if (!ConfirmSplitOff($"site {row.Name}", parent, newSub)) { LoadSiteRows(); return; }
+            SetSiteSubRegion(new[] { row.Site.Id }, newSub);
+        }
+        if (System.Windows.Application.Current?.Dispatcher is { } d) d.InvokeAsync(Apply);
+        else Apply();
+    }
+
+    /// <summary>Gives sites their own sub-region (splitting the campus), or null = follow the campus
+    /// again. The site keeps its PM; if that PM isn't on the new team it shows on Conflicts, and
+    /// assigning the campus later leaves it alone (it becomes a site with its own PM).</summary>
+    public void SetSiteSubRegion(IEnumerable<int> siteIds, int? subRegionId)
+    {
+        if (!IsEditable) return;
+        var ids = siteIds.ToList();
+        if (ids.Count == 0) return;
+        using var db = new AppDbContext();
+        var sites = db.Sites.Where(s => ids.Contains(s.Id)).ToList();
+        foreach (var s in sites) s.SubRegionId = subRegionId;
+        db.SaveChanges();
+        var subName = subRegionId is { } sid ? db.SubRegions.Find(sid)?.Name ?? "?" : null;
+        AuditService.Log("Update", "Site", ids.Count == 1 ? ids[0] : null,
+            $"{string.Join(", ", sites.Select(s => s.Name))} → {subName ?? "same as campus"}");
+        var what = sites.Count == 1 ? $"Site {sites[0].Name}" : $"{sites.Count} sites";
+        StatusMessage = (subName != null ? $"{what} split off to {subName}." : $"{what} follow{(sites.Count == 1 ? "s" : "")} the campus again.")
+                        + ConflictNote(db);
+        Load();
     }
 
     /// <summary>Gives campuses their own sub-region (splitting the cluster), or null = follow the
@@ -606,8 +720,8 @@ public partial class TeamsViewModel : ObservableObject
     {
         var rules = TeamRules.Current();
         int n = db.Sites.AsNoTracking().Where(s => s.AssignedPmId != null && (pmId == null || s.AssignedPmId == pmId))
-                  .Select(s => new { Pm = s.AssignedPmId!.Value, s.LocationId, s.CampusId }).AsEnumerable()
-                  .Count(s => !rules.Allows(s.Pm, s.LocationId, s.CampusId));
+                  .Select(s => new { Pm = s.AssignedPmId!.Value, s.LocationId, s.CampusId, s.Id }).AsEnumerable()
+                  .Count(s => !rules.Allows(s.Pm, s.LocationId, s.CampusId, s.Id));
         return n == 0 ? "" : $"  {n} existing site assignment(s) are outside their team — see Conflicts.";
     }
 }

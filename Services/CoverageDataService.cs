@@ -130,7 +130,7 @@ public static class CoverageDataService
                 {
                     cluster = site.Location?.Name ?? "—";
                     region  = site.Location?.GeographicalLocation ?? "";
-                    subRegion = teams.EffectiveArea(site.LocationId, site.CampusId).SubRegion; // campus's own, else cluster's
+                    subRegion = teams.EffectiveArea(site.LocationId, site.CampusId, site.Id).SubRegion; // site's own, else campus's, else cluster's
                     campus  = site.Name;
                     siteId  = site.Id;
                     // Same effective owner as the rest of the app: the campus's PM, or failing that

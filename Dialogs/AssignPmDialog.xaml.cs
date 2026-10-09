@@ -19,6 +19,8 @@ public partial class AssignPmDialog : Window
         InitializeComponent();
         TxtSiteName.Text  = subjectLabel;
         PmGrid.ItemsSource = pms;
+        // Team column only when the caller marked PMs outside the team (Sites page pickers).
+        ColTeam.Visibility = pms.Any(p => !string.IsNullOrEmpty(p.TeamLabel)) ? Visibility.Visible : Visibility.Collapsed;
 
         // Pre-select currently assigned PM
         if (currentPm != null)

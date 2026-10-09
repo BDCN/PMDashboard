@@ -185,7 +185,7 @@ public partial class ForecastTimelinePage : UserControl
         var dlg = new SuggestPmDialog(row, suggestions) { Owner = Window.GetWindow(this) };
         if (dlg.ShowDialog() != true || dlg.SelectedPm is not { } pm) return;
 
-        vm.AssignPmToForecastRow(row, pm.Id);
+        AcknowledgeDialog.RunAssignment(Window.GetWindow(this), () => vm.AssignPmToForecastRow(row, pm.Id));
         RebuildBackground(vm);
     }
 

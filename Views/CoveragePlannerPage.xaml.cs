@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using PMDashboard.Dialogs;
 using PMDashboard.ViewModels;
 
 namespace PMDashboard.Views;
@@ -33,7 +34,8 @@ public partial class CoveragePlannerPage : UserControl
             "Assign Site", MessageBoxButton.YesNo, MessageBoxImage.Question);
         if (confirm != MessageBoxResult.Yes) return;
 
-        if (!vm.AssignFromGap(row))
+        bool found = true;
+        if (AcknowledgeDialog.RunAssignment(Window.GetWindow(this), () => found = vm.AssignFromGap(row)) && !found)
             MessageBox.Show("That site could not be found — it may have been deleted. Click Recalculate.",
                 "Assign Site", MessageBoxButton.OK, MessageBoxImage.Warning);
     }

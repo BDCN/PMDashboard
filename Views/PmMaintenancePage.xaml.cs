@@ -95,13 +95,8 @@ public partial class PmMaintenancePage : UserControl
             var pickDlg = new AssignPmDialog($"Reassign from {pm.FullName} to:", candidates, null)
                 { Owner = Window.GetWindow(this) };
             if (pickDlg.ShowDialog() != true || pickDlg.SelectedPm == null) return false;
-            try { vm.ReassignAll(pm.Id, pickDlg.SelectedPm.Id); }
-            catch (TeamRuleException ex)
-            {
-                MessageBox.Show(ex.Message, "Outside the Team's Area", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return false;
-            }
-            return true;
+            var toPm = pickDlg.SelectedPm.Id;
+            return AcknowledgeDialog.RunAssignment(Window.GetWindow(this), () => vm.ReassignAll(pm.Id, toPm));
         }
 
         return false;
