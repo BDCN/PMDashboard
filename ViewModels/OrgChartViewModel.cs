@@ -7,23 +7,38 @@ using PMDashboard.Services;
 
 namespace PMDashboard.ViewModels;
 
-// ── Chart nodes (display-only; rebuilt on every load/search) ──
+// ── Chart nodes (display-only; rebuilt on every load/search/edit) ──
+
+public class OrgChartPa
+{
+    public int    Id      { get; init; }
+    public string Name    { get; init; } = "";
+    public bool   IsMatch { get; init; }
+}
 
 public class OrgChartPm
 {
-    public int          PmId      { get; init; }
-    public string       Name      { get; init; } = "";
-    public string       Detail    { get; init; } = "";   // "12 sites · Remote"
-    public List<string> Pas       { get; init; } = new();
-    public bool         HasPas    => Pas.Count > 0;
-    public bool         IsLast    { get; init; }         // draws the end of the bracket line
-    public bool         IsMatch   { get; init; }         // search highlight
+    public int              PmId        { get; init; }
+    public string           Name        { get; init; } = "";
+    public string           Detail      { get; init; } = "";   // "12 sites · Remote"
+    public List<OrgChartPa> Pas         { get; init; } = new();
+    public bool             HasPas      => Pas.Count > 0;
+    public bool             IsLast      { get; init; }         // draws the end of the bracket line
+    public bool             IsMatch     { get; init; }         // search highlight
+    public int?             SubRegionId { get; init; }         // the column this card sits in (null = No team)
+    public bool             IsDefault   { get; init; }         // this column is the PM's default sub-region
+    public bool             IsSecondary => SubRegionId != null && !IsDefault;   // faded card
+    public bool             InSubRegion => SubRegionId != null;
+    public string           TagText     { get; init; } = "";   // "also East2, East3" / "default: East1"
+    public bool             HasTag      => TagText != "";
+    public bool             IsChanged   { get; init; }         // edited, not saved yet
 }
 
 /// <summary>One column under a region: a sub-region with its PE(s) and PMs, or the region's
-/// "No team yet" column (PMs not under any PE).</summary>
+/// "No team yet" column (PMs not on any sub-region).</summary>
 public class OrgChartColumn
 {
+    public int?              SubRegionId { get; init; }
     public string            Title    { get; init; } = "";   // "East1" / "No team yet"
     public List<string>      Pes      { get; init; } = new();
     public string            PeText   => Pes.Count > 0 ? string.Join(", ", Pes) : "No PE yet";
@@ -48,49 +63,72 @@ public class OrgChartRegion
     public bool                 DirectorMatch { get; init; }
     public List<OrgChartColumn> Columns   { get; init; } = new();
     public bool                 HasColumns => Columns.Count > 0;
-    public string               Summary   { get; init; } = "";   // "3 sub-regions · 11 PMs · 2 PAs"
+    public string               Summary   { get; init; } = "";
 }
 
 /// <summary>
-/// Org Chart page: Director (region) › PE (sub-region) › PM › PA drawn as a tree, built from the
-/// same team data as the Teams page (TeamMember, SubRegion, PM.PeId, Location/Campus.SubRegionId).
-/// Active people only. Read-only — editing stays on the Teams page.
+/// Org Chart page: Director (region) › PE (sub-region) › PM › PA drawn as a tree from the Teams
+/// data. A PM (with their PAs) can be on several sub-regions — they appear in every one, full card
+/// under the default and a faded card elsewhere.
+///
+/// Edit mode (Super Admins / Directors): drag a PM to another sub-region (plain drop = move there
+/// and make it the default, keeping the others; Ctrl+drop = add it), drop on "No team yet" to
+/// take them off every team, drag a PA onto another PM; ★/✕ on a card make default / remove.
+/// Changes are kept in a working copy and only written on Save (PmTeamService for PMs,
+/// TeamMember.PmId for PAs), which the Teams page then shows. Adding people stays on PM
+/// Maintenance (PMs) and Teams (Directors/PEs/PAs).
 /// </summary>
 public partial class OrgChartViewModel : ObservableObject
 {
     [ObservableProperty] private ObservableCollection<OrgChartRegion> _regions = new();
-    [ObservableProperty] private List<string> _notes = new();          // people who don't fit the tree yet
+    [ObservableProperty] private List<string> _notes = new();
     [ObservableProperty] private double _zoom = 1.0;
     [ObservableProperty] private bool   _showClusters = true;
     [ObservableProperty] private bool   _showPas = true;
     [ObservableProperty] private string _searchText = "";
     [ObservableProperty] private string _headline = "";
     [ObservableProperty] private string _matchInfo = "";
+    [ObservableProperty] private bool   _isEditMode;
+    [ObservableProperty] private string _changeSummary = "";
+    [ObservableProperty] private string _statusMessage = "";
 
     public bool HasNotes => Notes.Count > 0;
     partial void OnNotesChanged(List<string> value) => OnPropertyChanged(nameof(HasNotes));
     public string ZoomText => $"{Zoom * 100:0}%";
     partial void OnZoomChanged(double value) => OnPropertyChanged(nameof(ZoomText));
+    public bool CanEdit => CurrentUser.IsSuperAdmin || CurrentUser.IsDirector;
+    public bool ShowEditButton => CanEdit && !IsEditMode;
+    partial void OnIsEditModeChanged(bool value) { OnPropertyChanged(nameof(ShowEditButton)); Rebuild(); }
 
     partial void OnSearchTextChanged(string value) => Rebuild();
     partial void OnShowClustersChanged(bool value) => Rebuild();
     partial void OnShowPasChanged(bool value)      => Rebuild();
 
-    /// <summary>Set by MainViewModel: clicking a PM card opens their PM Detail page.</summary>
     public Action<int>? OpenPm    { get; set; }
-    /// <summary>Set by MainViewModel: "Edit teams" goes to the Teams page.</summary>
     public Action?      OpenTeams { get; set; }
 
     private string _geoFilter = "All";
     public void ApplyGeoFilter(string geo) { _geoFilter = geo; Rebuild(); }
 
-    // ── Snapshot (loaded once per Load, rebuilt into nodes on filter/search) ──
+    // ── Snapshot ──
     private List<SubRegion>  _subs     = new();
     private List<TeamMember> _members  = new();
     private List<PM>         _pms      = new();
-    private Dictionary<int, int>          _siteCounts   = new();
+    private Dictionary<int, int>          _siteCounts    = new();
     private Dictionary<int, List<string>> _clustersBySub = new();
-    private TeamRules? _rules;
+
+    // ── Working copy (edit mode) vs. what's saved ──
+    private sealed record Team(int? Default, IReadOnlyList<int> Others)
+    {
+        public IEnumerable<int> All => Default is { } d ? Others.Prepend(d) : Others;
+        public bool Same(Team o) => Default == o.Default && Others.OrderBy(x => x).SequenceEqual(o.Others.OrderBy(x => x));
+    }
+    private Dictionary<int, Team> _savedTeams = new(), _teams = new();
+    private Dictionary<int, int?> _savedPaPm = new(), _paPm = new();
+
+    public bool HasChanges => ChangedPmIds().Any() || ChangedPaIds().Any();
+    private IEnumerable<int> ChangedPmIds() => _teams.Where(kv => !_savedTeams[kv.Key].Same(kv.Value)).Select(kv => kv.Key);
+    private IEnumerable<int> ChangedPaIds() => _paPm.Where(kv => _savedPaPm[kv.Key] != kv.Value).Select(kv => kv.Key);
 
     public void Load()
     {
@@ -102,7 +140,6 @@ public partial class OrgChartViewModel : ObservableObject
                         .GroupBy(s => s.AssignedPmId!.Value).Select(g => new { g.Key, N = g.Count() })
                         .ToDictionary(x => x.Key, x => x.N);
 
-        // Clusters per sub-region: whole clusters mapped to it, plus campuses split off into it.
         var locs = db.Locations.AsNoTracking().Select(l => new { l.Id, l.Name, l.SubRegionId }).ToList();
         var split = db.Campuses.AsNoTracking().Where(c => c.SubRegionId != null)
                       .Select(c => new { c.Name, c.LocationId, Sub = c.SubRegionId!.Value }).ToList();
@@ -111,46 +148,181 @@ public partial class OrgChartViewModel : ObservableObject
                 .Concat(split.Where(c => c.Sub == s.Id && locs.FirstOrDefault(l => l.Id == c.LocationId)?.SubRegionId != s.Id)
                              .Select(c => c.Name))
                 .OrderBy(n => n).ToList());
-        _rules = TeamRules.For(db);
+
+        // Teams as the rules see them (handles older rows whose default is only known via the PE).
+        var rules  = TeamRules.For(db);
+        var idByName = _subs.ToDictionary(s => s.Name, s => s.Id);
+        _savedTeams = _pms.ToDictionary(p => p.Id, p =>
+        {
+            var names = rules.PmSubRegions(p.Id);
+            var ids = names.Where(idByName.ContainsKey).Select(n => idByName[n]).ToList();
+            return new Team(ids.Count > 0 ? ids[0] : null, ids.Skip(1).ToList());
+        });
+        _teams     = new(_savedTeams);
+        _savedPaPm = _members.Where(m => m.Role == TeamRoles.Pa).ToDictionary(m => m.Id, m => m.PmId);
+        _paPm      = new(_savedPaPm);
+        StatusMessage = "";
         Rebuild();
     }
+
+    /// <summary>Background sync refresh — skipped while there are unsaved edits (they'd be lost).</summary>
+    public void RefreshFromSync()
+    {
+        if (IsEditMode && HasChanges) return;
+        Load();
+    }
+
+    // ── Edit operations (working copy only) ──
+
+    public void BeginEdit() { if (CanEdit) { IsEditMode = true; StatusMessage = ""; } }
+
+    public void CancelEdit()
+    {
+        IsEditMode = false;
+        Load();
+    }
+
+    /// <summary>Drag a PM card from one column to another. Plain = move (target becomes the
+    /// default, other sub-regions kept); add = Ctrl+drop (target added as another sub-region);
+    /// toSub null = "No team yet" (off every team).</summary>
+    public void MovePm(int pmId, int? fromSub, int? toSub, bool add)
+    {
+        if (!IsEditMode || !_teams.TryGetValue(pmId, out var t)) return;
+        if (toSub == null) { _teams[pmId] = new Team(null, Array.Empty<int>()); Rebuild(); return; }
+        if (fromSub == toSub && !add) return;
+
+        var all = t.All.ToList();
+        if (add)
+        {
+            if (all.Contains(toSub.Value)) return;
+            _teams[pmId] = t.Default == null ? new Team(toSub, t.Others) : new Team(t.Default, t.Others.Append(toSub.Value).ToList());
+        }
+        else
+        {
+            if (fromSub is { } f) all.Remove(f);
+            all.Remove(toSub.Value);
+            _teams[pmId] = new Team(toSub, all);   // previous default (if kept) becomes an "other"
+        }
+        Rebuild();
+    }
+
+    public void MakeDefault(int pmId, int subId)
+    {
+        if (!IsEditMode || !_teams.TryGetValue(pmId, out var t) || t.Default == subId) return;
+        _teams[pmId] = new Team(subId, t.All.Where(i => i != subId).ToList());
+        Rebuild();
+    }
+
+    public void RemoveFromSubRegion(int pmId, int subId)
+    {
+        if (!IsEditMode || !_teams.TryGetValue(pmId, out var t)) return;
+        var rest = t.All.Where(i => i != subId).ToList();
+        // Removing the default promotes the next one; removing the last leaves them with no team.
+        int? newDefault = t.Default != subId ? t.Default : rest.Count > 0 ? rest[0] : null;
+        _teams[pmId] = new Team(newDefault, rest.Where(i => i != newDefault).ToList());
+        Rebuild();
+    }
+
+    public void MovePa(int paId, int toPmId)
+    {
+        if (!IsEditMode || !_paPm.ContainsKey(paId) || _paPm[paId] == toPmId) return;
+        _paPm[paId] = toPmId;
+        Rebuild();
+    }
+
+    /// <summary>Writes the working copy: PMs via PmTeamService (also re-points their PE), PAs'
+    /// PmId. One save, one audit entry per person.</summary>
+    public string SaveEdits()
+    {
+        if (!CanEdit) return "Only Super Admins and Directors can change teams.";
+        var pmIds = ChangedPmIds().ToList();
+        var paIds = ChangedPaIds().ToList();
+        if (pmIds.Count + paIds.Count == 0) { IsEditMode = false; return "No changes to save."; }
+
+        using var db = new AppDbContext();
+        var names = _subs.ToDictionary(s => s.Id, s => s.Name);
+        foreach (var pm in db.PMs.Where(p => pmIds.Contains(p.Id)).ToList())
+        {
+            var t = _teams[pm.Id];
+            PmTeamService.SetSubRegions(db, pm, t.Default, t.Others);
+            var text = PmTeamService.Describe(pm.SubRegionId, pm.OtherSubRegionIdList, names);
+            AuditService.Log("Update", "PM", pm.Id, $"{pm.FullName} sub-regions: {(text == "" ? "no team" : text)} (Org Chart)");
+        }
+        foreach (var pa in db.TeamMembers.Where(m => paIds.Contains(m.Id)).ToList())
+        {
+            pa.PmId = _paPm[pa.Id];
+            var pmName = _pms.FirstOrDefault(p => p.Id == pa.PmId)?.FullName ?? "no PM";
+            AuditService.Log("Update", "TeamMember", pa.Id, $"PA {pa.FullName} now supports {pmName} (Org Chart)");
+        }
+        db.SaveChanges();
+
+        IsEditMode = false;
+        Load();
+        var msg = $"Saved: {pmIds.Count} PM(s), {paIds.Count} PA(s) updated.";
+        var outside = CountOutsideTeam();
+        StatusMessage = msg + (outside > 0 ? $"  {outside} existing site assignment(s) are now outside their team — see Teams → Conflicts." : "");
+        return StatusMessage;
+    }
+
+    private static int CountOutsideTeam()
+    {
+        using var db = new AppDbContext();
+        var rules = TeamRules.For(db);
+        return db.Sites.AsNoTracking().Where(s => s.AssignedPmId != null)
+                 .Select(s => new { Pm = s.AssignedPmId!.Value, s.LocationId, s.CampusId }).AsEnumerable()
+                 .Count(s => !rules.Allows(s.Pm, s.LocationId, s.CampusId));
+    }
+
+    // ── Build the tree from the working copy ──
 
     private bool Match(string name) =>
         !string.IsNullOrWhiteSpace(SearchText) && name.Contains(SearchText.Trim(), StringComparison.OrdinalIgnoreCase);
 
+    private string RegionOf(PM p) =>
+        _teams.TryGetValue(p.Id, out var t) && t.Default is { } d && _subs.FirstOrDefault(s => s.Id == d) is { } sub
+            ? sub.Region : p.GeographicalLocation ?? "";
+
     private void Rebuild()
     {
-        if (_rules is not { } rules) return;
+        if (_subs == null) return;
         int matches = 0;
         bool M(string n) { var m = Match(n); if (m) matches++; return m; }
+        var subName = _subs.ToDictionary(s => s.Id, s => s.Name);
+        var changedPms = ChangedPmIds().ToHashSet();
+        var changedPas = ChangedPaIds().ToHashSet();
 
         var regionNames = TeamsViewModel.DefaultRegions
             .Concat(_members.Where(m => m.Role == TeamRoles.Director).Select(m => m.Region))
             .Concat(_subs.Select(s => s.Region))
-            .Concat(_pms.Select(p => rules.PmTeam(p.Id).Region))
+            .Concat(_pms.Select(RegionOf))
             .Where(r => !string.IsNullOrWhiteSpace(r))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(r => Array.IndexOf(TeamsViewModel.DefaultRegions, r) is var i && i >= 0 ? i : 99).ThenBy(r => r)
             .Where(r => _geoFilter == "All" || string.Equals(r, _geoFilter, StringComparison.OrdinalIgnoreCase))
             .ToList();
 
-        List<OrgChartPm> PmCards(IEnumerable<PM> pms)
+        List<OrgChartPm> PmCards(List<PM> list, int? columnSub)
         {
-            var list = pms.ToList();
             return list.Select((p, i) =>
             {
+                var t = _teams[p.Id];
                 var pas = ShowPas
-                    ? _members.Where(m => m.Role == TeamRoles.Pa && m.PmId == p.Id).Select(m => m.FullName).ToList()
-                    : new List<string>();
+                    ? _members.Where(m => m.Role == TeamRoles.Pa && _paPm.GetValueOrDefault(m.Id) == p.Id)
+                              .Select(m => new OrgChartPa { Id = m.Id, Name = m.FullName, IsMatch = Match(m.FullName) }).ToList()
+                    : new List<OrgChartPa>();
+                bool isDefault = columnSub != null && t.Default == columnSub;
+                string tag = columnSub == null ? ""
+                    : isDefault ? (t.Others.Count > 0 ? "also " + string.Join(", ", t.Others.Select(o => subName.GetValueOrDefault(o, "?"))) : "")
+                    : t.Default is { } d ? $"default: {subName.GetValueOrDefault(d, "?")}" : "";
                 var sites = _siteCounts.GetValueOrDefault(p.Id);
                 return new OrgChartPm
                 {
-                    PmId    = p.Id,
-                    Name    = p.FullName,
-                    Detail  = (sites == 1 ? "1 site" : $"{sites} sites") + (string.IsNullOrWhiteSpace(p.HomeOffice) ? "" : $" · {p.HomeOffice}"),
-                    Pas     = pas,
-                    IsLast  = i == list.Count - 1,
-                    IsMatch = M(p.FullName) | pas.Any(Match),
+                    PmId = p.Id, Name = p.FullName,
+                    Detail = (sites == 1 ? "1 site" : $"{sites} sites") + (string.IsNullOrWhiteSpace(p.HomeOffice) ? "" : $" · {p.HomeOffice}"),
+                    Pas = pas, IsLast = i == list.Count - 1,
+                    IsMatch = (isDefault || columnSub == null ? M(p.FullName) : Match(p.FullName)) | pas.Any(a => a.IsMatch),
+                    SubRegionId = columnSub, IsDefault = isDefault, TagText = tag,
+                    IsChanged = changedPms.Contains(p.Id) || pas.Any(a => changedPas.Contains(a.Id)),
                 };
             }).ToList();
         }
@@ -161,26 +333,31 @@ public partial class OrgChartViewModel : ObservableObject
             bool InRegion(string r) => string.Equals(r, region, StringComparison.OrdinalIgnoreCase);
             var directors = _members.Where(m => m.Role == TeamRoles.Director && InRegion(m.Region)).Select(m => m.FullName).ToList();
 
-            var cols = new List<(string Title, List<string> Pes, string Clusters, List<OrgChartPm> Pms, bool NoTeam)>();
+            var cols = new List<(int? Sub, string Title, List<string> Pes, string Clusters, List<OrgChartPm> Pms, bool NoTeam)>();
             foreach (var s in _subs.Where(s => InRegion(s.Region)))
             {
                 var pes = _members.Where(m => m.Role == TeamRoles.Pe && m.SubRegionId == s.Id).Select(m => m.FullName).ToList();
-                var pms = _pms.Where(p => rules.PmTeam(p.Id).SubRegion == s.Name);
+                // Everyone on this sub-region: default members first, then those who also cover it.
+                var pms = _pms.Where(p => _teams[p.Id].All.Contains(s.Id))
+                              .OrderBy(p => _teams[p.Id].Default == s.Id ? 0 : 1).ThenBy(p => p.LastName).ToList();
                 var cl  = _clustersBySub.GetValueOrDefault(s.Id) ?? new();
                 var clusters = !ShowClusters || cl.Count == 0 ? ""
                     : cl.Count <= 8 ? string.Join(", ", cl) : $"{string.Join(", ", cl.Take(8))} +{cl.Count - 8}";
-                cols.Add((s.Name, pes, clusters, PmCards(pms), false));
+                cols.Add((s.Id, s.Name, pes, clusters, PmCards(pms, s.Id), false));
             }
-            var noTeam = _pms.Where(p => rules.PmTeam(p.Id).SubRegion == "" && InRegion(rules.PmTeam(p.Id).Region)).ToList();
-            if (noTeam.Count > 0) cols.Add(("No team yet", new(), "", PmCards(noTeam), true));
+            var noTeam = _pms.Where(p => _teams[p.Id].Default == null && InRegion(p.GeographicalLocation ?? "")).ToList();
+            // In edit mode the No-team column always shows, as a drop target.
+            if (noTeam.Count > 0 || IsEditMode) cols.Add((null, "No team yet", new(), "", PmCards(noTeam, null), true));
 
             var columns = cols.Select((c, i) => new OrgChartColumn
             {
-                Title = c.Title, Pes = c.Pes, PeMatch = c.Pes.Any(n => M(n)), Clusters = c.Clusters, Pms = c.Pms,
-                IsNoTeam = c.NoTeam, IsFirst = i == 0, IsLast = i == cols.Count - 1,
+                SubRegionId = c.Sub, Title = c.Title, Pes = c.Pes, PeMatch = c.Pes.Any(n => M(n)), Clusters = c.Clusters,
+                Pms = c.Pms, IsNoTeam = c.NoTeam, IsFirst = i == 0, IsLast = i == cols.Count - 1,
             }).ToList();
 
-            int pmCount = columns.Sum(c => c.Pms.Count), paCount = columns.Sum(c => c.Pms.Sum(p => p.Pas.Count));
+            int pmCount = _pms.Count(p => InRegion(RegionOf(p)) || (_teams[p.Id].Default == null && InRegion(p.GeographicalLocation ?? "")));
+            int paCount = _members.Count(m => m.Role == TeamRoles.Pa && _paPm.GetValueOrDefault(m.Id) is { } pid
+                                              && _pms.FirstOrDefault(p => p.Id == pid) is { } pp && InRegion(RegionOf(pp)));
             int subCount = columns.Count(c => !c.IsNoTeam);
             regions.Add(new OrgChartRegion
             {
@@ -191,17 +368,24 @@ public partial class OrgChartViewModel : ObservableObject
         }
         Regions = new(regions.Where(r => r.HasDirector || r.HasColumns));
 
-        // People who can't be placed in the tree yet — said plainly rather than silently dropped.
         var notes = new List<string>();
         var loosePes = _members.Where(m => m.Role == TeamRoles.Pe && (m.SubRegionId == null || _subs.All(s => s.Id != m.SubRegionId))).ToList();
         if (loosePes.Count > 0) notes.Add($"PE(s) without a sub-region: {string.Join(", ", loosePes.Select(m => m.FullName))}");
-        var loosePas = _members.Where(m => m.Role == TeamRoles.Pa && (m.PmId == null || _pms.All(p => p.Id != m.PmId))).ToList();
+        var loosePas = _members.Where(m => m.Role == TeamRoles.Pa && (_paPm.GetValueOrDefault(m.Id) is not { } pid || _pms.All(p => p.Id != pid))).ToList();
         if (loosePas.Count > 0) notes.Add($"PA(s) not supporting an active PM: {string.Join(", ", loosePas.Select(m => m.FullName))}");
         Notes = notes;
 
         int d = _members.Count(m => m.Role == TeamRoles.Director), pe = _members.Count(m => m.Role == TeamRoles.Pe);
-        int pa = _members.Count(m => m.Role == TeamRoles.Pa), onTeam = _pms.Count(p => rules.PmTeam(p.Id).SubRegion != "");
-        Headline = $"{d} Director{(d == 1 ? "" : "s")} · {pe} PE{(pe == 1 ? "" : "s")} · {_pms.Count} PMs ({onTeam} on a team) · {pa} PA{(pa == 1 ? "" : "s")}";
+        int pa = _members.Count(m => m.Role == TeamRoles.Pa), onTeam = _pms.Count(p => _teams[p.Id].Default != null);
+        int multi = _pms.Count(p => _teams[p.Id].Others.Count > 0);
+        Headline = $"{d} Director{(d == 1 ? "" : "s")} · {pe} PE{(pe == 1 ? "" : "s")} · {_pms.Count} PMs ({onTeam} on a team"
+                   + (multi > 0 ? $", {multi} on several" : "") + $") · {pa} PA{(pa == 1 ? "" : "s")}";
         MatchInfo = string.IsNullOrWhiteSpace(SearchText) ? "" : matches == 0 ? "No match" : $"{matches} match{(matches == 1 ? "" : "es")}";
+
+        int cp = changedPms.Count, ca = changedPas.Count;
+        ChangeSummary = cp + ca == 0 ? "No changes yet"
+            : string.Join(", ", new[] { cp > 0 ? $"{cp} PM{(cp == 1 ? "" : "s")}" : null, ca > 0 ? $"{ca} PA{(ca == 1 ? "" : "s")}" : null }.Where(x => x != null))
+              + " changed — not saved yet";
+        OnPropertyChanged(nameof(HasChanges));
     }
 }

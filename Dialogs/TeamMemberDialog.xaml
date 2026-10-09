@@ -55,14 +55,6 @@
                 <ComboBox x:Name="CboPm" DisplayMemberPath="Label" Style="{StaticResource FormComboBoxStyle}" Margin="0,0,0,12"/>
             </StackPanel>
 
-            <!-- PM: which PE (names are edited in PM Maintenance) -->
-            <StackPanel x:Name="PanelPe" Visibility="Collapsed">
-                <TextBlock Text="Reports to PE" FontSize="12" FontWeight="SemiBold" Foreground="#374151" Margin="0,0,0,6"/>
-                <ComboBox x:Name="CboPe" DisplayMemberPath="Label" Style="{StaticResource FormComboBoxStyle}" Margin="0,0,0,6"/>
-                <TextBlock Text="The PE's sub-region is where this PM can be assigned."
-                           FontSize="11" Foreground="#94A3B8" TextWrapping="Wrap" Margin="0,0,0,12"/>
-            </StackPanel>
-
             <CheckBox x:Name="ChkActive" Content="Active" IsChecked="True" FontSize="12"
                       Foreground="#374151" Margin="0,4,0,8"/>
 

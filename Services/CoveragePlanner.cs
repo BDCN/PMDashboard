@@ -32,9 +32,10 @@ public record WorkPackage(
     int?     AssignedPmId,   // null = unassigned
     string   SubRegion = ""); // the cluster's team sub-region ("" = unmapped → region rule)
 
-/// <summary>A PM; SubRegion is their PE's sub-region ("" when not on a team), Region the region
-/// that implies (else their own).</summary>
-public record PlannerPm(int Id, string Name, string Region, string SubRegion = "");
+/// <summary>A PM; SubRegion is their default sub-region ("" when not on a team), Region the region
+/// that implies (else their own), OtherSubRegions any further sub-regions they also cover.
+/// Hiring counts a PM in their default area only.</summary>
+public record PlannerPm(int Id, string Name, string Region, string SubRegion = "", IReadOnlyList<string>? OtherSubRegions = null);
 
 public record PlannerSettings(
     double   BuildWeight,     // load per day during the build phase
@@ -100,6 +101,7 @@ public static class CoveragePlanner
     public static bool CanTake(PlannerPm pm, WorkPackage p) =>
         !string.IsNullOrEmpty(p.SubRegion)
             ? string.Equals(pm.SubRegion, p.SubRegion, StringComparison.OrdinalIgnoreCase)
+              || (pm.OtherSubRegions?.Contains(p.SubRegion, StringComparer.OrdinalIgnoreCase) ?? false)
             : !string.IsNullOrEmpty(p.Region) && string.Equals(pm.Region, p.Region, StringComparison.OrdinalIgnoreCase);
 
     private const double Eps = 1e-9;

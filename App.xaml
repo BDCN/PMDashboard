@@ -8,6 +8,7 @@
     <Application.Resources>
         <ResourceDictionary>
             <svc:NullToBoolConverter x:Key="NullToBoolConverter"/>
+            <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
             <svc:HexColorToBrushConverter x:Key="HexColorToBrushConverter"/>
 
             <!-- ── Colors ── -->

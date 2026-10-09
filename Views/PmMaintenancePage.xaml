@@ -151,24 +151,21 @@
                         </DataGridTemplateColumn.CellEditingTemplate>
                     </DataGridTemplateColumn>
 
-                    <!-- Team — the PE this PM reports to; the PE's sub-region is where they can be assigned -->
-                    <DataGridTemplateColumn Header="Team (PE)" Width="210" SortMemberPath="TeamLabel">
+                    <!-- Sub-regions — default + others; the PM reports to the default's PE and can be
+                         assigned in any of them. Edited in a dialog (Super Admins / Directors). -->
+                    <DataGridTemplateColumn Header="Sub-regions" Width="230" SortMemberPath="TeamLabel">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
-                                <TextBlock Text="{Binding TeamLabel}" Margin="12,0" TextTrimming="CharacterEllipsis"
-                                           VerticalAlignment="Center" FontFamily="Segoe UI" FontSize="13"/>
+                                <DockPanel Margin="12,0,6,0">
+                                    <Button DockPanel.Dock="Right" Content="Edit" Tag="{Binding}" Click="BtnEditSubRegions_Click"
+                                            Style="{StaticResource SecondaryButtonStyle}" Padding="8,2" FontSize="11"
+                                            VerticalAlignment="Center"
+                                            Visibility="{Binding DataContext.CanEditTeams, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVisibility}}"/>
+                                    <TextBlock Text="{Binding TeamLabel}" TextTrimming="CharacterEllipsis" ToolTip="{Binding TeamLabel}"
+                                               VerticalAlignment="Center" FontFamily="Segoe UI" FontSize="13"/>
+                                </DockPanel>
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
-                        <DataGridTemplateColumn.CellEditingTemplate>
-                            <DataTemplate>
-                                <ComboBox ItemsSource="{Binding DataContext.PeOptions, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                          DisplayMemberPath="Name" SelectedValuePath="Id"
-                                          SelectedValue="{Binding PeId, UpdateSourceTrigger=PropertyChanged}"
-                                          IsEnabled="{Binding DataContext.CanEditTeams, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                          BorderThickness="0" Background="White"
-                                          FontFamily="Segoe UI" FontSize="13"/>
-                            </DataTemplate>
-                        </DataGridTemplateColumn.CellEditingTemplate>
                     </DataGridTemplateColumn>
 
                     <!-- More text fields -->

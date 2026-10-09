@@ -242,10 +242,10 @@
                                       Foreground="#374151" VerticalAlignment="Center" Margin="16,0,0,0"/>
                             <!-- Bulk: put the selected PMs under one PE -->
                             <StackPanel Orientation="Horizontal" Margin="24,0,0,0" Style="{StaticResource EditOnly}">
-                                <TextBlock Text="Selected PMs report to" FontSize="12" Foreground="#374151" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <TextBlock Text="Selected PMs' default sub-region" FontSize="12" Foreground="#374151" VerticalAlignment="Center" Margin="0,0,6,0"/>
                                 <ComboBox x:Name="CboBulkPe" DisplayMemberPath="Name" Width="230" Height="32" VerticalAlignment="Center"
                                           Style="{StaticResource FormComboBoxStyle}" DropDownOpened="CboBulkPe_DropDownOpened"/>
-                                <Button Content="Set PE" Style="{StaticResource PrimaryButtonStyle}" Margin="6,0,0,0"
+                                <Button Content="Set" Style="{StaticResource PrimaryButtonStyle}" Margin="6,0,0,0"
                                         VerticalAlignment="Center" Click="BtnBulkSetPe_Click"/>
                             </StackPanel>
                         </StackPanel>

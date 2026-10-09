@@ -57,7 +57,7 @@ public partial class MainViewModel : ObservableObject
                 else if (CurrentPage == _pmDetailVm)   _pmDetailVm.Load(_pmDetailVm.CurrentPmId);
                 else if (CurrentPage == _coveragePlannerVm) _coveragePlannerVm.Load();
                 else if (CurrentPage == _teamsVm)      _teamsVm.Load();
-                else if (CurrentPage == _orgChartVm)   _orgChartVm.Load();
+                else if (CurrentPage == _orgChartVm)   _orgChartVm.RefreshFromSync(); // skipped while there are unsaved edits
             }
             catch { /* a background refresh must never crash the app — next navigation reloads */ }
         });

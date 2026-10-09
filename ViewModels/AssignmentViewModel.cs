@@ -115,10 +115,10 @@ public partial class AssignmentViewModel : ObservableObject
             var pes = db.TeamMembers.AsNoTracking()
                         .Where(t => t.Role == TeamRoles.Pe && t.IsActive && t.SubRegion != null && t.SubRegion.Name == sub)
                         .Select(t => (t.FirstName + " " + t.LastName).Trim()).ToList();
-            var peText = pes.Count == 0 ? $"{sub} has no PE yet — add one, then put PMs under them"
-                                        : $"put PMs under {string.Join(" or ", pes)} ({sub}'s PE)";
-            return $"Nobody is on the {sub} team yet, so no PM can be assigned here. On the Teams page, {peText} " +
-                   "(People tab → select PMs → Set PE), or change this cluster's sub-region on Sub-regions & Clusters.";
+            var peText = pes.Count == 0 ? $" ({sub} has no PE yet either)" : $" (PE: {string.Join(", ", pes)})";
+            return $"Nobody is on the {sub} team yet{peText}, so no PM can be assigned here. Add PMs to {sub}: " +
+                   "Org Chart → Edit Org Chart and drag them in, or PM Maintenance → Sub-regions, or Teams → People → select PMs → Set. " +
+                   "Or change this cluster's sub-region on Teams → Sub-regions & Clusters.";
         }
         return string.IsNullOrWhiteSpace(region)
             ? "No active PMs found. Add or activate PMs in PM Maintenance."

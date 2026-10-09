@@ -224,11 +224,17 @@ public partial class TeamsViewModel : ObservableObject
         foreach (var p in pms)
         {
             var (sub, region) = rules.PmTeam(p.Id);
+            var allSubs = rules.PmSubRegions(p.Id);
+            var defaultSubId = subs.FirstOrDefault(s => s.Name == sub)?.Id;
             people.Add(new PersonRow
             {
                 Role = TeamRoles.Pm, RoleOrder = RoleOrder(TeamRoles.Pm), Name = p.FullName,
-                Region = region, SubRegion = sub,
-                ReportsTo = p.PeId is { } pe && pes.TryGetValue(pe, out var peM) ? peM.FullName : "",
+                Region = region,
+                SubRegion = allSubs.Count <= 1 ? sub : $"{sub} (+{string.Join(", ", allSubs.Skip(1))})",
+                // Reports to the PE(s) of their default sub-region.
+                ReportsTo = defaultSubId is { } ds
+                    ? string.Join(", ", members.Where(m => m.Role == TeamRoles.Pe && m.IsActive && m.SubRegionId == ds).Select(m => m.FullName))
+                    : "",
                 IsActive = p.IsActive, Pm = p,
             });
         }
@@ -243,7 +249,7 @@ public partial class TeamsViewModel : ObservableObject
             Pes      = string.Join(", ", members.Where(m => m.Role == TeamRoles.Pe && m.IsActive && m.SubRegionId == s.Id).Select(m => m.FullName)),
             Clusters = clustersBySub.GetValueOrDefault(s.Id)?.Count ?? 0,
             Campuses = splitCampuses.Count(c => c.Sub == s.Id && locs.FirstOrDefault(l => l.Id == c.LocationId)?.SubRegionId != s.Id),
-            Pms      = pms.Count(p => p.IsActive && rules.PmTeam(p.Id).SubRegion == s.Name),
+            Pms      = pms.Count(p => p.IsActive && rules.PmOn(p.Id, s.Name)),
         }));
         SubRegionOptions = new[] { new SubRegionOption(0, "— none —") }
             .Concat(subs.Select(s => new SubRegionOption(s.Id, $"{s.Name}  ({s.Region})"))).ToList();
@@ -324,7 +330,7 @@ public partial class TeamsViewModel : ObservableObject
                 Campuses = string.Join(", ", splitCampuses
                     .Where(c => c.Sub == s.Id && locs.FirstOrDefault(l => l.Id == c.LocationId)?.SubRegionId != s.Id)
                     .Select(c => $"{c.Name} ({locs.FirstOrDefault(l => l.Id == c.LocationId)?.Name})")),
-                Pms      = activePms.Where(p => rules.PmTeam(p.Id).SubRegion == s.Name).Select(PmNode).ToList(),
+                Pms      = activePms.Where(p => rules.PmOn(p.Id, s.Name)).Select(PmNode).ToList(),
             }).ToList(),
             PmsWithoutTeam = activePms.Where(p => rules.PmTeam(p.Id).SubRegion == "" &&
                                  string.Equals(p.GeographicalLocation, region, StringComparison.OrdinalIgnoreCase)).Select(PmNode).ToList(),
@@ -371,14 +377,6 @@ public partial class TeamsViewModel : ObservableObject
         return db.PMs.AsNoTracking().Where(p => p.IsActive).OrderBy(p => p.LastName).ThenBy(p => p.FirstName).ToList();
     }
 
-    public List<TeamMember> ActivePes()
-    {
-        using var db = new AppDbContext();
-        return db.TeamMembers.AsNoTracking().Include(t => t.SubRegion)
-                 .Where(t => t.Role == TeamRoles.Pe && t.IsActive)
-                 .OrderBy(t => t.LastName).ThenBy(t => t.FirstName).ToList();
-    }
-
     public List<SubRegion> AllSubRegions()
     {
         using var db = new AppDbContext();
@@ -416,7 +414,7 @@ public partial class TeamsViewModel : ObservableObject
         Load();
     }
 
-    /// <summary>Deletes a Director/PE/PA. PMs under a deleted PE lose their team (PeId → null).</summary>
+    /// <summary>Deletes a Director/PE/PA. PMs keep their sub-regions (their PE link is cleared).</summary>
     public void DeleteMember(TeamMember m)
     {
         if (!IsEditable) return;
@@ -431,50 +429,45 @@ public partial class TeamsViewModel : ObservableObject
         Load();
     }
 
-    /// <summary>Puts a Platform Manager under a PE (or none). Their PE's sub-region becomes the area they can be assigned in.</summary>
-    public void SetPmPe(PM pm, int? peId)
+    /// <summary>Sets a PM's default sub-region and the others they cover (PmTeamService).</summary>
+    public void SetPmSubRegions(PM pm, int? defaultId, IEnumerable<int> others)
     {
         if (!IsEditable) return;
         using var db = new AppDbContext();
         var tracked = db.PMs.Find(pm.Id);
         if (tracked == null) return;
-        tracked.PeId = peId;
+        PmTeamService.SetSubRegions(db, tracked, defaultId, others);
         db.SaveChanges();
-        var peName = peId is { } id ? db.TeamMembers.Find(id)?.FullName ?? "PE" : "no PE";
-        AuditService.Log("Update", "PM", pm.Id, $"{pm.FullName} now reports to {peName}");
-        StatusMessage = $"{pm.FullName} now reports to {peName}." + ConflictNote(db, pm.Id);
+        var text = TeamText(db, tracked);
+        AuditService.Log("Update", "PM", pm.Id, $"{pm.FullName} sub-regions: {text}");
+        StatusMessage = $"{pm.FullName}: {text}." + ConflictNote(db, pm.Id);
         Load();
     }
 
-    /// <summary>Puts several Platform Managers under one PE at once (or removes their team).</summary>
-    public void SetPmsPe(IEnumerable<PM> pms, int? peId)
+    /// <summary>Makes one sub-region the default for several PMs at once (their old default is
+    /// dropped, other sub-regions kept); null = take them off every team.</summary>
+    public void SetPmsDefaultSubRegion(IEnumerable<PM> pms, int? subRegionId)
     {
         if (!IsEditable) return;
         var ids = pms.Select(p => p.Id).Distinct().ToList();
         if (ids.Count == 0) return;
         using var db = new AppDbContext();
         var tracked = db.PMs.Where(p => ids.Contains(p.Id)).ToList();
-        foreach (var p in tracked) p.PeId = peId;
+        foreach (var p in tracked)
+            PmTeamService.SetSubRegions(db, p, subRegionId, subRegionId == null ? Array.Empty<int>() : p.OtherSubRegionIdList);
         db.SaveChanges();
-        var pe = peId is { } id ? db.TeamMembers.Include(t => t.SubRegion).FirstOrDefault(t => t.Id == id) : null;
-        var peName = pe == null ? "no PE" : pe.FullName + (pe.SubRegion != null ? $" ({pe.SubRegion.Name})" : "");
+        var subName = subRegionId is { } sid ? db.SubRegions.Find(sid)?.Name ?? "?" : "no team";
         AuditService.Log("Update", "PM", ids.Count == 1 ? ids[0] : null,
-            $"{string.Join(", ", tracked.Select(p => p.FullName))} now report to {peName}");
-        StatusMessage = $"{tracked.Count} PM(s) now report to {peName}." + ConflictNote(db);
+            $"{string.Join(", ", tracked.Select(p => p.FullName))} default sub-region → {subName}");
+        StatusMessage = $"{tracked.Count} PM(s) now on {subName}" + (subRegionId == null ? "." : " (default).") + ConflictNote(db);
         Load();
     }
 
-    /// <summary>PE choices for the People tab's bulk "Set PE" (Id 0 = no team).</summary>
-    public List<SubRegionOption> PeOptions()
+    private static string TeamText(AppDbContext db, PM pm)
     {
-        using var db = new AppDbContext();
-        return new[] { new SubRegionOption(0, "— no team —") }
-            .Concat(db.TeamMembers.AsNoTracking().Include(t => t.SubRegion)
-                      .Where(t => t.Role == TeamRoles.Pe && t.IsActive)
-                      .OrderBy(t => t.SubRegion != null ? t.SubRegion.Name : "~").ThenBy(t => t.LastName)
-                      .AsEnumerable()
-                      .Select(t => new SubRegionOption(t.Id, t.SubRegion != null ? $"{t.SubRegion.Name} — {t.FullName}" : $"{t.FullName} (no sub-region)")))
-            .ToList();
+        var names = db.SubRegions.AsNoTracking().ToDictionary(s => s.Id, s => s.Name);
+        var t = PmTeamService.Describe(pm.SubRegionId, pm.OtherSubRegionIdList, names);
+        return t == "" ? "no team" : t;
     }
 
     // ── Sub-region actions ──

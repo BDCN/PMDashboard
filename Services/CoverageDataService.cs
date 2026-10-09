@@ -94,7 +94,7 @@ public static class CoverageDataService
                         .Select(p =>
                         {
                             var (sub, region) = teams.PmTeam(p.Id);
-                            return new PlannerPm(p.Id, p.FullName, region, sub);
+                            return new PlannerPm(p.Id, p.FullName, region, sub, teams.PmSubRegions(p.Id).Skip(1).ToList());
                         })
                         .ToList();
 

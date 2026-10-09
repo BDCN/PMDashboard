@@ -12,8 +12,9 @@ public sealed class TeamRuleException(string message) : InvalidOperationExceptio
 /// <summary>
 /// The team boundary for assignments (hard rule, checked in AssignmentHistoryService and
 /// CampusService so no path can bypass it):
-///   • a cluster mapped to a sub-region (Location.SubRegionId) can only be assigned to PMs whose
-///     PE controls that sub-region (PM.PeId → TeamMember.SubRegionId);
+///   • a cluster mapped to a sub-region (Location.SubRegionId, or a campus's own) can only be
+///     assigned to PMs on that sub-region — their default (PM.SubRegionId; for older data the
+///     PE's sub-region via PM.PeId) or one of their others (PM.OtherSubRegionIds);
 ///   • an unmapped cluster can be assigned to any PM in the same region (the PM's sub-region's
 ///     region if they're on a team, else PM.GeographicalLocation);
 ///   • a cluster with no region and no sub-region is unrestricted.
@@ -21,7 +22,8 @@ public sealed class TeamRuleException(string message) : InvalidOperationExceptio
 /// </summary>
 public sealed class TeamRules
 {
-    private sealed record PmInfo(string Name, string Region, int? SubRegionId);
+    /// <summary>SubRegionId = default sub-region; All = default + others.</summary>
+    private sealed record PmInfo(string Name, string Region, int? SubRegionId, HashSet<int> All);
     private sealed record LocInfo(string Name, string Region, int? SubRegionId);
     private sealed record CampusInfo(string Name, int LocationId, int? SubRegionId);
 
@@ -59,13 +61,18 @@ public sealed class TeamRules
                       .Select(t => new { t.Id, t.SubRegionId })
                       .ToDictionary(t => t.Id, t => t.SubRegionId);
         var pms = db.PMs.AsNoTracking()
-                    .Select(p => new { p.Id, p.FirstName, p.LastName, p.GeographicalLocation, p.PeId })
+                    .Select(p => new { p.Id, p.FirstName, p.LastName, p.GeographicalLocation, p.PeId, p.SubRegionId, p.OtherSubRegionIds })
                     .AsEnumerable()
                     .ToDictionary(p => p.Id, p =>
                     {
-                        int? sub = Valid(p.PeId is { } pe && peSub.TryGetValue(pe, out var s) ? s : null);
+                        // Default: PM.SubRegionId; older rows (set before multi-sub-region) → the PE's.
+                        int? sub = Valid(p.SubRegionId) ?? Valid(p.PeId is { } pe && peSub.TryGetValue(pe, out var s) ? s : null);
+                        var all = PM.ParseIds(p.OtherSubRegionIds)
+                                      .Where(id => subs.ContainsKey(id)).ToHashSet();
+                        if (sub != null) all.Add(sub.Value);
+                        else if (all.Count > 0) sub = all.Min();
                         var region = sub != null ? subs[sub.Value].Region : p.GeographicalLocation ?? "";
-                        return new PmInfo($"{p.FirstName} {p.LastName}".Trim(), region, sub);
+                        return new PmInfo($"{p.FirstName} {p.LastName}".Trim(), region, sub, all);
                     });
         var locs = db.Locations.AsNoTracking()
                      .Select(l => new { l.Id, l.Name, l.GeographicalLocation, l.SubRegionId })
@@ -104,11 +111,11 @@ public sealed class TeamRules
 
         if (area.SubRegionId is { } sub)
         {
-            if (pm.SubRegionId == sub) return null;
+            if (pm.All.Contains(sub)) return null;
             var subName = _subs[sub].Name;
-            return pm.SubRegionId is { } pmSub
-                ? $"{pm.Name} is on the {_subs[pmSub].Name} team, but {area.Label} is in {subName}. Only PMs on the {subName} team can be assigned there."
-                : $"{pm.Name} isn't on a team yet, and {area.Label} is in {subName}. Put them under the {subName} PE on the Teams page first.";
+            return pm.All.Count > 0
+                ? $"{pm.Name} is on {string.Join(", ", pm.All.Select(i => _subs[i].Name).OrderBy(n => n))}, but {area.Label} is in {subName}. Only PMs on the {subName} team can be assigned there."
+                : $"{pm.Name} isn't on a team yet, and {area.Label} is in {subName}. Add them to {subName} first (Org Chart → Edit, or PM Maintenance → Sub-regions).";
         }
 
         if (string.IsNullOrWhiteSpace(area.Region)) return null;
@@ -145,7 +152,16 @@ public sealed class TeamRules
     public string PmArea(int pmId) =>
         _pms.TryGetValue(pmId, out var pm) ? (pm.SubRegionId is { } s ? _subs[s].Name : pm.Region) : "";
 
-    /// <summary>The PM's sub-region name ("" when not on a team) and region.</summary>
+    /// <summary>All of a PM's sub-region names, default first.</summary>
+    public List<string> PmSubRegions(int pmId) =>
+        _pms.TryGetValue(pmId, out var pm)
+            ? pm.All.OrderBy(i => i == pm.SubRegionId ? 0 : 1).ThenBy(i => _subs[i].Name).Select(i => _subs[i].Name).ToList()
+            : new();
+
+    /// <summary>True when the PM is on this sub-region (default or other).</summary>
+    public bool PmOn(int pmId, string subRegionName) => PmSubRegions(pmId).Contains(subRegionName);
+
+    /// <summary>The PM's default sub-region name ("" when not on a team) and its region.</summary>
     public (string SubRegion, string Region) PmTeam(int pmId) =>
         _pms.TryGetValue(pmId, out var pm) ? (pm.SubRegionId is { } s ? _subs[s].Name : "", pm.Region) : ("", "");
 

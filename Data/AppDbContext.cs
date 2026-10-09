@@ -262,6 +262,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Campus>().Ignore(c => c.PmDisplay);
         modelBuilder.Entity<Campus>().Ignore(c => c.SubRegionDisplay);
         modelBuilder.Entity<PM>().Ignore(p => p.TeamLabel);
+        modelBuilder.Entity<PM>().Ignore(p => p.OtherSubRegionIdList);
 
         modelBuilder.Entity<Location>()
             .Ignore(l => l.IsFullyClosed);

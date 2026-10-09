@@ -41,24 +41,44 @@ public partial class PmMaintenanceViewModel : ObservableObject
                         .ThenBy(p => p.FirstName)
                         .ToList();
 
-        // Team (PE) column: a PM's sub-region comes from the PE they report to (see TeamRules).
-        PeOptions = new[] { new PeOption(null, "— no team —") }
-            .Concat(db.TeamMembers.AsNoTracking().Include(t => t.SubRegion)
-                      .Where(t => t.Role == TeamRoles.Pe && t.IsActive)
-                      .AsEnumerable()
-                      .OrderBy(t => t.SubRegion?.Name ?? "~").ThenBy(t => t.LastName)
-                      .Select(t => new PeOption(t.Id, t.SubRegion != null ? $"{t.SubRegion.Name} — {t.FullName}" : $"{t.FullName} (no sub-region)")))
-            .ToList();
-        var labels = PeOptions.Where(o => o.Id != null).ToDictionary(o => o.Id!.Value, o => o.Name);
+        // Sub-regions column: "East1 (default), East2" (see TeamRules / PmTeamService).
+        var rules = TeamRules.For(db);
         foreach (var p in list)
-            p.TeamLabel = p.PeId is { } pe && labels.TryGetValue(pe, out var l) ? l : "";
+        {
+            var subs = rules.PmSubRegions(p.Id);
+            p.TeamLabel = subs.Count == 0 ? "" : subs.Count == 1 ? subs[0] : $"{subs[0]} (+{string.Join(", ", subs.Skip(1))})";
+        }
         Pms = new ObservableCollection<PM>(list);
     }
 
-    /// <summary>A PE choice for the Team column (Id null = no team).</summary>
-    public record PeOption(int? Id, string Name);
+    public List<SubRegion> AllSubRegions()
+    {
+        using var db = new AppDbContext();
+        return db.SubRegions.AsNoTracking().OrderBy(s => s.Name).ToList();
+    }
 
-    [ObservableProperty] private List<PeOption> _peOptions = new();
+    /// <summary>The PM's current default sub-region Id as the rules see it (older rows: via their PE).</summary>
+    public int? DefaultSubRegionId(PM pm)
+    {
+        using var db = new AppDbContext();
+        var name = TeamRules.For(db).PmTeam(pm.Id).SubRegion;
+        return name == "" ? null : db.SubRegions.Where(s => s.Name == name).Select(s => (int?)s.Id).FirstOrDefault();
+    }
+
+    /// <summary>Saves a PM's sub-regions from the Sub-regions dialog.</summary>
+    public void SetSubRegions(PM pm, int? defaultId, IEnumerable<int> others)
+    {
+        if (!CanEditTeams) return;
+        using var db = new AppDbContext();
+        var tracked = db.PMs.Find(pm.Id);
+        if (tracked == null) return;
+        PmTeamService.SetSubRegions(db, tracked, defaultId, others);
+        db.SaveChanges();
+        var names = db.SubRegions.AsNoTracking().ToDictionary(s => s.Id, s => s.Name);
+        AuditService.Log("Update", "PM", tracked.Id,
+            $"{tracked.FullName} sub-regions: {PmTeamService.Describe(tracked.SubRegionId, tracked.OtherSubRegionIdList, names) switch { "" => "no team", var t => t }} (PM Maintenance)");
+        Load();
+    }
 
     /// <summary>Teams can be changed by Super Admins and Directors (same as the Teams page).</summary>
     public bool CanEditTeams => CurrentUser.IsSuperAdmin || CurrentUser.IsDirector;
@@ -80,15 +100,12 @@ public partial class PmMaintenanceViewModel : ObservableObject
         using var db = new AppDbContext();
         var tracked = db.PMs.Find(updated.Id);
         if (tracked == null) return;
-        var oldPe = tracked.PeId;
+        // Team fields only change through the Sub-regions dialog / Teams / Org Chart — never from a
+        // grid row save (the row's copy may be older than a change made elsewhere meanwhile).
+        var (pe, sub, others) = (tracked.PeId, tracked.SubRegionId, tracked.OtherSubRegionIds);
         db.Entry(tracked).CurrentValues.SetValues(updated);
-        if (!CanEditTeams) tracked.PeId = oldPe; // the Team column is read-only for everyone else
+        (tracked.PeId, tracked.SubRegionId, tracked.OtherSubRegionIds) = (pe, sub, others);
         db.SaveChanges();
-        if (tracked.PeId != oldPe)
-        {
-            var peName = tracked.PeId is { } id ? db.TeamMembers.Find(id)?.FullName ?? "PE" : "no PE";
-            AuditService.Log("Update", "PM", tracked.Id, $"{tracked.FullName} now reports to {peName} (PM Maintenance)");
-        }
         Load();
     }
 

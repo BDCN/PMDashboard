@@ -13,11 +13,123 @@ public partial class OrgChartPage : UserControl
 {
     private OrgChartViewModel? Vm => DataContext as OrgChartViewModel;
 
-    public OrgChartPage() => InitializeComponent();
+    public OrgChartPage()
+    {
+        InitializeComponent();
+        // Leaving the page with unsaved edits: ask rather than silently drop them.
+        Unloaded += (_, _) =>
+        {
+            if (Vm is not { IsEditMode: true } vm || !vm.HasChanges) { if (Vm is { IsEditMode: true } v) v.CancelEdit(); return; }
+            var save = MessageBox.Show("Save your Org Chart changes?\n\n" + vm.ChangeSummary,
+                "Unsaved Changes", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
+            if (save) vm.SaveEdits(); else vm.CancelEdit();
+        };
+    }
 
     private void PmCard_Click(object sender, MouseButtonEventArgs e)
     {
-        if (Vm is { } vm && sender is FrameworkElement { Tag: int pmId }) vm.OpenPm?.Invoke(pmId);
+        if (_dragged) { _dragged = false; return; }
+        if (Vm is { IsEditMode: false } vm && sender is FrameworkElement { Tag: OrgChartPm pm }) vm.OpenPm?.Invoke(pm.PmId);
+    }
+
+    // ── Edit mode ─────────────────────────────────────────────────────────────
+
+    private void BtnBeginEdit_Click(object sender, RoutedEventArgs e) => Vm?.BeginEdit();
+
+    private void BtnCancelEdit_Click(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm) return;
+        if (vm.HasChanges && MessageBox.Show("Discard your Org Chart changes?", "Cancel Editing",
+                MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+        vm.CancelEdit();
+    }
+
+    private void BtnSaveEdit_Click(object sender, RoutedEventArgs e) => Vm?.SaveEdits();
+
+    private void BtnMakeDefault_Click(object sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm && sender is FrameworkElement { Tag: OrgChartPm { SubRegionId: { } sub } pm }) vm.MakeDefault(pm.PmId, sub);
+    }
+
+    private void BtnRemoveSub_Click(object sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm && sender is FrameworkElement { Tag: OrgChartPm { SubRegionId: { } sub } pm }) vm.RemoveFromSubRegion(pm.PmId, sub);
+    }
+
+    // ── Drag and drop: PM cards → sub-region columns; PA chips → PM cards ──
+
+    private Point _dragStart;
+    private object? _dragItem;     // OrgChartPm or OrgChartPa under the mouse at press time
+    private bool _dragged;         // suppresses the click that ends a drag
+
+    private void PmCard_MouseDown(object sender, MouseButtonEventArgs e)
+    {
+        _dragged = false;
+        if (Vm is not { IsEditMode: true }) { _dragItem = null; return; }
+        _dragStart = e.GetPosition(this);
+        // A PA chip inside the card wins over the card itself.
+        _dragItem = FindTag<OrgChartPa>(e.OriginalSource as DependencyObject) as object
+                    ?? (sender as FrameworkElement)?.Tag as OrgChartPm;
+    }
+
+    private void PmCard_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (_dragItem == null || e.LeftButton != MouseButtonState.Pressed || Vm is not { IsEditMode: true }) return;
+        var d = e.GetPosition(this) - _dragStart;
+        if (Math.Abs(d.X) < SystemParameters.MinimumHorizontalDragDistance &&
+            Math.Abs(d.Y) < SystemParameters.MinimumVerticalDragDistance) return;
+        var item = _dragItem;
+        _dragItem = null;
+        _dragged = true;
+        DragDrop.DoDragDrop((DependencyObject)sender, new DataObject(item.GetType(), item), DragDropEffects.Move | DragDropEffects.Copy);
+    }
+
+    private void Column_DragOver(object sender, DragEventArgs e)
+    {
+        e.Effects = DragDropEffects.None;
+        if (sender is Border b && e.Data.GetData(typeof(OrgChartPm)) is OrgChartPm)
+        {
+            e.Effects = (e.KeyStates & DragDropKeyStates.ControlKey) != 0 ? DragDropEffects.Copy : DragDropEffects.Move;
+            b.Background = new SolidColorBrush(Color.FromRgb(0xE0, 0xE7, 0xFF));
+        }
+        e.Handled = true;
+    }
+
+    private void Column_DragLeave(object sender, DragEventArgs e)
+    {
+        if (sender is Border b) b.Background = Brushes.Transparent;
+    }
+
+    private void Column_Drop(object sender, DragEventArgs e)
+    {
+        if (sender is Border b) b.Background = Brushes.Transparent;
+        if (Vm is not { } vm || sender is not FrameworkElement { Tag: OrgChartColumn col }) return;
+        if (e.Data.GetData(typeof(OrgChartPm)) is not OrgChartPm pm) return;
+        bool add = (e.KeyStates & DragDropKeyStates.ControlKey) != 0;
+        vm.MovePm(pm.PmId, pm.SubRegionId, col.IsNoTeam ? null : col.SubRegionId, add && !col.IsNoTeam);
+        e.Handled = true;
+    }
+
+    private void PmCard_DragOver(object sender, DragEventArgs e)
+    {
+        // Only PAs drop onto a PM card; a dragged PM falls through to the column.
+        if (e.Data.GetData(typeof(OrgChartPa)) is not OrgChartPa) return;
+        e.Effects = DragDropEffects.Move;
+        e.Handled = true;
+    }
+
+    private void PmCard_Drop(object sender, DragEventArgs e)
+    {
+        if (Vm is not { } vm || e.Data.GetData(typeof(OrgChartPa)) is not OrgChartPa pa) return;
+        if (sender is FrameworkElement { Tag: OrgChartPm pm }) vm.MovePa(pa.Id, pm.PmId);
+        e.Handled = true;
+    }
+
+    private static T? FindTag<T>(DependencyObject? d) where T : class
+    {
+        for (; d != null; d = d is Visual or System.Windows.Media.Media3D.Visual3D ? VisualTreeHelper.GetParent(d) : LogicalTreeHelper.GetParent(d))
+            if (d is FrameworkElement { Tag: T t }) return t;
+        return null;
     }
 
     private void BtnEditTeams_Click(object sender, RoutedEventArgs e) => Vm?.OpenTeams?.Invoke();

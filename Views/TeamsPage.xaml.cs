@@ -45,8 +45,11 @@ public partial class TeamsPage : UserControl
         if (Vm is not { } vm || ((Button)sender).Tag is not PersonRow row) return;
         if (row.Pm is { } pm)
         {
-            var pmDlg = new TeamMemberDialog(pm, vm.ActivePes()) { Owner = Window.GetWindow(this) };
-            if (pmDlg.ShowDialog() == true && pmDlg.SelectedPeId != pm.PeId) vm.SetPmPe(pm, pmDlg.SelectedPeId);
+            var rules = Services.TeamRules.Current();
+            var subs = vm.AllSubRegions();
+            var defaultId = subs.FirstOrDefault(s => s.Name == rules.PmTeam(pm.Id).SubRegion)?.Id;
+            var pmDlg = new PmSubRegionsDialog(pm.FullName, subs, defaultId, pm.OtherSubRegionIdList) { Owner = Window.GetWindow(this) };
+            if (pmDlg.ShowDialog() == true) vm.SetPmSubRegions(pm, pmDlg.DefaultId, pmDlg.OtherIds);
             return;
         }
         if (row.Member is not { } m) return;
@@ -72,7 +75,9 @@ public partial class TeamsPage : UserControl
 
     private void CboBulkPe_DropDownOpened(object? sender, EventArgs e)
     {
-        if (Vm is { } vm) CboBulkPe.ItemsSource = vm.PeOptions(); // fresh each time (PEs may have just been added)
+        if (Vm is { } vm)
+            CboBulkPe.ItemsSource = new[] { new SubRegionOption(0, "— no team —") }
+                .Concat(vm.AllSubRegions().Select(s => new SubRegionOption(s.Id, $"{s.Name}  ({s.Region})"))).ToList();
     }
 
     private void BtnBulkSetPe_Click(object sender, RoutedEventArgs e)
@@ -87,12 +92,13 @@ public partial class TeamsPage : UserControl
         }
         if (CboBulkPe.SelectedItem is not SubRegionOption opt)
         {
-            MessageBox.Show("Choose a PE to put them under.", "No PE", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show("Choose a sub-region.", "No Sub-region", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
-        if (MessageBox.Show($"Put {pms.Count} PM(s) under {opt.Name}?\n\n{string.Join(", ", pms.Select(p => p.FullName))}",
-                "Set PE", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
-        vm.SetPmsPe(pms, opt.Id == 0 ? null : opt.Id);
+        if (MessageBox.Show($"Make {opt.Name} the default sub-region for {pms.Count} PM(s)?\n\n{string.Join(", ", pms.Select(p => p.FullName))}\n\n" +
+                            "Their other sub-regions are kept; they'll report to that sub-region's PE.",
+                "Set Default Sub-region", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+        vm.SetPmsDefaultSubRegion(pms, opt.Id == 0 ? null : opt.Id);
     }
 
     // ── Sub-regions ──

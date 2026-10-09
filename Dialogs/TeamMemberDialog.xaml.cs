@@ -4,9 +4,8 @@ using PMDashboard.Data.Models;
 namespace PMDashboard.Dialogs;
 
 /// <summary>
-/// Add/edit a Director, PE or PA (<see cref="Result"/>), or — in PM mode — choose which PE a
-/// Platform Manager reports to (<see cref="SelectedPeId"/>; the PM's own details live in PM
-/// Maintenance). Only the fields for the role are shown.
+/// Add/edit a Director, PE or PA (<see cref="Result"/>). Only the fields for the role are shown.
+/// A Platform Manager's team (sub-regions) is edited with PmSubRegionsDialog instead.
 /// </summary>
 public partial class TeamMemberDialog : Window
 {
@@ -17,7 +16,6 @@ public partial class TeamMemberDialog : Window
     private readonly TeamMember? _existing;
 
     public TeamMember? Result      { get; private set; }
-    public int?        SelectedPeId { get; private set; }
 
     /// <summary>Director / PE / PA.</summary>
     public TeamMemberDialog(string role, TeamMember? existing, IReadOnlyList<string> regions,
@@ -68,24 +66,6 @@ public partial class TeamMemberDialog : Window
         Loaded += (_, _) => TxtFirst.Focus();
     }
 
-    /// <summary>PM mode: pick the PE a Platform Manager reports to.</summary>
-    public TeamMemberDialog(PM pm, IReadOnlyList<TeamMember> pes)
-    {
-        InitializeComponent();
-        _role = TeamRoles.Pm;
-        TxtTitle.Text = $"Team for {pm.FullName}";
-        Title = TxtTitle.Text;
-        TxtHint.Text = "Platform Manager — name and capacity are edited in PM Maintenance.";
-        PanelPerson.Visibility = Visibility.Collapsed;
-        ChkActive.Visibility   = Visibility.Collapsed;
-        PanelPe.Visibility     = Visibility.Visible;
-        var choices = new[] { new Choice(null, "— no team —") }
-            .Concat(pes.Select(p => new Choice(p.Id, p.SubRegion != null ? $"{p.FullName}  ({p.SubRegion.Name})" : $"{p.FullName}  (no sub-region)")))
-            .ToList();
-        CboPe.ItemsSource = choices;
-        CboPe.SelectedItem = choices.FirstOrDefault(c => c.Id == pm.PeId) ?? choices[0];
-    }
-
     public static string RoleName(string role) => role switch
     {
         TeamRoles.Director => "Director",
@@ -99,13 +79,6 @@ public partial class TeamMemberDialog : Window
 
     private void BtnSave_Click(object sender, RoutedEventArgs e)
     {
-        if (_role == TeamRoles.Pm)
-        {
-            SelectedPeId = (CboPe.SelectedItem as Choice)?.Id;
-            DialogResult = true;
-            return;
-        }
-
         string? error = null;
         if (string.IsNullOrWhiteSpace(TxtFirst.Text) && string.IsNullOrWhiteSpace(TxtLast.Text))
             error = "Enter a name.";

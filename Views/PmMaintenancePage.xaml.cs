@@ -107,6 +107,16 @@ public partial class PmMaintenancePage : UserControl
         return false;
     }
 
+    // ── Sub-regions (team) ──
+
+    private void BtnEditSubRegions_Click(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm || ((Button)sender).Tag is not PM pm) return;
+        var dlg = new PmSubRegionsDialog(pm.FullName, vm.AllSubRegions(), vm.DefaultSubRegionId(pm), pm.OtherSubRegionIdList)
+            { Owner = Window.GetWindow(this) };
+        if (dlg.ShowDialog() == true) vm.SetSubRegions(pm, dlg.DefaultId, dlg.OtherIds);
+    }
+
     // ── Add PM (dialog still used for new entries) ──
 
     private void BtnAdd_Click(object sender, RoutedEventArgs e)

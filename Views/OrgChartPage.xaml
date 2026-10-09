@@ -37,6 +37,9 @@
         <!-- ── Title ── -->
         <DockPanel Grid.Row="0" Margin="0,0,0,12">
             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                <Button Content="✎ Edit Org Chart" Style="{StaticResource PrimaryButtonStyle}" Margin="0,0,8,0" Click="BtnBeginEdit_Click"
+                        Visibility="{Binding ShowEditButton, Converter={StaticResource BoolToVisibility}}"
+                        ToolTipService.ToolTip="Drag PMs between sub-regions and PAs between PMs, then Save"/>
                 <Button Content="Edit Teams" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,0" Click="BtnEditTeams_Click"/>
                 <Button Content="Export PNG" Style="{StaticResource PrimaryButtonStyle}" Click="BtnExport_Click"/>
             </StackPanel>
@@ -46,8 +49,9 @@
             </StackPanel>
         </DockPanel>
 
-        <!-- ── Toolbar ── -->
-        <Border Grid.Row="1" Background="White" CornerRadius="8" BorderBrush="#E2E8F0" BorderThickness="1"
+        <!-- ── Toolbar, edit banner, status ── -->
+        <StackPanel Grid.Row="1">
+        <Border Background="White" CornerRadius="8" BorderBrush="#E2E8F0" BorderThickness="1"
                 Padding="12,6" Margin="0,0,0,12">
             <WrapPanel VerticalAlignment="Center">
                 <TextBlock Text="🔍" FontSize="12" Foreground="#94A3B8" VerticalAlignment="Center" Margin="0,0,6,0"/>
@@ -71,6 +75,36 @@
                            Foreground="#94A3B8" VerticalAlignment="Center" Margin="14,0,0,0"/>
             </WrapPanel>
         </Border>
+
+        <!-- Edit mode banner -->
+        <Border Background="#EEF2FF" BorderBrush="#A5B4FC" BorderThickness="1" CornerRadius="8" Padding="14,10" Margin="0,0,0,12"
+                Visibility="{Binding IsEditMode, Converter={StaticResource BoolToVisibility}}">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Content="Cancel" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,0" Click="BtnCancelEdit_Click"/>
+                    <Button Content="Save Changes" Style="{StaticResource PrimaryButtonStyle}" Click="BtnSaveEdit_Click"/>
+                </StackPanel>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock FontSize="12" Foreground="#312E81" TextWrapping="Wrap">
+                        <Run Text="Editing." FontWeight="SemiBold"/>
+                        <Run Text="Drag a PM onto another sub-region to move them there (it becomes their default; other sub-regions are kept). Hold Ctrl while dropping to add a sub-region instead. Drop on “No team yet” to take them off every team. Drag a PA onto another PM. ★ makes a sub-region the default, ✕ removes it."/>
+                    </TextBlock>
+                    <TextBlock Text="{Binding ChangeSummary}" FontSize="12" FontWeight="SemiBold" Foreground="#7C3AED" Margin="0,4,0,0"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+        <TextBlock Text="{Binding StatusMessage}" FontSize="12" Foreground="#16A34A" TextWrapping="Wrap" Margin="0,-4,0,10">
+            <TextBlock.Style>
+                <Style TargetType="TextBlock">
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding StatusMessage}" Value="">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </TextBlock.Style>
+        </TextBlock>
+        </StackPanel>
 
         <!-- ── Chart ── -->
         <Border Grid.Row="2" Background="White" CornerRadius="10" BorderBrush="#E2E8F0" BorderThickness="1" ClipToBounds="True">
@@ -160,7 +194,10 @@
                                                 </ItemsControl.ItemsPanel>
                                                 <ItemsControl.ItemTemplate>
                                                     <DataTemplate>
-                                                        <StackPanel Width="250">
+                                                        <Border Tag="{Binding}" Background="Transparent" CornerRadius="8"
+                                                                AllowDrop="{Binding DataContext.IsEditMode, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                DragOver="Column_DragOver" DragLeave="Column_DragLeave" Drop="Column_Drop">
+                                                        <StackPanel Width="250" Margin="0,0,0,8">
                                                             <!-- Horizontal bus: left half hidden on the first column, right half on the last -->
                                                             <Grid Height="18">
                                                                 <Grid.ColumnDefinitions>
@@ -256,7 +293,7 @@
                                                                         <Run Text="PE  " FontSize="10" FontWeight="SemiBold" Foreground="#BFDBFE"/>
                                                                         <Run Text="{Binding PeText, Mode=OneWay}" FontSize="13" FontWeight="SemiBold" Foreground="White"/>
                                                                     </TextBlock>
-                                                                    <TextBlock Text="PMs not under a PE — they can only take clusters with no sub-region"
+                                                                    <TextBlock Text="PMs not on any sub-region — they can only take clusters with no sub-region"
                                                                                FontSize="10" Foreground="#B45309" TextWrapping="Wrap" Margin="0,3,0,0">
                                                                         <TextBlock.Style>
                                                                             <Style TargetType="TextBlock">
@@ -311,13 +348,30 @@
 
                                                                             <!-- PM card (click → PM Detail) -->
                                                                             <Border Grid.Column="1" Margin="0,10,0,0" CornerRadius="6" Padding="10,7"
-                                                                                    Background="White" BorderThickness="1,1,1,1" Cursor="Hand"
-                                                                                    Tag="{Binding PmId}" MouseLeftButtonUp="PmCard_Click"
-                                                                                    ToolTipService.ToolTip="Open PM details">
+                                                                                    BorderThickness="1,1,1,1" Cursor="Hand"
+                                                                                    Tag="{Binding}" MouseLeftButtonUp="PmCard_Click"
+                                                                                    PreviewMouseLeftButtonDown="PmCard_MouseDown" MouseMove="PmCard_MouseMove"
+                                                                                    AllowDrop="{Binding DataContext.IsEditMode, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                                    DragOver="PmCard_DragOver" Drop="PmCard_Drop">
                                                                                 <Border.Style>
                                                                                     <Style TargetType="Border">
                                                                                         <Setter Property="BorderBrush" Value="#CBD5E1"/>
+                                                                                        <Setter Property="Background" Value="White"/>
+                                                                                        <Setter Property="ToolTip" Value="Open PM details"/>
                                                                                         <Style.Triggers>
+                                                                                            <!-- also on this sub-region, but their default is another -->
+                                                                                            <DataTrigger Binding="{Binding IsSecondary}" Value="True">
+                                                                                                <Setter Property="Opacity" Value="0.6"/>
+                                                                                                <Setter Property="Background" Value="#F8FAFC"/>
+                                                                                            </DataTrigger>
+                                                                                            <DataTrigger Binding="{Binding DataContext.IsEditMode, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="True">
+                                                                                                <Setter Property="Cursor" Value="SizeAll"/>
+                                                                                                <Setter Property="ToolTip" Value="Drag to another sub-region (Ctrl = add)"/>
+                                                                                            </DataTrigger>
+                                                                                            <DataTrigger Binding="{Binding IsChanged}" Value="True">
+                                                                                                <Setter Property="BorderBrush" Value="#7C3AED"/>
+                                                                                                <Setter Property="BorderThickness" Value="2"/>
+                                                                                            </DataTrigger>
                                                                                             <DataTrigger Binding="{Binding IsMatch}" Value="True">
                                                                                                 <Setter Property="BorderBrush" Value="{StaticResource MatchBrush}"/>
                                                                                                 <Setter Property="BorderThickness" Value="2"/>
@@ -334,6 +388,8 @@
                                                                                     <TextBlock FontSize="10.5" Foreground="#64748B">
                                                                                         <Run Text="PM · " FontWeight="SemiBold"/><Run Text="{Binding Detail, Mode=OneWay}"/>
                                                                                     </TextBlock>
+                                                                                    <TextBlock Text="{Binding TagText}" FontSize="10.5" Foreground="#2563EB" TextWrapping="Wrap"
+                                                                                               Visibility="{Binding HasTag, Converter={StaticResource BoolToVisibility}}"/>
                                                                                     <!-- PAs -->
                                                                                     <ItemsControl ItemsSource="{Binding Pas}" Margin="0,4,0,0">
                                                                                         <ItemsControl.Style>
@@ -350,15 +406,40 @@
                                                                                         </ItemsControl.ItemsPanel>
                                                                                         <ItemsControl.ItemTemplate>
                                                                                             <DataTemplate>
-                                                                                                <Border Background="#F5F3FF" BorderBrush="#DDD6FE" BorderThickness="1"
+                                                                                                <Border Tag="{Binding}" BorderThickness="1"
                                                                                                         CornerRadius="4" Padding="6,1" Margin="0,2,4,0">
+                                                                                                    <Border.Style>
+                                                                                                        <Style TargetType="Border">
+                                                                                                            <Setter Property="Background" Value="#F5F3FF"/>
+                                                                                                            <Setter Property="BorderBrush" Value="#DDD6FE"/>
+                                                                                                            <Style.Triggers>
+                                                                                                                <DataTrigger Binding="{Binding IsMatch}" Value="True">
+                                                                                                                    <Setter Property="BorderBrush" Value="{StaticResource MatchBrush}"/>
+                                                                                                                </DataTrigger>
+                                                                                                                <DataTrigger Binding="{Binding DataContext.IsEditMode, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="True">
+                                                                                                                    <Setter Property="ToolTip" Value="Drag onto another PM"/>
+                                                                                                                </DataTrigger>
+                                                                                                            </Style.Triggers>
+                                                                                                        </Style>
+                                                                                                    </Border.Style>
                                                                                                     <TextBlock FontSize="10.5" Foreground="#5B21B6">
-                                                                                                        <Run Text="PA " FontWeight="SemiBold"/><Run Text="{Binding Mode=OneWay}"/>
+                                                                                                        <Run Text="PA " FontWeight="SemiBold"/><Run Text="{Binding Name, Mode=OneWay}"/>
                                                                                                     </TextBlock>
                                                                                                 </Border>
                                                                                             </DataTemplate>
                                                                                         </ItemsControl.ItemTemplate>
                                                                                     </ItemsControl>
+                                                                                    <!-- Edit-mode actions -->
+                                                                                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0"
+                                                                                                Visibility="{Binding DataContext.IsEditMode, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVisibility}}">
+                                                                                        <Button Content="★ Make default" Tag="{Binding}" Click="BtnMakeDefault_Click"
+                                                                                                Style="{StaticResource SecondaryButtonStyle}" Padding="6,1" FontSize="10" Margin="0,0,4,0"
+                                                                                                Visibility="{Binding IsSecondary, Converter={StaticResource BoolToVisibility}}"/>
+                                                                                        <Button Content="✕ Remove" Tag="{Binding}" Click="BtnRemoveSub_Click"
+                                                                                                Style="{StaticResource DangerButtonStyle}" Padding="6,1" FontSize="10"
+                                                                                                ToolTipService.ToolTip="Take this PM off this sub-region"
+                                                                                                Visibility="{Binding InSubRegion, Converter={StaticResource BoolToVisibility}}"/>
+                                                                                    </StackPanel>
                                                                                 </StackPanel>
                                                                             </Border>
                                                                         </Grid>
@@ -378,6 +459,7 @@
                                                                 </TextBlock.Style>
                                                             </TextBlock>
                                                         </StackPanel>
+                                                        </Border>
                                                     </DataTemplate>
                                                 </ItemsControl.ItemTemplate>
                                             </ItemsControl>

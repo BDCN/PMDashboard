@@ -527,6 +527,11 @@ public partial class App : Application
         catch { /* column already exists */ }
         try { db.Database.ExecuteSqlRaw("ALTER TABLE Locations ADD COLUMN SubRegionId INTEGER NULL"); }
         catch { /* column already exists */ }
+        // A PM (and their PAs) can be on several sub-regions: a default plus others (see PM.cs).
+        try { db.Database.ExecuteSqlRaw("ALTER TABLE PMs ADD COLUMN SubRegionId INTEGER NULL"); }
+        catch { /* column already exists */ }
+        try { db.Database.ExecuteSqlRaw("ALTER TABLE PMs ADD COLUMN OtherSubRegionIds TEXT NOT NULL DEFAULT ''"); }
+        catch { /* column already exists */ }
         // A campus can belong to a different sub-region than its cluster (split clusters).
         try { db.Database.ExecuteSqlRaw("ALTER TABLE Campuses ADD COLUMN SubRegionId INTEGER NULL"); }
         catch { /* column already exists */ }
