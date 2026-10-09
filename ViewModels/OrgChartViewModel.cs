@@ -15,6 +15,8 @@ public class OrgChartPa
     public string Name    { get; init; } = "";
     public bool   IsMatch { get; init; }
     public bool   IsChanged { get; init; }   // moved to another PM, not saved yet
+    /// <summary>" · supports Sheila Betancourt" — a PA is managed by the PE and supports one PM.</summary>
+    public string SupportsText { get; init; } = "";
 }
 
 public class OrgChartPm
@@ -336,7 +338,8 @@ public partial class OrgChartViewModel : ObservableObject
                 var t = _teams[p.Id];
                 var pas = ShowPas
                     ? _members.Where(m => m.Role == TeamRoles.Pa && _paPm.GetValueOrDefault(m.Id) == p.Id)
-                              .Select(m => new OrgChartPa { Id = m.Id, Name = m.FullName, IsMatch = Match(m.FullName), IsChanged = changedPas.Contains(m.Id) }).ToList()
+                              .Select(m => new OrgChartPa { Id = m.Id, Name = m.FullName, IsMatch = Match(m.FullName), IsChanged = changedPas.Contains(m.Id),
+                                                          SupportsText = $" · supports {p.FullName}" }).ToList()
                     : new List<OrgChartPa>();
                 bool isDefault = columnSub != null && t.Default == columnSub;
                 string tag = columnSub == null ? ""
