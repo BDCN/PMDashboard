@@ -691,6 +691,8 @@ public static class SyncService
         ALTER TABLE `Locations` ADD COLUMN IF NOT EXISTS `SubRegionId` INT NULL;
         ALTER TABLE `Campuses`  ADD COLUMN IF NOT EXISTS `SubRegionId` INT NULL;
         ALTER TABLE `Sites`     ADD COLUMN IF NOT EXISTS `SubRegionId` INT NULL;
+        ALTER TABLE `PMs`       ADD COLUMN IF NOT EXISTS `IsPlaceholder` TINYINT(1) NOT NULL DEFAULT 0;
+        ALTER TABLE `TeamMembers` ADD COLUMN IF NOT EXISTS `IsPlaceholder` TINYINT(1) NOT NULL DEFAULT 0;
         ALTER TABLE `PMs`       ADD COLUMN IF NOT EXISTS `SubRegionId` INT NULL;
         ALTER TABLE `PMs`       ADD COLUMN IF NOT EXISTS `OtherSubRegionIds` VARCHAR(1000) NOT NULL DEFAULT '';
 

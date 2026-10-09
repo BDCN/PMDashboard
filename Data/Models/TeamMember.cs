@@ -35,6 +35,9 @@ public class TeamMember
     public int? PmId { get; set; }
     public PM?  Pm   { get; set; }
 
+    /// <summary>A "TBD" placeholder (e.g. a PA still to be hired). "Fill" turns it into the real person.</summary>
+    public bool     IsPlaceholder { get; set; }
+
     public bool     IsActive     { get; set; } = true;
     public DateTime LastModified { get; set; }
 

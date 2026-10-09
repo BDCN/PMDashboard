@@ -452,9 +452,26 @@ public partial class TeamsViewModel : ObservableObject
         foreach (var pm in db.PMs.Where(p => p.PeId == m.Id).ToList()) pm.PeId = null; // explicit, so the change syncs
         db.TeamMembers.Remove(tracked);
         db.SaveChanges();
+        DeleteFromCloud(c => c.TeamMembers.Find(m.Id) is { } row ? c.TeamMembers.Remove(row) : null);
         AuditService.Log("Delete", "TeamMember", m.Id, $"{m.Role} {m.FullName} deleted");
         StatusMessage = $"{m.Role} {m.FullName} deleted." + ConflictNote(db);
         Load();
+    }
+
+    /// <summary>
+    /// Sync has no deletes — a row deleted only locally comes straight back on the next pull — so
+    /// a delete is also applied to the cloud directly (same as PM Maintenance's DeletePm).
+    /// Best-effort: offline, the row may reappear and can be deleted again.
+    /// </summary>
+    private static void DeleteFromCloud(Func<AppDbContext, object?> remove)
+    {
+        if (!DatabaseConfig.IsCloud) return;
+        try
+        {
+            using var cloud = new AppDbContext(forceCloud: true);
+            if (remove(cloud) != null) cloud.SaveChanges();
+        }
+        catch { /* offline — see summary */ }
     }
 
     /// <summary>Sets a PM's default sub-region and the others they cover (PmTeamService).</summary>
@@ -535,6 +552,7 @@ public partial class TeamsViewModel : ObservableObject
         foreach (var st in db.Sites.Where(st => st.SubRegionId == s.Id).ToList()) st.SubRegionId = null;
         db.SubRegions.Remove(tracked);
         db.SaveChanges();
+        DeleteFromCloud(c => c.SubRegions.Find(s.Id) is { } row ? c.SubRegions.Remove(row) : null);
         AuditService.Log("Delete", "SubRegion", s.Id, $"Sub-region {s.Name} deleted");
         StatusMessage = $"Sub-region {s.Name} deleted — its clusters are unmapped now." + ConflictNote(db);
         Load();

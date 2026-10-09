@@ -5,6 +5,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Microsoft.Win32;
+using PMDashboard.Dialogs;
 using PMDashboard.ViewModels;
 
 namespace PMDashboard.Views;
@@ -123,6 +124,50 @@ public partial class OrgChartPage : UserControl
         if (Vm is not { } vm || e.Data.GetData(typeof(OrgChartPa)) is not OrgChartPa pa) return;
         if (sender is FrameworkElement { Tag: OrgChartPm pm }) vm.MovePa(pa.Id, pm.PmId);
         e.Handled = true;
+    }
+
+    // ── TBD placeholders ──
+
+    private bool TbdReady(OrgChartViewModel vm)
+    {
+        if (vm.TbdBlockedReason is not { Length: > 0 } why) return true;
+        MessageBox.Show(why, "TBD", MessageBoxButton.OK, MessageBoxImage.Information);
+        return false;
+    }
+
+    private void BtnAddTbdPm_Click(object sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm && sender is FrameworkElement { Tag: OrgChartColumn { SubRegionId: { } sub } } && TbdReady(vm)) vm.AddTbdPm(sub);
+    }
+
+    private void BtnAddTbdPa_Click(object sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm && sender is FrameworkElement { Tag: OrgChartPm pm } && TbdReady(vm)) vm.AddTbdPa(pm.PmId);
+    }
+
+    private void BtnFillPm_Click(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm || sender is not FrameworkElement { Tag: OrgChartPm pm } || !TbdReady(vm)) return;
+        var dlg = new AddEditPmDialog(null, new PmMaintenanceViewModel().GetAllPms()) { Owner = Window.GetWindow(this), Title = $"Fill {pm.Name}" };
+        if (dlg.ShowDialog() == true && dlg.Result is { } hired) vm.FillPm(pm.PmId, hired);
+    }
+
+    private void BtnFillPa_Click(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm || sender is not FrameworkElement { Tag: OrgChartPa pa } || !TbdReady(vm)) return;
+        var teams = new TeamsViewModel();
+        var dlg = new TeamMemberDialog(Data.Models.TeamRoles.Pa, null, TeamsViewModel.DefaultRegions, teams.AllSubRegions(), teams.ActivePms())
+            { Owner = Window.GetWindow(this), Title = "Fill TBD PA" };
+        if (dlg.ShowDialog() == true && dlg.Result is { } hired) vm.FillPa(pa.Id, hired);
+    }
+
+    private void BtnRemoveTbd_Click(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm) return;
+        var (pmId, paId) = sender is FrameworkElement { Tag: OrgChartPm pm } ? ((int?)pm.PmId, (int?)null)
+                         : sender is FrameworkElement { Tag: OrgChartPa pa } ? (null, pa.Id) : (null, null);
+        if (vm.RemoveTbd(pmId, paId) is { Length: > 0 } why)
+            MessageBox.Show(why, "Remove TBD", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     // ── Whole-chart drop handling: auto-scroll + "nearest column" fallback ──

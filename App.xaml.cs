@@ -532,6 +532,11 @@ public partial class App : Application
         catch { /* column already exists */ }
         try { db.Database.ExecuteSqlRaw("ALTER TABLE PMs ADD COLUMN OtherSubRegionIds TEXT NOT NULL DEFAULT ''"); }
         catch { /* column already exists */ }
+        // TBD placeholders (a PM or PA still to be hired).
+        try { db.Database.ExecuteSqlRaw("ALTER TABLE PMs ADD COLUMN IsPlaceholder INTEGER NOT NULL DEFAULT 0"); }
+        catch { /* column already exists */ }
+        try { db.Database.ExecuteSqlRaw("ALTER TABLE TeamMembers ADD COLUMN IsPlaceholder INTEGER NOT NULL DEFAULT 0"); }
+        catch { /* column already exists */ }
         // A site can belong to a different sub-region than its campus (split campuses).
         try { db.Database.ExecuteSqlRaw("ALTER TABLE Sites ADD COLUMN SubRegionId INTEGER NULL"); }
         catch { /* column already exists */ }

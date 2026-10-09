@@ -17,6 +17,8 @@ public class OrgChartPa
     public bool   IsChanged { get; init; }   // moved to another PM, not saved yet
     /// <summary>" · supports Sheila Betancourt" — a PA is managed by the PE and supports one PM.</summary>
     public string SupportsText { get; init; } = "";
+    public bool   IsPlaceholder { get; init; }   // TBD — PA still to be hired
+    public bool   IsTeamOnSeveral { get; init; } // their PM covers several sub-regions (green)
 }
 
 public class OrgChartPm
@@ -26,6 +28,8 @@ public class OrgChartPm
     public string           Detail      { get; init; } = "";   // "12 sites · Remote"
     public List<OrgChartPa> Pas         { get; init; } = new();
     public bool             HasPas      => Pas.Count > 0;
+    public bool             IsPlaceholder { get; init; }      // TBD — PM still to be hired
+    public bool             HasSeveralSubRegions { get; init; } // on more than one sub-region (green gradient)
     public bool             HasSeveralPas => Pas.Count > 1;
 
     /// <summary>Campuses the PM currently covers (has assigned, open sites in).</summary>
@@ -62,6 +66,7 @@ public class OrgChartColumn
     public bool              HasPms   => Pms.Count > 0;
     public string            PmCountText => Pms.Count == 1 ? "1 PM" : $"{Pms.Count} PMs";
     public bool              IsNoTeam { get; init; }
+    public bool              CanAddTbd => !IsNoTeam && SubRegionId != null;
     public bool              IsFirst  { get; init; }
     public bool              IsLast   { get; init; }
 }
@@ -260,6 +265,112 @@ public partial class OrgChartViewModel : ObservableObject
         Rebuild();
     }
 
+    // ── TBD placeholders (saved immediately; only when there are no unsaved moves, so a reload
+    //    can't drop them) ──
+
+    /// <summary>"" when TBD actions can run now, else why not.</summary>
+    public string TbdBlockedReason => !CanEdit ? "Only Super Admins and Directors can change teams."
+        : HasChanges ? "Save or cancel your other changes first." : "";
+
+    /// <summary>Adds a TBD PM on a sub-region — assignable like any PM until someone is hired.</summary>
+    public void AddTbdPm(int subRegionId)
+    {
+        if (TbdBlockedReason != "") return;
+        using var db = new AppDbContext();
+        var sub = db.SubRegions.Find(subRegionId);
+        if (sub == null) return;
+        int n = db.PMs.Count(p => p.IsPlaceholder && p.LastName.StartsWith("PM (" + sub.Name + ")")) + 1;
+        var pm = new PM
+        {
+            FirstName = "TBD", LastName = $"PM ({sub.Name})" + (n > 1 ? $" {n}" : ""),
+            DataName = $"tbd.{sub.Name.ToLowerInvariant().Replace(" ", "")}.{n}",
+            GeographicalLocation = sub.Region, HomeOffice = "", IdealUtilization = 80,
+            IsPlaceholder = true, IsActive = true,
+        };
+        db.PMs.Add(pm);
+        db.SaveChanges();
+        PmTeamService.SetSubRegions(db, pm, sub.Id, Array.Empty<int>());
+        db.SaveChanges();
+        AuditService.Log("Create", "PM", pm.Id, $"TBD PM added to {sub.Name} (placeholder)");
+        Load();
+        StatusMessage = $"TBD PM added to {sub.Name}. Assign work to \"{pm.FullName}\" now; use Fill… when someone is hired.";
+    }
+
+    /// <summary>Adds a TBD PA supporting a PM (a PA still to be hired).</summary>
+    public void AddTbdPa(int pmId)
+    {
+        if (TbdBlockedReason != "") return;
+        using var db = new AppDbContext();
+        var pm = db.PMs.Find(pmId);
+        if (pm == null) return;
+        var pa = new TeamMember { Role = TeamRoles.Pa, FirstName = "TBD", LastName = "PA", PmId = pmId, IsPlaceholder = true, IsActive = true };
+        db.TeamMembers.Add(pa);
+        db.SaveChanges();
+        AuditService.Log("Create", "TeamMember", pa.Id, $"TBD PA added to support {pm.FullName} (placeholder)");
+        Load();
+        StatusMessage = $"TBD PA added for {pm.FullName}. Use Fill… when the PA is hired.";
+    }
+
+    /// <summary>Turns a TBD PM into the hired person — same record, so every assignment stays.</summary>
+    public void FillPm(int pmId, PM hired)
+    {
+        if (TbdBlockedReason != "") return;
+        using var db = new AppDbContext();
+        var pm = db.PMs.Find(pmId);
+        if (pm == null || !pm.IsPlaceholder) return;
+        var was = pm.FullName;
+        (pm.FirstName, pm.LastName, pm.DataName, pm.HomeOffice, pm.GeographicalLocation) =
+            (hired.FirstName, hired.LastName, hired.DataName, hired.HomeOffice, hired.GeographicalLocation);
+        (pm.Capacity, pm.IdealUtilization, pm.PmMultiplier, pm.IsActive) = (hired.Capacity, hired.IdealUtilization, hired.PmMultiplier, hired.IsActive);
+        pm.IsPlaceholder = false;
+        db.SaveChanges();
+        AuditService.Log("Update", "PM", pm.Id, $"{was} filled by {pm.FullName}");
+        Load();
+        StatusMessage = $"{was} is now {pm.FullName} — their sub-regions and assignments are unchanged.";
+    }
+
+    /// <summary>Turns a TBD PA into the hired person.</summary>
+    public void FillPa(int paId, TeamMember hired)
+    {
+        if (TbdBlockedReason != "") return;
+        using var db = new AppDbContext();
+        var pa = db.TeamMembers.Find(paId);
+        if (pa == null || !pa.IsPlaceholder) return;
+        (pa.FirstName, pa.LastName, pa.Email, pa.Phone) = (hired.FirstName, hired.LastName, hired.Email, hired.Phone);
+        if (hired.PmId != null) pa.PmId = hired.PmId;
+        pa.IsPlaceholder = false;
+        db.SaveChanges();
+        AuditService.Log("Update", "TeamMember", pa.Id, $"TBD PA filled by {pa.FullName}");
+        Load();
+        StatusMessage = $"TBD PA is now {pa.FullName}.";
+    }
+
+    /// <summary>Removes a TBD (deactivates — sync can't carry deletes). A TBD PM with assigned
+    /// sites can't be removed: Fill it, or reassign its work first.</summary>
+    public string RemoveTbd(int? pmId, int? paId)
+    {
+        if (TbdBlockedReason is { Length: > 0 } why) return why;
+        using var db = new AppDbContext();
+        if (pmId is { } pid && db.PMs.Find(pid) is { IsPlaceholder: true } pm)
+        {
+            int sites = db.Sites.Count(s => s.AssignedPmId == pid);
+            if (sites > 0) return $"{pm.FullName} still has {sites} site(s) assigned. Fill it with the hired PM, or reassign the sites first.";
+            pm.IsActive = false;
+            db.SaveChanges();
+            AuditService.Log("Deactivate", "PM", pm.Id, $"{pm.FullName} removed (placeholder)");
+        }
+        else if (paId is { } aid && db.TeamMembers.Find(aid) is { IsPlaceholder: true } pa)
+        {
+            pa.IsActive = false;
+            db.SaveChanges();
+            AuditService.Log("Deactivate", "TeamMember", pa.Id, "TBD PA removed (placeholder)");
+        }
+        else return "";
+        Load();
+        StatusMessage = "TBD removed.";
+        return "";
+    }
+
     /// <summary>Writes the working copy: PMs via PmTeamService (also re-points their PE), PAs'
     /// PmId. One save, one audit entry per person.</summary>
     public string SaveEdits()
@@ -338,8 +449,9 @@ public partial class OrgChartViewModel : ObservableObject
                 var t = _teams[p.Id];
                 var pas = ShowPas
                     ? _members.Where(m => m.Role == TeamRoles.Pa && _paPm.GetValueOrDefault(m.Id) == p.Id)
-                              .Select(m => new OrgChartPa { Id = m.Id, Name = m.FullName, IsMatch = Match(m.FullName), IsChanged = changedPas.Contains(m.Id),
-                                                          SupportsText = $" · supports {p.FullName}" }).ToList()
+                              .Select(m => new OrgChartPa { Id = m.Id, Name = m.IsPlaceholder ? "TBD" : m.FullName, IsMatch = Match(m.FullName), IsChanged = changedPas.Contains(m.Id),
+                                                          SupportsText = (m.IsPlaceholder ? " to be hired" : "") + $" · supports {p.FullName}",
+                                                          IsPlaceholder = m.IsPlaceholder, IsTeamOnSeveral = t.All.Count() > 1 }).ToList()
                     : new List<OrgChartPa>();
                 bool isDefault = columnSub != null && t.Default == columnSub;
                 string tag = columnSub == null ? ""
@@ -351,6 +463,7 @@ public partial class OrgChartViewModel : ObservableObject
                     PmId = p.Id, Name = p.FullName,
                     Detail = (sites == 1 ? "1 site" : $"{sites} sites") + (string.IsNullOrWhiteSpace(p.HomeOffice) ? "" : $" · {p.HomeOffice}"),
                     Pas = pas, IsLast = i == list.Count - 1,
+                    IsPlaceholder = p.IsPlaceholder, HasSeveralSubRegions = t.All.Count() > 1,
                     Campuses = _campusesByPm.GetValueOrDefault(p.Id) ?? new List<string>(),
                     IsMatch = (isDefault || columnSub == null ? M(p.FullName) : Match(p.FullName)) | pas.Any(a => a.IsMatch),
                     SubRegionId = columnSub, IsDefault = isDefault, TagText = tag,

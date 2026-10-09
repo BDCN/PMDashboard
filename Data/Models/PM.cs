@@ -37,6 +37,11 @@ public class PM
         (csv ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                    .Select(x => int.TryParse(x, out var i) ? i : 0).Where(i => i > 0).Distinct();
 
+    /// <summary>A "TBD" placeholder for a PM still to be hired: assignable like any PM (so work can
+    /// be lined up before the hire), shown as TBD on the Org Chart, and not counted as available
+    /// headcount by the Coverage Planner. "Fill" turns it into the real person, keeping its work.</summary>
+    public bool     IsPlaceholder { get; set; }
+
     public bool     IsActive     { get; set; } = true;
     public DateTime LastModified { get; set; }
 

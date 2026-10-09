@@ -88,7 +88,9 @@ public static class CoverageDataService
         // Forecast site → campus (az), so a forecast site not in the system yet still lands in its
         // campus's sub-region when that campus is split off from its cluster.
         var siteCampus = CampusArrangementService.BuildSiteCampusMap(db);
-        var pms = db.PMs.AsNoTracking().Where(p => p.IsActive)
+        // TBD placeholders aren't headcount: leaving them out makes their work count as
+        // unassigned, so it shows up as a hiring need.
+        var pms = db.PMs.AsNoTracking().Where(p => p.IsActive && !p.IsPlaceholder)
                         .OrderBy(p => p.LastName).ThenBy(p => p.FirstName)
                         .AsEnumerable()
                         .Select(p =>
