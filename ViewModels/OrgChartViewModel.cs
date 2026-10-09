@@ -14,6 +14,7 @@ public class OrgChartPa
     public int    Id      { get; init; }
     public string Name    { get; init; } = "";
     public bool   IsMatch { get; init; }
+    public bool   IsChanged { get; init; }   // moved to another PM, not saved yet
 }
 
 public class OrgChartPm
@@ -23,6 +24,15 @@ public class OrgChartPm
     public string           Detail      { get; init; } = "";   // "12 sites · Remote"
     public List<OrgChartPa> Pas         { get; init; } = new();
     public bool             HasPas      => Pas.Count > 0;
+    public bool             HasSeveralPas => Pas.Count > 1;
+
+    /// <summary>Campuses the PM currently covers (has assigned, open sites in).</summary>
+    public List<string>     Campuses    { get; init; } = new();
+    public bool             HasCampuses => Campuses.Count > 0;
+    public string           CampusHeader => Campuses.Count == 1 ? "Campus: " : $"Campuses ({Campuses.Count}): ";
+    public string           CampusText  => Campuses.Count <= 6 ? string.Join(", ", Campuses)
+                                         : $"{string.Join(", ", Campuses.Take(6))} +{Campuses.Count - 6} more";
+    public string?          CampusTip   => Campuses.Count > 6 ? string.Join(", ", Campuses) : null;
     public bool             IsLast      { get; init; }         // draws the end of the bracket line
     public bool             IsMatch     { get; init; }         // search highlight
     public int?             SubRegionId { get; init; }         // the column this card sits in (null = No team)
@@ -115,6 +125,7 @@ public partial class OrgChartViewModel : ObservableObject
     private List<TeamMember> _members  = new();
     private List<PM>         _pms      = new();
     private Dictionary<int, int>          _siteCounts    = new();
+    private Dictionary<int, List<string>> _campusesByPm  = new();
     private Dictionary<int, List<string>> _clustersBySub = new();
 
     // ── Working copy (edit mode) vs. what's saved ──
@@ -139,6 +150,14 @@ public partial class OrgChartViewModel : ObservableObject
         _siteCounts = db.Sites.AsNoTracking().Where(s => s.AssignedPmId != null && !s.IsClosed)
                         .GroupBy(s => s.AssignedPmId!.Value).Select(g => new { g.Key, N = g.Count() })
                         .ToDictionary(x => x.Key, x => x.N);
+
+        // Campuses each PM currently covers: the campus of every open site assigned to them.
+        var campusNames = db.Campuses.AsNoTracking().ToDictionary(c => c.Id, c => c.Name);
+        _campusesByPm = db.Sites.AsNoTracking().Where(s => s.AssignedPmId != null && !s.IsClosed)
+                          .Select(s => new { Pm = s.AssignedPmId!.Value, s.CampusId, s.Name }).AsEnumerable()
+                          .GroupBy(s => s.Pm)
+                          .ToDictionary(g => g.Key, g => g.Select(s => s.CampusId is { } c && campusNames.TryGetValue(c, out var n) ? n : s.Name)
+                                                          .Distinct().OrderBy(n => n).ToList());
 
         var locs = db.Locations.AsNoTracking().Select(l => new { l.Id, l.Name, l.SubRegionId }).ToList();
         var splitSites = db.Sites.AsNoTracking().Where(st => st.SubRegionId != null)
@@ -317,7 +336,7 @@ public partial class OrgChartViewModel : ObservableObject
                 var t = _teams[p.Id];
                 var pas = ShowPas
                     ? _members.Where(m => m.Role == TeamRoles.Pa && _paPm.GetValueOrDefault(m.Id) == p.Id)
-                              .Select(m => new OrgChartPa { Id = m.Id, Name = m.FullName, IsMatch = Match(m.FullName) }).ToList()
+                              .Select(m => new OrgChartPa { Id = m.Id, Name = m.FullName, IsMatch = Match(m.FullName), IsChanged = changedPas.Contains(m.Id) }).ToList()
                     : new List<OrgChartPa>();
                 bool isDefault = columnSub != null && t.Default == columnSub;
                 string tag = columnSub == null ? ""
@@ -329,6 +348,7 @@ public partial class OrgChartViewModel : ObservableObject
                     PmId = p.Id, Name = p.FullName,
                     Detail = (sites == 1 ? "1 site" : $"{sites} sites") + (string.IsNullOrWhiteSpace(p.HomeOffice) ? "" : $" · {p.HomeOffice}"),
                     Pas = pas, IsLast = i == list.Count - 1,
+                    Campuses = _campusesByPm.GetValueOrDefault(p.Id) ?? new List<string>(),
                     IsMatch = (isDefault || columnSub == null ? M(p.FullName) : Match(p.FullName)) | pas.Any(a => a.IsMatch),
                     SubRegionId = columnSub, IsDefault = isDefault, TagText = tag,
                     IsChanged = changedPms.Contains(p.Id) || pas.Any(a => changedPas.Contains(a.Id)),

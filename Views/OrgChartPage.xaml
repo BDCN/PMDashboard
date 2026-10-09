@@ -202,7 +202,7 @@
                                                         <Border Tag="{Binding}" Background="Transparent" CornerRadius="8"
                                                                 AllowDrop="{Binding DataContext.IsEditMode, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                                 DragOver="Column_DragOver" DragLeave="Column_DragLeave" Drop="Column_Drop">
-                                                        <StackPanel Width="250" Margin="0,0,0,8">
+                                                        <StackPanel MinWidth="250" Margin="0,0,0,8">
                                                             <!-- Horizontal bus: left half hidden on the first column, right half on the last -->
                                                             <Grid Height="18">
                                                                 <Grid.ColumnDefinitions>
@@ -330,10 +330,15 @@
                                                             <ItemsControl ItemsSource="{Binding Pms}" Margin="22,0,10,0">
                                                                 <ItemsControl.ItemTemplate>
                                                                     <DataTemplate>
-                                                                        <Grid>
+                                                                        <!-- One row per PM: bracket stub › PM card (left) › connector › PA card(s) (right).
+                                                                             The whole row accepts a PA drop (moves the PA to this PM). -->
+                                                                        <Grid Tag="{Binding}" Background="Transparent"
+                                                                              AllowDrop="{Binding DataContext.IsEditMode, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                              DragOver="PmCard_DragOver" Drop="PmCard_Drop">
                                                                             <Grid.ColumnDefinitions>
                                                                                 <ColumnDefinition Width="16"/>
-                                                                                <ColumnDefinition Width="*"/>
+                                                                                <ColumnDefinition Width="220"/>
+                                                                                <ColumnDefinition Width="Auto"/>
                                                                             </Grid.ColumnDefinitions>
                                                                             <!-- vertical: full height, or down to the stub on the last card -->
                                                                             <Border Width="2" HorizontalAlignment="Left" Background="{StaticResource LineBrush}">
@@ -351,13 +356,11 @@
                                                                             </Border>
                                                                             <Border Style="{StaticResource HLine}" Margin="0,29,0,0"/>
 
-                                                                            <!-- PM card (click → PM Detail) -->
+                                                                            <!-- PM card (click → PM Detail; drag in edit mode) -->
                                                                             <Border Grid.Column="1" Margin="0,10,0,0" CornerRadius="6" Padding="10,7"
                                                                                     BorderThickness="1,1,1,1" Cursor="Hand"
                                                                                     Tag="{Binding}" MouseLeftButtonUp="PmCard_Click"
-                                                                                    PreviewMouseLeftButtonDown="PmCard_MouseDown" MouseMove="PmCard_MouseMove"
-                                                                                    AllowDrop="{Binding DataContext.IsEditMode, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                                                    DragOver="PmCard_DragOver" Drop="PmCard_Drop">
+                                                                                    PreviewMouseLeftButtonDown="PmCard_MouseDown" MouseMove="PmCard_MouseMove">
                                                                                 <Border.Style>
                                                                                     <Style TargetType="Border">
                                                                                         <Setter Property="BorderBrush" Value="#CBD5E1"/>
@@ -395,48 +398,14 @@
                                                                                     </TextBlock>
                                                                                     <TextBlock Text="{Binding TagText}" FontSize="10.5" Foreground="#2563EB" TextWrapping="Wrap"
                                                                                                Visibility="{Binding HasTag, Converter={StaticResource BoolToVisibility}}"/>
-                                                                                    <!-- PAs -->
-                                                                                    <ItemsControl ItemsSource="{Binding Pas}" Margin="0,4,0,0">
-                                                                                        <ItemsControl.Style>
-                                                                                            <Style TargetType="ItemsControl">
-                                                                                                <Style.Triggers>
-                                                                                                    <DataTrigger Binding="{Binding HasPas}" Value="False">
-                                                                                                        <Setter Property="Visibility" Value="Collapsed"/>
-                                                                                                    </DataTrigger>
-                                                                                                </Style.Triggers>
-                                                                                            </Style>
-                                                                                        </ItemsControl.Style>
-                                                                                        <ItemsControl.ItemsPanel>
-                                                                                            <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
-                                                                                        </ItemsControl.ItemsPanel>
-                                                                                        <ItemsControl.ItemTemplate>
-                                                                                            <DataTemplate>
-                                                                                                <Border Tag="{Binding}" BorderThickness="1"
-                                                                                                        CornerRadius="4" Padding="6,1" Margin="0,2,4,0">
-                                                                                                    <Border.Style>
-                                                                                                        <Style TargetType="Border">
-                                                                                                            <Setter Property="Background" Value="#F5F3FF"/>
-                                                                                                            <Setter Property="BorderBrush" Value="#DDD6FE"/>
-                                                                                                            <Style.Triggers>
-                                                                                                                <DataTrigger Binding="{Binding IsMatch}" Value="True">
-                                                                                                                    <Setter Property="BorderBrush" Value="{StaticResource MatchBrush}"/>
-                                                                                                                </DataTrigger>
-                                                                                                                <DataTrigger Binding="{Binding DataContext.IsEditMode, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="True">
-                                                                                                                    <Setter Property="ToolTip" Value="Drag onto another PM"/>
-                                                                                                                </DataTrigger>
-                                                                                                            </Style.Triggers>
-                                                                                                        </Style>
-                                                                                                    </Border.Style>
-                                                                                                    <TextBlock FontSize="10.5" Foreground="#5B21B6">
-                                                                                                        <Run Text="PA " FontWeight="SemiBold"/><Run Text="{Binding Name, Mode=OneWay}"/>
-                                                                                                    </TextBlock>
-                                                                                                </Border>
-                                                                                            </DataTemplate>
-                                                                                        </ItemsControl.ItemTemplate>
-                                                                                    </ItemsControl>
+                                                                                    <!-- Campuses this PM currently covers -->
+                                                                                    <TextBlock FontSize="10.5" Foreground="#334155" TextWrapping="Wrap" Margin="0,3,0,0"
+                                                                                               ToolTip="{Binding CampusTip}"
+                                                                                               Visibility="{Binding HasCampuses, Converter={StaticResource BoolToVisibility}}">
+                                                                                        <Run Text="{Binding CampusHeader, Mode=OneWay}" FontWeight="SemiBold" Foreground="#64748B"/><Run Text="{Binding CampusText, Mode=OneWay}"/>
+                                                                                    </TextBlock>
                                                                                     <!-- Edit-mode actions -->
-                                                                                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0"
-                                                                                                Visibility="{Binding DataContext.IsEditMode, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVisibility}}">
+                                                                                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0" Visibility="{Binding DataContext.IsEditMode, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVisibility}}">
                                                                                         <Button Content="Move to…" Tag="{Binding}" Click="BtnMoveTo_Click"
                                                                                                 Style="{StaticResource SecondaryButtonStyle}" Padding="6,1" FontSize="10" Margin="0,0,4,0"
                                                                                                 ToolTipService.ToolTip="Pick a sub-region from a list instead of dragging"/>
@@ -450,6 +419,52 @@
                                                                                     </StackPanel>
                                                                                 </StackPanel>
                                                                             </Border>
+
+                                                                            <!-- PA card(s), directly across from their PM -->
+                                                                            <Grid Grid.Column="2" Visibility="{Binding HasPas, Converter={StaticResource BoolToVisibility}}">
+                                                                                <Grid.ColumnDefinitions>
+                                                                                    <ColumnDefinition Width="18"/>
+                                                                                    <ColumnDefinition Width="Auto"/>
+                                                                                </Grid.ColumnDefinitions>
+                                                                                <Border Style="{StaticResource HLine}" Margin="0,29,0,0"/>
+                                                                                <!-- several PAs: a short vertical joins them -->
+                                                                                <Border Width="2" HorizontalAlignment="Right" Margin="0,29,0,31" Background="{StaticResource LineBrush}"
+                                                                                        Visibility="{Binding HasSeveralPas, Converter={StaticResource BoolToVisibility}}"/>
+                                                                                <ItemsControl Grid.Column="1" ItemsSource="{Binding Pas}">
+                                                                                    <ItemsControl.ItemTemplate>
+                                                                                        <DataTemplate>
+                                                                                            <Border Tag="{Binding}" Width="170" Margin="0,10,0,0" CornerRadius="6" Padding="10,7"
+                                                                                                    PreviewMouseLeftButtonDown="PmCard_MouseDown" MouseMove="PmCard_MouseMove">
+                                                                                                <Border.Style>
+                                                                                                    <Style TargetType="Border">
+                                                                                                        <Setter Property="Background" Value="#F5F3FF"/>
+                                                                                                        <Setter Property="BorderBrush" Value="#C4B5FD"/>
+                                                                                                        <Setter Property="BorderThickness" Value="1"/>
+                                                                                                        <Style.Triggers>
+                                                                                                            <DataTrigger Binding="{Binding DataContext.IsEditMode, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="True">
+                                                                                                                <Setter Property="Cursor" Value="SizeAll"/>
+                                                                                                                <Setter Property="ToolTip" Value="Drag onto another PM"/>
+                                                                                                            </DataTrigger>
+                                                                                                            <DataTrigger Binding="{Binding IsChanged}" Value="True">
+                                                                                                                <Setter Property="BorderBrush" Value="#7C3AED"/>
+                                                                                                                <Setter Property="BorderThickness" Value="2"/>
+                                                                                                            </DataTrigger>
+                                                                                                            <DataTrigger Binding="{Binding IsMatch}" Value="True">
+                                                                                                                <Setter Property="BorderBrush" Value="{StaticResource MatchBrush}"/>
+                                                                                                                <Setter Property="BorderThickness" Value="2"/>
+                                                                                                            </DataTrigger>
+                                                                                                        </Style.Triggers>
+                                                                                                    </Style>
+                                                                                                </Border.Style>
+                                                                                                <StackPanel>
+                                                                                                    <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold" Foreground="#4C1D95"/>
+                                                                                                    <TextBlock Text="PA" FontSize="10.5" FontWeight="SemiBold" Foreground="#7C3AED"/>
+                                                                                                </StackPanel>
+                                                                                            </Border>
+                                                                                        </DataTemplate>
+                                                                                    </ItemsControl.ItemTemplate>
+                                                                                </ItemsControl>
+                                                                            </Grid>
                                                                         </Grid>
                                                                     </DataTemplate>
                                                                 </ItemsControl.ItemTemplate>
