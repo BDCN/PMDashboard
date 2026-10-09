@@ -393,6 +393,15 @@
                                                        Fill="#16A34A" SnapsToDevicePixels="True"/>
                                             <Rectangle Width="{Binding RedWidth}"   Height="28"
                                                        Fill="#DC2626" SnapsToDevicePixels="True"/>
+                                            <!-- OSA campuses (campus-level work with no sites) -->
+                                            <Rectangle Width="{Binding OsaWidth}"   Height="28" SnapsToDevicePixels="True">
+                                                <Rectangle.Fill>
+                                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                                        <GradientStop Color="#34D399" Offset="0"/>
+                                                        <GradientStop Color="#059669" Offset="1"/>
+                                                    </LinearGradientBrush>
+                                                </Rectangle.Fill>
+                                            </Rectangle>
 
                                             <!-- Outside label — shown when utilization ≤ 80% -->
                                             <TextBlock Text="{Binding Label}"

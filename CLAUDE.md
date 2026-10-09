@@ -169,6 +169,7 @@ Site name in PmDetail → NavigateToSiteRompsFromPm(siteId, pmId) → SitesPage 
 - **Inside label**: when utilization > 80%, label appears inside bar in white; otherwise outside
 - **Score mode label**: `Score: 11.77 ⚠  ·  65.4% util  ·  34.6% avail  ·  2 sites / 6 ROMPs`
 - **Hover tooltip**: per-status ROMP counts + PM Load, Utilization %, Availability %, Status
+- **OSA campuses**: campuses in the **OSA** cluster are assigned at campus level and usually have no sites, so those PMs read as 0. `WorkloadViewModel` collects them per PM (`RawPmRow.OsaCampuses`, counted as a cluster) and `ApplyScale` adds a green gradient segment (`PmWorkloadRow.OsaWidth`) bringing the bar to ~50% of the longest bar (min 8% when the regular bar is already longer); label/tooltip list the OSA campuses. All three percentage modes.
 - **Click any row** → navigates to PM Detail page
 - **KPI cards (Sites mode)**: Over Capacity, On Target, Under Target, No Capacity Set, Avg Utilisation
 - **KPI cards (Score mode)**: Overloaded (util > threshold), Near Full (≥ nearfull), Has Capacity, No Capacity Set, Avg Utilisation

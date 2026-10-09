@@ -23,6 +23,9 @@ public class PmWorkloadRow
     public double BlueWidth       { get; init; }
     public double GreenWidth      { get; init; }
     public double RedWidth        { get; init; }
+    /// <summary>OSA campus assignments (campus-level, no sites) — their own green segment so the
+    /// PM doesn't read as idle; sized to about half the longest bar.</summary>
+    public double OsaWidth        { get; init; }
     public string Label           { get; init; } = "";
     public string TooltipText     { get; init; } = "";
     public bool   IsHighUtilization => UtilizationPct > 80;
@@ -162,7 +165,8 @@ public partial class WorkloadViewModel : ObservableObject
         double Availability,   // max(0, 1 − utilization)
         string PmStatus,       // Overloaded / Near Full / Has Capacity
         double EffCapacity,    // target_capacity × skill_factor (score mode denominator)
-        int Clusters);         // distinct clusters among this PM's assigned campuses
+        int Clusters,          // distinct clusters among this PM's assigned campuses
+        IReadOnlyList<string> OsaCampuses);   // OSA-cluster campuses assigned to this PM (no sites)
 
     private List<RawPmRow> _rawData = new();
 
@@ -201,6 +205,16 @@ public partial class WorkloadViewModel : ObservableObject
         // attach to). These contribute 0 campuses/ROMPs but must still count as a cluster —
         // without this, a PM whose only assignment is an empty cluster shows "0 clusters" here
         // despite having one on the Assignment page.
+        // OSA: campuses in the OSA cluster are assigned at campus level and usually have no sites,
+        // so site counts/scores show these PMs as idle. Collected separately and drawn as their
+        // own green bar segment (see ApplyScale).
+        var osaByPm = db.Campuses.AsNoTracking()
+            .Where(c => c.AssignedPmId != null && c.Location.Name == "OSA")
+            .Select(c => new { Pm = c.AssignedPmId!.Value, c.Name, c.LocationId })
+            .AsEnumerable()
+            .GroupBy(c => c.Pm)
+            .ToDictionary(g => g.Key, g => (Names: g.Select(c => c.Name).OrderBy(n => n).ToList(), LocId: g.First().LocationId));
+
         var directClustersByPm = db.Locations.AsNoTracking()
             .Where(l => l.AssignedPmId != null && pmIdSet.Contains(l.AssignedPmId!.Value))
             .ToList()
@@ -341,10 +355,12 @@ public partial class WorkloadViewModel : ObservableObject
             var clusterIds = pmSites.Select(s => s.LocationId).ToHashSet();
             if (directClustersByPm.TryGetValue(pm.Id, out var directLocs))
                 foreach (var loc in directLocs) clusterIds.Add(loc.Id);
+            var osa = osaByPm.TryGetValue(pm.Id, out var o) ? o.Names : new List<string>();
+            if (osa.Count > 0) clusterIds.Add(o.LocId);
             int clusterCount = clusterIds.Count;
 
             return new RawPmRow(pm, pmSites.Count, romps.Count, active, util, ideal, cap,
-                                byStatus, pmLoad, avail, pmStatus, effCap, clusterCount);
+                                byStatus, pmLoad, avail, pmStatus, effCap, clusterCount, osa);
         // Site Count Only mode: no capacity/utilization math exists to sort by, so order by
         // raw assigned-site count instead — fewest sites first, same "least loaded at top"
         // convention the other two modes already use.
@@ -451,6 +467,10 @@ public partial class WorkloadViewModel : ObservableObject
         bool scoreMode     = IsScoreMode;
         double maxSiteCount = countMode ? Math.Max(1, _rawData.Max(r => r.Sites)) : 1;
 
+        // Longest regular bar, for sizing OSA segments to about half of it.
+        double BaseWidth(RawPmRow r) => countMode ? r.Sites * scale : Math.Max(0, r.UtilPct) * scale;
+        double longest = Math.Max(1, _rawData.Max(BaseWidth));
+
         Rows = new ObservableCollection<PmWorkloadRow>(
             _rawData.Select(raw =>
             {
@@ -485,6 +505,16 @@ public partial class WorkloadViewModel : ObservableObject
                     fillFracPct = raw.UtilPct;
                 }
 
+                // OSA campuses: green segment bringing the bar to ~50% of the longest (at least a
+                // visible sliver when the PM's regular bar is already longer than that).
+                bool hasOsa = raw.OsaCampuses.Count > 0;
+                double osaWidth = hasOsa ? Math.Max(longest * 0.5 - BaseWidth(raw), longest * 0.08) : 0;
+                if (hasOsa)
+                {
+                    label += $"  ·  OSA: {string.Join(", ", raw.OsaCampuses.Take(4))}" + (raw.OsaCampuses.Count > 4 ? $" +{raw.OsaCampuses.Count - 4}" : "");
+                    fillFracPct = Math.Max(fillFracPct, (BaseWidth(raw) + osaWidth) / longest * 100.0);
+                }
+
                 var statusLines = workloadStatuses
                     .Select(s => $"{s}: {(raw.RompsByStatus.TryGetValue(s, out var c) ? c : 0)} ROMPs")
                     .ToList();
@@ -494,6 +524,7 @@ public partial class WorkloadViewModel : ObservableObject
                 string tooltip = string.Join(Environment.NewLine, statusLines)
                                + Environment.NewLine + "─────────────────"
                                + Environment.NewLine + $"Clusters: {raw.Clusters}"
+                               + (hasOsa ? Environment.NewLine + $"OSA campuses ({raw.OsaCampuses.Count}): {string.Join(", ", raw.OsaCampuses)}" : "")
                                + (countMode
                                    ? Environment.NewLine + $"Assigned sites: {raw.Sites}"
                                    + Environment.NewLine + $"Total ROMPs: {raw.Romps}"
@@ -522,6 +553,7 @@ public partial class WorkloadViewModel : ObservableObject
                     GreenWidth     = countMode ? 0 : (raw.UtilPct > raw.IdealPct
                                         ? Math.Max(0, Math.Min(raw.UtilPct, 100.0) - raw.IdealPct) * scale : 0),
                     RedWidth       = countMode ? 0 : Math.Max(0, raw.UtilPct - 100.0) * scale,
+                    OsaWidth       = osaWidth,
                     Label          = label,
                     TooltipText    = tooltip,
                 };
