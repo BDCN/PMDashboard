@@ -62,8 +62,43 @@ public partial class TeamMemberDialog : Window
             TxtPhone.Text = existing.Phone;
             ChkActive.IsChecked = existing.IsActive;
         }
-        else ChkActive.Visibility = Visibility.Collapsed;
+        else
+        {
+            ChkActive.Visibility = Visibility.Collapsed;
+            _autoEmail = true;   // new person: suggest firstname.lastname@iemfg.com as the name is typed
+        }
+        TxtEmailHint.Visibility = _autoEmail ? Visibility.Visible : Visibility.Collapsed;
         Loaded += (_, _) => TxtFirst.Focus();
+    }
+
+    // ── Email suggestion (new people only) ──
+
+    public const string EmailDomain = "iemfg.com";
+    private bool _autoEmail;        // keep filling the email from the name
+    private bool _settingEmail;     // our own update, not the user typing
+
+    /// <summary>"Mary-Ann O'Neil" → "mary-ann.oneil@iemfg.com" (letters, digits and hyphens only).</summary>
+    public static string SuggestEmail(string first, string last)
+    {
+        static string Part(string s) => new string(s.Trim().ToLowerInvariant().Where(c => char.IsLetterOrDigit(c) || c == '-').ToArray());
+        var f = Part(first); var l = Part(last);
+        return f == "" && l == "" ? "" : $"{string.Join(".", new[] { f, l }.Where(x => x != ""))}@{EmailDomain}";
+    }
+
+    private void Name_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
+    {
+        if (!_autoEmail || TxtEmail == null) return;
+        _settingEmail = true;
+        TxtEmail.Text = SuggestEmail(TxtFirst.Text, TxtLast.Text);
+        _settingEmail = false;
+    }
+
+    private void TxtEmail_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
+    {
+        if (_settingEmail || _existing != null) return;
+        // The user typed in the email: stop overwriting it — unless they cleared it, then resume.
+        _autoEmail = string.IsNullOrWhiteSpace(TxtEmail.Text);
+        if (_autoEmail) Name_TextChanged(sender, e);
     }
 
     public static string RoleName(string role) => role switch

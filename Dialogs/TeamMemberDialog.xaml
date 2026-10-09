@@ -24,15 +24,17 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel>
                         <TextBlock Text="First Name" FontSize="12" FontWeight="SemiBold" Foreground="#374151" Margin="0,0,0,6"/>
-                        <TextBox x:Name="TxtFirst" Style="{StaticResource FormTextBoxStyle}"/>
+                        <TextBox x:Name="TxtFirst" Style="{StaticResource FormTextBoxStyle}" TextChanged="Name_TextChanged"/>
                     </StackPanel>
                     <StackPanel Grid.Column="2">
                         <TextBlock Text="Last Name" FontSize="12" FontWeight="SemiBold" Foreground="#374151" Margin="0,0,0,6"/>
-                        <TextBox x:Name="TxtLast" Style="{StaticResource FormTextBoxStyle}"/>
+                        <TextBox x:Name="TxtLast" Style="{StaticResource FormTextBoxStyle}" TextChanged="Name_TextChanged"/>
                     </StackPanel>
                 </Grid>
                 <TextBlock Text="Email" FontSize="12" FontWeight="SemiBold" Foreground="#374151" Margin="0,0,0,6"/>
-                <TextBox x:Name="TxtEmail" Style="{StaticResource FormTextBoxStyle}" Margin="0,0,0,12"/>
+                <TextBox x:Name="TxtEmail" Style="{StaticResource FormTextBoxStyle}" Margin="0,0,0,4" TextChanged="TxtEmail_TextChanged"/>
+                <TextBlock x:Name="TxtEmailHint" Text="Filled in from the name (firstname.lastname@iemfg.com) — edit it if theirs is different."
+                           FontSize="11" Foreground="#94A3B8" TextWrapping="Wrap" Margin="0,0,0,12"/>
                 <TextBlock Text="Phone" FontSize="12" FontWeight="SemiBold" Foreground="#374151" Margin="0,0,0,6"/>
                 <TextBox x:Name="TxtPhone" Style="{StaticResource FormTextBoxStyle}" Margin="0,0,0,12"/>
             </StackPanel>
