@@ -119,99 +119,7 @@
                     </Button>
 
                     <!-- Expanded nav content (branding removed — now in top header) -->
-                    <DockPanel Grid.Row="1" x:Name="SidebarContent" LastChildFill="False">
-
-                        <Separator DockPanel.Dock="Top" Background="#334155" Margin="16,8,16,16"/>
-
-                        <TextBlock DockPanel.Dock="Top" Text="NAVIGATION" FontSize="10"
-                                   Foreground="#475569" FontWeight="SemiBold"
-                                   Margin="20,0,0,10"/>
-
-                        <!-- Nav items -->
-                        <StackPanel DockPanel.Dock="Top" Margin="10,0">
-                            <RadioButton x:Name="NavWorkload" Content="⬤  Workload"
-                                         GroupName="Nav"
-                                         Style="{StaticResource NavButtonStyle}"
-                                         IsChecked="True"
-                                         Click="NavWorkload_Click"/>
-                            <RadioButton x:Name="NavAssignment" Content="⬤  Assignment"
-                                         GroupName="Nav"
-                                         Style="{StaticResource NavButtonStyle}"
-                                         Click="NavAssignment_Click"/>
-                            <RadioButton x:Name="NavSites" Content="⬤  Sites"
-                                         GroupName="Nav"
-                                         Style="{StaticResource NavButtonStyle}"
-                                         Click="NavSites_Click"/>
-                            <RadioButton x:Name="NavPm" Content="⬤  PM Maintenance"
-                                         GroupName="Nav"
-                                         Style="{StaticResource NavButtonStyle}"
-                                         Click="NavPm_Click"/>
-                            <RadioButton x:Name="NavTeams" Content="⬤  Teams"
-                                         GroupName="Nav"
-                                         Style="{StaticResource NavButtonStyle}"
-                                         Click="NavTeams_Click"/>
-                            <RadioButton x:Name="NavOrgChart" Content="⬤  Org Chart"
-                                         GroupName="Nav"
-                                         Style="{StaticResource NavButtonStyle}"
-                                         Click="NavOrgChart_Click"/>
-                            <RadioButton x:Name="NavReportBuilder" Content="⬤  Report Builder"
-                                         GroupName="Nav"
-                                         Style="{StaticResource NavButtonStyle}"
-                                         Click="NavReportBuilder_Click"/>
-                            <RadioButton x:Name="NavCustomData" Content="⬤  Custom Data"
-                                         GroupName="Nav"
-                                         Style="{StaticResource NavButtonStyle}"
-                                         Click="NavCustomData_Click"/>
-                            <RadioButton x:Name="NavOrders" Content="⬤  Orders (Import)"
-                                         GroupName="Nav"
-                                         Style="{StaticResource NavButtonStyle}"
-                                         Click="NavOrders_Click"/>
-                            <RadioButton x:Name="NavForecastPlanning" Content="⬤  Forecast Planning"
-                                         GroupName="Nav"
-                                         Style="{StaticResource NavButtonStyle}"
-                                         Click="NavForecastPlanning_Click"/>
-                            <RadioButton x:Name="NavForecastTimeline" Content="⬤  Forecast Timeline"
-                                         GroupName="Nav"
-                                         Style="{StaticResource NavButtonStyle}"
-                                         Click="NavForecastTimeline_Click"/>
-                            <RadioButton x:Name="NavCoveragePlanner" Content="⬤  Coverage Planner"
-                                         GroupName="Nav"
-                                         Style="{StaticResource NavButtonStyle}"
-                                         Click="NavCoveragePlanner_Click"/>
-                        </StackPanel>
-
-                        <!-- Config separator + item -->
-                        <Separator DockPanel.Dock="Top" Background="#334155" Margin="16,16,16,0"/>
-                        <TextBlock DockPanel.Dock="Top" Text="CONFIG" FontSize="10"
-                                   Foreground="#475569" FontWeight="SemiBold"
-                                   Margin="20,12,0,6"/>
-                        <StackPanel DockPanel.Dock="Top" Margin="10,0">
-                            <RadioButton x:Name="NavUserManagement" Content="⬤  User Management"
-                                         GroupName="Nav"
-                                         Style="{StaticResource NavButtonStyle}"
-                                         Click="NavUserManagement_Click"/>
-                            <RadioButton x:Name="NavConfig" Content="⬤  Configuration"
-                                         GroupName="Nav"
-                                         Style="{StaticResource NavButtonStyle}"
-                                         Click="NavConfig_Click"/>
-                        </StackPanel>
-
-                        <!-- Filter separator -->
-                        <Separator DockPanel.Dock="Top" Background="#334155" Margin="16,12,16,0"/>
-
-                        <!-- Geographic filter -->
-                        <StackPanel DockPanel.Dock="Top" Margin="16,12,16,0">
-                            <TextBlock Text="GEOGRAPHIC LOCATION" FontSize="9" FontWeight="SemiBold"
-                                       Foreground="#475569" Margin="4,0,0,8"/>
-                            <ComboBox x:Name="CboGeoFilter"
-                                      Style="{StaticResource FormComboBoxStyle}"
-                                      SelectionChanged="CboGeoFilter_SelectionChanged">
-                                <ComboBoxItem Content="All" IsSelected="True"/>
-                                <ComboBoxItem Content="East"/>
-                                <ComboBoxItem Content="Central"/>
-                                <ComboBoxItem Content="West"/>
-                            </ComboBox>
-                        </StackPanel>
+                    <DockPanel Grid.Row="1" x:Name="SidebarContent" LastChildFill="True">
 
                         <!-- ── Cloud sync indicator — pinned to the bottom of the sidebar via
                              DockPanel.Dock="Bottom" (everything else above is "Top", so this is
@@ -273,6 +181,129 @@
                             </Grid>
                         </StackPanel>
 
+
+                        <!-- Everything above the sync indicator scrolls, so short screens can still
+                             reach every page and the region filter. The sync status stays pinned. -->
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                                      PanningMode="VerticalOnly">
+                            <ScrollViewer.Resources>
+                                <!-- Slim dark scrollbar to match the sidebar -->
+                                <Style TargetType="ScrollBar">
+                                    <Setter Property="Width" Value="8"/>
+                                    <Setter Property="MinWidth" Value="8"/>
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="ScrollBar">
+                                                <Track x:Name="PART_Track" IsDirectionReversed="True" Margin="0,2,2,2">
+                                                    <Track.Thumb>
+                                                        <Thumb>
+                                                            <Thumb.Template>
+                                                                <ControlTemplate TargetType="Thumb">
+                                                                    <Border Background="#475569" CornerRadius="3"/>
+                                                                </ControlTemplate>
+                                                            </Thumb.Template>
+                                                        </Thumb>
+                                                    </Track.Thumb>
+                                                </Track>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </ScrollViewer.Resources>
+                            <StackPanel Margin="0,0,0,12">
+                            <Separator Background="#334155" Margin="16,8,16,16"/>
+
+                            <TextBlock Text="NAVIGATION" FontSize="10"
+                                       Foreground="#475569" FontWeight="SemiBold"
+                                       Margin="20,0,0,10"/>
+
+                            <!-- Nav items -->
+                            <StackPanel Margin="10,0">
+                                <RadioButton x:Name="NavWorkload" Content="⬤  Workload"
+                                             GroupName="Nav"
+                                             Style="{StaticResource NavButtonStyle}"
+                                             IsChecked="True"
+                                             Click="NavWorkload_Click"/>
+                                <RadioButton x:Name="NavAssignment" Content="⬤  Assignment"
+                                             GroupName="Nav"
+                                             Style="{StaticResource NavButtonStyle}"
+                                             Click="NavAssignment_Click"/>
+                                <RadioButton x:Name="NavSites" Content="⬤  Sites"
+                                             GroupName="Nav"
+                                             Style="{StaticResource NavButtonStyle}"
+                                             Click="NavSites_Click"/>
+                                <RadioButton x:Name="NavPm" Content="⬤  PM Maintenance"
+                                             GroupName="Nav"
+                                             Style="{StaticResource NavButtonStyle}"
+                                             Click="NavPm_Click"/>
+                                <RadioButton x:Name="NavTeams" Content="⬤  Teams"
+                                             GroupName="Nav"
+                                             Style="{StaticResource NavButtonStyle}"
+                                             Click="NavTeams_Click"/>
+                                <RadioButton x:Name="NavOrgChart" Content="⬤  Org Chart"
+                                             GroupName="Nav"
+                                             Style="{StaticResource NavButtonStyle}"
+                                             Click="NavOrgChart_Click"/>
+                                <RadioButton x:Name="NavReportBuilder" Content="⬤  Report Builder"
+                                             GroupName="Nav"
+                                             Style="{StaticResource NavButtonStyle}"
+                                             Click="NavReportBuilder_Click"/>
+                                <RadioButton x:Name="NavCustomData" Content="⬤  Custom Data"
+                                             GroupName="Nav"
+                                             Style="{StaticResource NavButtonStyle}"
+                                             Click="NavCustomData_Click"/>
+                                <RadioButton x:Name="NavOrders" Content="⬤  Orders (Import)"
+                                             GroupName="Nav"
+                                             Style="{StaticResource NavButtonStyle}"
+                                             Click="NavOrders_Click"/>
+                                <RadioButton x:Name="NavForecastPlanning" Content="⬤  Forecast Planning"
+                                             GroupName="Nav"
+                                             Style="{StaticResource NavButtonStyle}"
+                                             Click="NavForecastPlanning_Click"/>
+                                <RadioButton x:Name="NavForecastTimeline" Content="⬤  Forecast Timeline"
+                                             GroupName="Nav"
+                                             Style="{StaticResource NavButtonStyle}"
+                                             Click="NavForecastTimeline_Click"/>
+                                <RadioButton x:Name="NavCoveragePlanner" Content="⬤  Coverage Planner"
+                                             GroupName="Nav"
+                                             Style="{StaticResource NavButtonStyle}"
+                                             Click="NavCoveragePlanner_Click"/>
+                            </StackPanel>
+
+                            <!-- Config separator + item -->
+                            <Separator Background="#334155" Margin="16,16,16,0"/>
+                            <TextBlock Text="CONFIG" FontSize="10"
+                                       Foreground="#475569" FontWeight="SemiBold"
+                                       Margin="20,12,0,6"/>
+                            <StackPanel Margin="10,0">
+                                <RadioButton x:Name="NavUserManagement" Content="⬤  User Management"
+                                             GroupName="Nav"
+                                             Style="{StaticResource NavButtonStyle}"
+                                             Click="NavUserManagement_Click"/>
+                                <RadioButton x:Name="NavConfig" Content="⬤  Configuration"
+                                             GroupName="Nav"
+                                             Style="{StaticResource NavButtonStyle}"
+                                             Click="NavConfig_Click"/>
+                            </StackPanel>
+
+                            <!-- Filter separator -->
+                            <Separator Background="#334155" Margin="16,12,16,0"/>
+
+                            <!-- Geographic filter -->
+                            <StackPanel Margin="16,12,16,0">
+                                <TextBlock Text="GEOGRAPHIC LOCATION" FontSize="9" FontWeight="SemiBold"
+                                           Foreground="#475569" Margin="4,0,0,8"/>
+                                <ComboBox x:Name="CboGeoFilter"
+                                          Style="{StaticResource FormComboBoxStyle}"
+                                          SelectionChanged="CboGeoFilter_SelectionChanged">
+                                    <ComboBoxItem Content="All" IsSelected="True"/>
+                                    <ComboBoxItem Content="East"/>
+                                    <ComboBoxItem Content="Central"/>
+                                    <ComboBoxItem Content="West"/>
+                                </ComboBox>
+                            </StackPanel>
+                            </StackPanel>
+                        </ScrollViewer>
                     </DockPanel>
                 </Grid>
             </Border>

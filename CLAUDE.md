@@ -144,6 +144,8 @@ Sidebar order (top → bottom): **Workload → Assignment → Sites → PM Maint
 
 Geographic Location filter ComboBox (All / East / Central / West) at the bottom of the sidebar — pushes filter to all relevant VMs via `MainViewModel.OnGeoFilterChanged`.
 
+The nav items, CONFIG section and region filter sit in a vertical `ScrollViewer` (slim dark scrollbar) so short screens can reach everything; the cloud-sync indicator stays pinned at the bottom (`SidebarContent` DockPanel, `LastChildFill="True"`).
+
 Sidebar is **collapsible** via `«` / `»` toggle button (44 px when collapsed). The branding text that was previously in the sidebar has moved to the top header.
 
 App starts on the **Workload** page.
