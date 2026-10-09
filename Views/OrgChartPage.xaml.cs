@@ -125,6 +125,103 @@ public partial class OrgChartPage : UserControl
         e.Handled = true;
     }
 
+    // ── Whole-chart drop handling: auto-scroll + "nearest column" fallback ──
+
+    // Fires (tunnelling) for every drag over the chart, even over a column — scroll when near an edge.
+    private void ChartScroll_PreviewDragOver(object sender, DragEventArgs e)
+    {
+        const double edge = 48, step = 24;
+        var p = e.GetPosition(ChartScroll);
+        if (p.X < edge) ChartScroll.ScrollToHorizontalOffset(ChartScroll.HorizontalOffset - step);
+        else if (p.X > ChartScroll.ViewportWidth - edge) ChartScroll.ScrollToHorizontalOffset(ChartScroll.HorizontalOffset + step);
+        if (p.Y < edge) ChartScroll.ScrollToVerticalOffset(ChartScroll.VerticalOffset - step);
+        else if (p.Y > ChartScroll.ViewportHeight - edge) ChartScroll.ScrollToVerticalOffset(ChartScroll.VerticalOffset + step);
+    }
+
+    // Reached only when no column handled it (pointer over a heading, Director card, gap…).
+    private Border? _fallbackHighlight;
+    private void ChartScroll_DragOver(object sender, DragEventArgs e)
+    {
+        var col = e.Data.GetData(typeof(OrgChartPm)) is OrgChartPm ? ColumnNear(e.GetPosition(ChartRoot)) : null;
+        SetFallbackHighlight(col);
+        e.Effects = col == null ? DragDropEffects.None
+                  : (e.KeyStates & DragDropKeyStates.ControlKey) != 0 ? DragDropEffects.Copy : DragDropEffects.Move;
+        e.Handled = true;
+    }
+
+    private void ChartScroll_DragLeave(object sender, DragEventArgs e) => SetFallbackHighlight(null);
+
+    private void ChartScroll_Drop(object sender, DragEventArgs e)
+    {
+        SetFallbackHighlight(null);
+        if (Vm is not { } vm || e.Data.GetData(typeof(OrgChartPm)) is not OrgChartPm pm) return;
+        if (ColumnNear(e.GetPosition(ChartRoot)) is not { Tag: OrgChartColumn col }) return;
+        bool add = (e.KeyStates & DragDropKeyStates.ControlKey) != 0;
+        vm.MovePm(pm.PmId, pm.SubRegionId, col.IsNoTeam ? null : col.SubRegionId, add && !col.IsNoTeam);
+        e.Handled = true;
+    }
+
+    private void SetFallbackHighlight(Border? col)
+    {
+        if (_fallbackHighlight == col) return;
+        if (_fallbackHighlight != null) _fallbackHighlight.Background = Brushes.Transparent;
+        _fallbackHighlight = col;
+        if (col != null) col.Background = new SolidColorBrush(Color.FromRgb(0xE0, 0xE7, 0xFF));
+    }
+
+    /// <summary>The column whose horizontal span contains the point (within its region's height,
+    /// plus some slack above for the region heading / Director card).</summary>
+    private Border? ColumnNear(Point p)
+    {
+        Border? best = null;
+        double bestDy = double.MaxValue;
+        foreach (var b in Descendants<Border>(ChartRoot).Where(b => b.Tag is OrgChartColumn))
+        {
+            var r = b.TransformToAncestor(ChartRoot).TransformBounds(new Rect(0, 0, b.ActualWidth, b.ActualHeight));
+            if (p.X < r.Left || p.X > r.Right) continue;
+            double dy = p.Y < r.Top ? r.Top - p.Y : p.Y > r.Bottom ? p.Y - r.Bottom : 0;
+            if (dy < bestDy && dy <= 160) { best = b; bestDy = dy; }
+        }
+        return best;
+    }
+
+    private static IEnumerable<T> Descendants<T>(DependencyObject root) where T : DependencyObject
+    {
+        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var c = VisualTreeHelper.GetChild(root, i);
+            if (c is T t) yield return t;
+            foreach (var d in Descendants<T>(c)) yield return d;
+        }
+    }
+
+    // ── "Move to…" — the same moves without dragging ──
+
+    private void BtnMoveTo_Click(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm || sender is not Button { Tag: OrgChartPm pm } btn) return;
+        var menu = new ContextMenu { PlacementTarget = btn, Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom };
+        var move = new MenuItem { Header = "Move to (makes it their default)" };
+        var also = new MenuItem { Header = "Also cover (add)" };
+        foreach (var (id, name, region) in vm.SubRegionChoices())
+        {
+            var label = $"{region} › {name}";
+            var m = new MenuItem { Header = label, IsEnabled = id != pm.SubRegionId };
+            m.Click += (_, _) => vm.MovePm(pm.PmId, pm.SubRegionId, id, add: false);
+            move.Items.Add(m);
+            var a = new MenuItem { Header = label };
+            a.Click += (_, _) => vm.MovePm(pm.PmId, pm.SubRegionId, id, add: true);
+            also.Items.Add(a);
+        }
+        var none = new MenuItem { Header = "No team (take off every team)" };
+        none.Click += (_, _) => vm.MovePm(pm.PmId, pm.SubRegionId, null, add: false);
+        menu.Items.Add(move);
+        menu.Items.Add(also);
+        menu.Items.Add(new Separator());
+        menu.Items.Add(none);
+        menu.IsOpen = true;
+    }
+
     private static T? FindTag<T>(DependencyObject? d) where T : class
     {
         for (; d != null; d = d is Visual or System.Windows.Media.Media3D.Visual3D ? VisualTreeHelper.GetParent(d) : LogicalTreeHelper.GetParent(d))

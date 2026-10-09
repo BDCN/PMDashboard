@@ -209,6 +209,12 @@ public partial class OrgChartViewModel : ObservableObject
         Rebuild();
     }
 
+    /// <summary>Every sub-region, for the card's "Move to…" menu (region order, then name).</summary>
+    public List<(int Id, string Name, string Region)> SubRegionChoices() =>
+        _subs.OrderBy(s => Array.IndexOf(TeamsViewModel.DefaultRegions, s.Region) is var i && i >= 0 ? i : 99)
+             .ThenBy(s => s.Region).ThenBy(s => s.Name)
+             .Select(s => (s.Id, s.Name, s.Region)).ToList();
+
     public void MakeDefault(int pmId, int subId)
     {
         if (!IsEditMode || !_teams.TryGetValue(pmId, out var t) || t.Default == subId) return;
