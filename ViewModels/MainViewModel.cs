@@ -6,6 +6,7 @@ public partial class MainViewModel : ObservableObject
 {
     private readonly PmMaintenanceViewModel _pmVm         = new();
     private readonly TeamsViewModel         _teamsVm      = new();
+    private readonly OrgChartViewModel      _orgChartVm   = new();
     private readonly SitesViewModel         _sitesVm      = new();
     private readonly OrdersViewModel        _ordersVm     = new();
     private readonly WorkloadViewModel      _workloadVm   = new();
@@ -56,6 +57,7 @@ public partial class MainViewModel : ObservableObject
                 else if (CurrentPage == _pmDetailVm)   _pmDetailVm.Load(_pmDetailVm.CurrentPmId);
                 else if (CurrentPage == _coveragePlannerVm) _coveragePlannerVm.Load();
                 else if (CurrentPage == _teamsVm)      _teamsVm.Load();
+                else if (CurrentPage == _orgChartVm)   _orgChartVm.Load();
             }
             catch { /* a background refresh must never crash the app — next navigation reloads */ }
         });
@@ -67,12 +69,22 @@ public partial class MainViewModel : ObservableObject
         _workloadVm.ApplyGeoFilter(value);
         _forecastTimelineVm.ApplyGeoFilter(value);
         if (CurrentPage == _coveragePlannerVm) _coveragePlannerVm.ApplyGeoFilter(value);
+        _orgChartVm.ApplyGeoFilter(value);
     }
 
     public void NavigateToPm()
     {
         _pmVm.ApplyGeoFilter(GeoFilter);
         CurrentPage = _pmVm;
+    }
+
+    public void NavigateToOrgChart()
+    {
+        _orgChartVm.OpenPm    = id => NavigateToPmDetail(id, NavigateToOrgChart, "← Back to Org Chart");
+        _orgChartVm.OpenTeams = NavigateToTeams;
+        _orgChartVm.ApplyGeoFilter(GeoFilter);
+        _orgChartVm.Load();
+        CurrentPage = _orgChartVm;
     }
 
     public void NavigateToTeams()
@@ -148,9 +160,13 @@ public partial class MainViewModel : ObservableObject
         CurrentPage = _assignmentVm;
     }
 
-    public void NavigateToPmDetail(int pmId)
+    public void NavigateToPmDetail(int pmId) => NavigateToPmDetail(pmId, NavigateToWorkload, "← Back to Workload");
+
+    /// <summary>PM Detail with a page-specific Back button (e.g. back to the Org Chart).</summary>
+    public void NavigateToPmDetail(int pmId, Action back, string backLabel)
     {
-        _pmDetailVm.NavigateBack        = NavigateToWorkload;
+        _pmDetailVm.NavigateBack        = back;
+        _pmDetailVm.BackLabel           = backLabel;
         _pmDetailVm.NavigateToSiteRomps = siteId => NavigateToSiteRompsFromPm(siteId, pmId);
         _pmDetailVm.Load(pmId);
         CurrentPage = _pmDetailVm;
@@ -164,7 +180,9 @@ public partial class MainViewModel : ObservableObject
     {
         _sitesVm.BackButtonLabel   = $"← {_pmDetailVm.PmName}";
         _sitesVm.HasBackButton     = true;
-        _sitesVm.NavigateBackAction = () => NavigateToPmDetail(pmId);
+        var pmBack = _pmDetailVm.NavigateBack ?? NavigateToWorkload;
+        var pmBackLabel = _pmDetailVm.BackLabel;
+        _sitesVm.NavigateBackAction = () => NavigateToPmDetail(pmId, pmBack, pmBackLabel);
         _sitesVm.NavigateDirectToSiteRomps(siteId);
         CurrentPage = _sitesVm;
     }

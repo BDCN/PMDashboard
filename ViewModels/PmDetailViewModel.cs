@@ -97,6 +97,9 @@ public partial class PmDetailViewModel : ObservableObject
         $"{EffectiveCapacity:F1}";
 
     public Action?        NavigateBack       { get; set; }
+
+    /// <summary>Back button text — depends on where PM Detail was opened from.</summary>
+    [ObservableProperty] private string _backLabel = "← Back to Workload";
     public Action<int>?   NavigateToSiteRomps { get; set; }   // called with SiteId when user clicks a site row
 
     private int _currentPmId;

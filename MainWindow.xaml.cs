@@ -36,6 +36,7 @@ public partial class MainWindow : Window
                 SitesViewModel            => NavSites,
                 PmMaintenanceViewModel    => NavPm,
                 TeamsViewModel            => NavTeams,
+                OrgChartViewModel         => NavOrgChart,
                 ReportBuilderViewModel    => NavReportBuilder,
                 CustomDataViewModel       => NavCustomData,
                 OrdersViewModel           => NavOrders,
@@ -232,6 +233,7 @@ public partial class MainWindow : Window
 
     private void NavPm_Click(object sender, RoutedEventArgs e)       => _vm.NavigateToPm();
     private void NavTeams_Click(object sender, RoutedEventArgs e)    => _vm.NavigateToTeams();
+    private void NavOrgChart_Click(object sender, RoutedEventArgs e) => _vm.NavigateToOrgChart();
     private void NavSites_Click(object sender, RoutedEventArgs e)    => _vm.NavigateToSites();
     private void NavOrders_Click(object sender, RoutedEventArgs e)   => _vm.NavigateToOrders();
     private void NavForecastPlanning_Click(object sender, RoutedEventArgs e) => _vm.NavigateToForecastPlanning();

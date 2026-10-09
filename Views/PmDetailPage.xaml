@@ -21,7 +21,7 @@
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <Button Grid.Column="0" Content="← Back to Workload" HorizontalAlignment="Left"
+                <Button Grid.Column="0" Content="{Binding BackLabel}" HorizontalAlignment="Left"
                         Style="{StaticResource SecondaryButtonStyle}"
                         Padding="12,6" FontSize="12"
                         Click="BtnBack_Click"/>

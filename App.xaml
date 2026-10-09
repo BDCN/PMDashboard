@@ -418,6 +418,9 @@
             <DataTemplate DataType="{x:Type vm:TeamsViewModel}">
                 <views:TeamsPage/>
             </DataTemplate>
+            <DataTemplate DataType="{x:Type vm:OrgChartViewModel}">
+                <views:OrgChartPage/>
+            </DataTemplate>
             <DataTemplate DataType="{x:Type vm:SitesViewModel}">
                 <views:SitesPage/>
             </DataTemplate>

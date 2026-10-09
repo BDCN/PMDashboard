@@ -150,6 +150,10 @@
                                          GroupName="Nav"
                                          Style="{StaticResource NavButtonStyle}"
                                          Click="NavTeams_Click"/>
+                            <RadioButton x:Name="NavOrgChart" Content="⬤  Org Chart"
+                                         GroupName="Nav"
+                                         Style="{StaticResource NavButtonStyle}"
+                                         Click="NavOrgChart_Click"/>
                             <RadioButton x:Name="NavReportBuilder" Content="⬤  Report Builder"
                                          GroupName="Nav"
                                          Style="{StaticResource NavButtonStyle}"
