@@ -266,80 +266,87 @@
                                                                         </Style.Triggers>
                                                                     </Style>
                                                                 </Border.Style>
-                                                                <StackPanel>
-                                                                    <DockPanel>
-                                                                        <TextBlock DockPanel.Dock="Right" Text="{Binding PmCountText}" FontSize="10"
-                                                                                   VerticalAlignment="Center">
+                                                                <Grid>
+                                                                <StackPanel Margin="0,0,78,0">
+                                                                        <DockPanel>
+                                                                            <TextBlock Text="{Binding Title}" FontSize="14" FontWeight="Bold">
+                                                                                <TextBlock.Style>
+                                                                                    <Style TargetType="TextBlock">
+                                                                                        <Setter Property="Foreground" Value="White"/>
+                                                                                        <Style.Triggers>
+                                                                                            <DataTrigger Binding="{Binding IsNoTeam}" Value="True">
+                                                                                                <Setter Property="Foreground" Value="#92400E"/>
+                                                                                            </DataTrigger>
+                                                                                        </Style.Triggers>
+                                                                                    </Style>
+                                                                                </TextBlock.Style>
+                                                                            </TextBlock>
+                                                                        </DockPanel>
+                                                                        <!-- PE line (not on the No-team column) -->
+                                                                        <TextBlock TextWrapping="Wrap" Margin="0,3,0,0">
                                                                             <TextBlock.Style>
                                                                                 <Style TargetType="TextBlock">
-                                                                                    <Setter Property="Foreground" Value="#BFDBFE"/>
                                                                                     <Style.Triggers>
                                                                                         <DataTrigger Binding="{Binding IsNoTeam}" Value="True">
-                                                                                            <Setter Property="Foreground" Value="#B45309"/>
+                                                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                                                        </DataTrigger>
+                                                                                    </Style.Triggers>
+                                                                                </Style>
+                                                                            </TextBlock.Style>
+                                                                            <Run Text="PE  " FontSize="10" FontWeight="SemiBold" Foreground="#BFDBFE"/>
+                                                                            <Run Text="{Binding PeText, Mode=OneWay}" FontSize="13" FontWeight="SemiBold" Foreground="White"/>
+                                                                        </TextBlock>
+                                                                        <TextBlock Text="PMs not on any sub-region — they can only take clusters with no sub-region"
+                                                                                   FontSize="10" Foreground="#B45309" TextWrapping="Wrap" Margin="0,3,0,0">
+                                                                            <TextBlock.Style>
+                                                                                <Style TargetType="TextBlock">
+                                                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                                                    <Style.Triggers>
+                                                                                        <DataTrigger Binding="{Binding IsNoTeam}" Value="True">
+                                                                                            <Setter Property="Visibility" Value="Visible"/>
                                                                                         </DataTrigger>
                                                                                     </Style.Triggers>
                                                                                 </Style>
                                                                             </TextBlock.Style>
                                                                         </TextBlock>
-                                                                        <TextBlock Text="{Binding Title}" FontSize="14" FontWeight="Bold">
+                                                                        <TextBlock Text="{Binding Clusters}" FontSize="10" Foreground="#DBEAFE"
+                                                                                   TextWrapping="Wrap" Margin="0,4,0,0">
                                                                             <TextBlock.Style>
                                                                                 <Style TargetType="TextBlock">
-                                                                                    <Setter Property="Foreground" Value="White"/>
                                                                                     <Style.Triggers>
-                                                                                        <DataTrigger Binding="{Binding IsNoTeam}" Value="True">
-                                                                                            <Setter Property="Foreground" Value="#92400E"/>
+                                                                                        <DataTrigger Binding="{Binding HasClusters}" Value="False">
+                                                                                            <Setter Property="Visibility" Value="Collapsed"/>
                                                                                         </DataTrigger>
                                                                                     </Style.Triggers>
                                                                                 </Style>
                                                                             </TextBlock.Style>
                                                                         </TextBlock>
-                                                                    </DockPanel>
-                                                                    <!-- PE line (not on the No-team column) -->
-                                                                    <TextBlock TextWrapping="Wrap" Margin="0,3,0,0">
-                                                                        <TextBlock.Style>
-                                                                            <Style TargetType="TextBlock">
-                                                                                <Style.Triggers>
-                                                                                    <DataTrigger Binding="{Binding IsNoTeam}" Value="True">
-                                                                                        <Setter Property="Visibility" Value="Collapsed"/>
-                                                                                    </DataTrigger>
-                                                                                </Style.Triggers>
-                                                                            </Style>
-                                                                        </TextBlock.Style>
-                                                                        <Run Text="PE  " FontSize="10" FontWeight="SemiBold" Foreground="#BFDBFE"/>
-                                                                        <Run Text="{Binding PeText, Mode=OneWay}" FontSize="13" FontWeight="SemiBold" Foreground="White"/>
-                                                                    </TextBlock>
-                                                                    <TextBlock Text="PMs not on any sub-region — they can only take clusters with no sub-region"
-                                                                               FontSize="10" Foreground="#B45309" TextWrapping="Wrap" Margin="0,3,0,0">
-                                                                        <TextBlock.Style>
-                                                                            <Style TargetType="TextBlock">
-                                                                                <Setter Property="Visibility" Value="Collapsed"/>
-                                                                                <Style.Triggers>
-                                                                                    <DataTrigger Binding="{Binding IsNoTeam}" Value="True">
-                                                                                        <Setter Property="Visibility" Value="Visible"/>
-                                                                                    </DataTrigger>
-                                                                                </Style.Triggers>
-                                                                            </Style>
-                                                                        </TextBlock.Style>
-                                                                    </TextBlock>
-                                                                    <TextBlock Text="{Binding Clusters}" FontSize="10" Foreground="#DBEAFE"
-                                                                               TextWrapping="Wrap" Margin="0,4,0,0">
-                                                                        <TextBlock.Style>
-                                                                            <Style TargetType="TextBlock">
-                                                                                <Style.Triggers>
-                                                                                    <DataTrigger Binding="{Binding HasClusters}" Value="False">
-                                                                                        <Setter Property="Visibility" Value="Collapsed"/>
-                                                                                    </DataTrigger>
-                                                                                </Style.Triggers>
-                                                                            </Style>
-                                                                        </TextBlock.Style>
-                                                                    </TextBlock>
-                                                                    <StackPanel Margin="0,6,0,0" Visibility="{Binding DataContext.IsEditMode, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVisibility}}">
-                                                                        <Button Content="+ TBD PM" Tag="{Binding}" Click="BtnAddTbdPm_Click" HorizontalAlignment="Left"
-                                                                                Style="{StaticResource SecondaryButtonStyle}" Padding="6,1" FontSize="10"
-                                                                                ToolTipService.ToolTip="Add a placeholder PM (to be hired) to this sub-region — work can be assigned to it now"
-                                                                                Visibility="{Binding CanAddTbd, Converter={StaticResource BoolToVisibility}}"/>
+                                                                        <StackPanel Margin="0,6,0,0" Visibility="{Binding DataContext.IsEditMode, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVisibility}}">
+                                                                            <Button Content="+ TBD PM" Tag="{Binding}" Click="BtnAddTbdPm_Click" HorizontalAlignment="Left"
+                                                                                    Style="{StaticResource SecondaryButtonStyle}" Padding="6,1" FontSize="10"
+                                                                                    ToolTipService.ToolTip="Add a placeholder PM (to be hired) to this sub-region — work can be assigned to it now"
+                                                                                    Visibility="{Binding CanAddTbd, Converter={StaticResource BoolToVisibility}}"/>
+                                                                        </StackPanel>
                                                                     </StackPanel>
-                                                                </StackPanel>
+                                                                    <!-- PMs, then TBD PMs, then PAs (· TBD PAs) -->
+                                                                            <StackPanel HorizontalAlignment="Right" VerticalAlignment="Top">
+                                                                                <StackPanel.Resources>
+                                                                                    <Style TargetType="TextBlock">
+                                                                                        <Setter Property="FontSize" Value="10"/>
+                                                                                        <Setter Property="HorizontalAlignment" Value="Right"/>
+                                                                                        <Setter Property="Foreground" Value="#BFDBFE"/>
+                                                                                        <Style.Triggers>
+                                                                                            <DataTrigger Binding="{Binding IsNoTeam}" Value="True">
+                                                                                                <Setter Property="Foreground" Value="#B45309"/>
+                                                                                            </DataTrigger>
+                                                                                        </Style.Triggers>
+                                                                                    </Style>
+                                                                                </StackPanel.Resources>
+                                                                                <TextBlock Text="{Binding PmCountText}"/>
+                                                                                <TextBlock Text="{Binding TbdPmText}"/>
+                                                                                <TextBlock Text="{Binding PaCountText}"/>
+                                                                            </StackPanel>
+                                                                </Grid>
                                                             </Border>
 
                                                             <!-- PMs: bracket line down the left, one stub per card -->

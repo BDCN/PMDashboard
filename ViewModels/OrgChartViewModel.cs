@@ -65,6 +65,13 @@ public class OrgChartColumn
     public List<OrgChartPm>  Pms      { get; init; } = new();
     public bool              HasPms   => Pms.Count > 0;
     public string            PmCountText => Pms.Count == 1 ? "1 PM" : $"{Pms.Count} PMs";
+    // Under the PM count: how many of those are TBD, and the PAs (with their TBDs). PAs are counted
+    // from every PM card in the column, PA chips hidden or not.
+    public int               TbdPmCount  => Pms.Count(p => p.IsPlaceholder);
+    public int               PaCount     { get; init; }
+    public int               TbdPaCount  { get; init; }
+    public string            TbdPmText   => $"{TbdPmCount} TBD PM{(TbdPmCount == 1 ? "" : "s")}";
+    public string            PaCountText => $"{PaCount} PA{(PaCount == 1 ? "" : "s")} · {TbdPaCount} TBD";
     public bool              IsNoTeam { get; init; }
     public bool              CanAddTbd => !IsNoTeam && SubRegionId != null;
     public bool              IsFirst  { get; init; }
@@ -472,6 +479,13 @@ public partial class OrgChartViewModel : ObservableObject
             }).ToList();
         }
 
+        // Active PAs supporting the PMs on these cards (independent of the "PAs" display toggle).
+        IEnumerable<TeamMember> PasFor(IEnumerable<OrgChartPm> cards)
+        {
+            var ids = cards.Select(c => c.PmId).ToHashSet();
+            return _members.Where(m => m.Role == TeamRoles.Pa && _paPm.GetValueOrDefault(m.Id) is { } pid && ids.Contains(pid));
+        }
+
         var regions = new List<OrgChartRegion>();
         foreach (var region in regionNames)
         {
@@ -498,6 +512,8 @@ public partial class OrgChartViewModel : ObservableObject
             {
                 SubRegionId = c.Sub, Title = c.Title, Pes = c.Pes, PeMatch = c.Pes.Any(n => M(n)), Clusters = c.Clusters,
                 Pms = c.Pms, IsNoTeam = c.NoTeam, IsFirst = i == 0, IsLast = i == cols.Count - 1,
+                PaCount    = PasFor(c.Pms).Count(),
+                TbdPaCount = PasFor(c.Pms).Count(m => m.IsPlaceholder),
             }).ToList();
 
             int pmCount = _pms.Count(p => InRegion(RegionOf(p)) || (_teams[p.Id].Default == null && InRegion(p.GeographicalLocation ?? "")));

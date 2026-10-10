@@ -183,16 +183,91 @@ public partial class CoveragePlannerViewModel : ObservableObject
         if (_plan == null) Load(); else Rebuild();
     }
 
+    // ── Period filter (calendar quarters) ──
+
+    /// <summary>A planning window: All = the configured horizon from today; the others are
+    /// calendar-quarter windows. End is exclusive.</summary>
+    public record CoveragePeriod(string Key, string Label, DateTime? Start, DateTime? End)
+    {
+        public override string ToString() => Label;
+    }
+
+    [ObservableProperty] private List<CoveragePeriod> _periods = new();
+    [ObservableProperty] private CoveragePeriod? _selectedPeriod;
+    [ObservableProperty] private string _currentQuarterText = "";
+    [ObservableProperty] private string _periodText = "";
+
+    partial void OnSelectedPeriodChanged(CoveragePeriod? value)
+    {
+        if (_inputs != null && value != null) Replan();
+    }
+
+    public static DateTime QuarterStart(DateTime d) => new(d.Year, (d.Month - 1) / 3 * 3 + 1, 1);
+    public static string QuarterName(DateTime qStart) => $"Q{(qStart.Month - 1) / 3 + 1} {qStart.Year}";
+
+    private void BuildPeriods(DateTime today)
+    {
+        var cur  = QuarterStart(today);
+        var next = cur.AddMonths(3);
+        string Range(DateTime from, int quarters) =>
+            quarters == 1 ? QuarterName(from)
+            : from.Year == from.AddMonths(3 * (quarters - 1)).Year
+                ? $"Q{(from.Month - 1) / 3 + 1}–{QuarterName(from.AddMonths(3 * (quarters - 1)))}"
+                : $"{QuarterName(from)} – {QuarterName(from.AddMonths(3 * (quarters - 1)))}";
+        var list = new List<CoveragePeriod>
+        {
+            new("all",  "All (full horizon)", null, null),
+            new("cur",  $"Current quarter ({QuarterName(cur)})", today.Date, next),
+            new("n1",   $"Next quarter ({QuarterName(next)})", next, next.AddMonths(3)),
+        };
+        for (int n = 2; n <= 4; n++)
+            list.Add(new($"n{n}", $"Next {n} quarters ({Range(next, n)})", next, next.AddMonths(3 * n)));
+        var prevKey = SelectedPeriod?.Key ?? "all";
+        Periods = list;
+        // Set the field directly — Load() replans once below rather than per property change.
+#pragma warning disable MVVMTK0034
+        _selectedPeriod = list.FirstOrDefault(p => p.Key == prevKey) ?? list[0];
+#pragma warning restore MVVMTK0034
+        OnPropertyChanged(nameof(SelectedPeriod));
+
+        int daysLeft = (next - today.Date).Days;
+        CurrentQuarterText = $"Current quarter: {QuarterName(cur)}  ·  {cur:MMM d} – {next.AddDays(-1):MMM d, yyyy}  ·  {daysLeft} day{(daysLeft == 1 ? "" : "s")} left";
+    }
+
+    /// <summary>The model settings narrowed to the selected period.</summary>
+    private PlannerSettings SettingsForPeriod(PlannerSettings s)
+    {
+        if (SelectedPeriod is not { Start: { } start, End: { } end }) return s;
+        var first = CoveragePlanner.WeekStart(start);
+        int weeks = Math.Max(1, (int)Math.Ceiling((end - first).TotalDays / 7.0));
+        return s with { StartDate = start, HorizonWeeks = weeks };
+    }
+
+    private void Replan()
+    {
+        if (_inputs is not { } inp) return;
+        var s = SettingsForPeriod(inp.Settings);
+        _plan = CoveragePlanner.Plan(inp.Packages, inp.Pms, s);
+        PeriodText = SelectedPeriod is { Start: { } a, End: { } b }
+            ? $"Showing {SelectedPeriod.Label}: {a:MMM d} – {b.AddDays(-1):MMM d, yyyy}"
+            : $"Showing all: {inp.Settings.HorizonWeeks} weeks from {_plan.WeekStarts[0]:MMM d, yyyy}";
+        Rebuild();
+    }
+
     public void Load()
     {
         try
         {
             _inputs = CoverageDataService.Load();
-            _plan   = CoveragePlanner.Plan(_inputs.Packages, _inputs.Pms, _inputs.Settings);
+            BuildPeriods(_inputs.Settings.Today);
+            _plan   = CoveragePlanner.Plan(_inputs.Packages, _inputs.Pms, SettingsForPeriod(_inputs.Settings));
             var s   = _inputs.Settings;
             SettingsSummary =
                 $"Capacity {s.CapacityPerPm:0.##} per PM  ·  build {s.BuildWeight:0.##}/day  ·  CX {s.CxWeight:0.##}/day  ·  " +
-                $"CX window {s.CxWindowDays} days  ·  hire {s.HireLeadDays} days ahead  ·  {s.HorizonWeeks} weeks from {_plan.WeekStarts[0]:yyyy-MM-dd}";
+                $"CX window {s.CxWindowDays} days  ·  hire {s.HireLeadDays} days ahead  ·  horizon {s.HorizonWeeks} weeks";
+            PeriodText = SelectedPeriod is { Start: { } a, End: { } b }
+                ? $"Showing {SelectedPeriod.Label}: {a:MMM d} – {b.AddDays(-1):MMM d, yyyy}"
+                : $"Showing all: {s.HorizonWeeks} weeks from {_plan.WeekStarts[0]:MMM d, yyyy}";
             DataSummary = _inputs.SkippedRows > 0
                 ? $"{_inputs.Packages.Count} site windows from the forecast  ·  {_inputs.SkippedRows:N0} forecast rows skipped (no usable NBD/PFHO)"
                 : $"{_inputs.Packages.Count} site windows from the forecast";

@@ -44,7 +44,8 @@ public record PlannerSettings(
     int      CxWindowDays,
     int      HireLeadDays,
     DateTime Today,
-    int      HorizonWeeks);
+    int      HorizonWeeks,
+    DateTime? StartDate = null);   // plan from here instead of Today (a future period); Today still drives "overdue"
 
 public record PmSchedule(
     PlannerPm              Pm,
@@ -156,7 +157,7 @@ public static class CoveragePlanner
         IReadOnlyList<PlannerPm>   pms,
         PlannerSettings            s)
     {
-        var first = WeekStart(s.Today);
+        var first = WeekStart(s.StartDate ?? s.Today);
         var weeks = Enumerable.Range(0, Math.Max(1, s.HorizonWeeks)).Select(i => first.AddDays(7 * i)).ToArray();
         var horizonEnd = weeks[^1].AddDays(7);
 

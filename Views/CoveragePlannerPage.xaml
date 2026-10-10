@@ -69,9 +69,25 @@
                     </Binding>
                 </Button.Visibility>
             </Button>
+            <!-- Period: All, or a calendar-quarter window -->
+            <StackPanel DockPanel.Dock="Right" Margin="0,0,16,0" VerticalAlignment="Top">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Period" FontSize="12" FontWeight="SemiBold" Foreground="#374151"
+                               VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <ComboBox ItemsSource="{Binding Periods}" SelectedItem="{Binding SelectedPeriod, Mode=TwoWay}"
+                              Width="250" Height="32" Style="{StaticResource FormComboBoxStyle}"
+                              ToolTip="Calculate coverage for the whole horizon, or just a calendar quarter (or several)"/>
+                </StackPanel>
+                <TextBlock Text="{Binding PeriodText}" FontSize="11" Foreground="#64748B" Margin="0,4,0,0" HorizontalAlignment="Right"/>
+            </StackPanel>
             <StackPanel>
                 <TextBlock Text="Coverage Planner" FontSize="22" FontWeight="Bold"
                            Foreground="#0F172A" FontFamily="Segoe UI Semibold"/>
+                <!-- Current quarter badge -->
+                <Border Background="#EFF6FF" BorderBrush="#BFDBFE" BorderThickness="1" CornerRadius="6"
+                        Padding="10,4" Margin="0,6,0,2" HorizontalAlignment="Left">
+                    <TextBlock Text="{Binding CurrentQuarterText}" FontSize="12" FontWeight="SemiBold" Foreground="#1D4ED8"/>
+                </Border>
                 <TextBlock Text="{Binding SettingsSummary}" FontSize="12" Foreground="#64748B" Margin="0,4,0,0"
                            TextWrapping="Wrap"
                            ToolTip="Change these on the Configuration page → Coverage Planning"/>
