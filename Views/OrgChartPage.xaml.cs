@@ -6,6 +6,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Microsoft.Win32;
 using PMDashboard.Dialogs;
+using PMDashboard.Services;
 using PMDashboard.ViewModels;
 
 namespace PMDashboard.Views;
@@ -294,41 +295,93 @@ public partial class OrgChartPage : UserControl
         vm.Zoom = Math.Clamp(Math.Round(available / natural, 2), 0.3, 1.5);
     }
 
-    /// <summary>Saves the whole chart (not just the visible part) as a PNG, at full size regardless of zoom.</summary>
+    /// <summary>
+    /// The whole chart (not just the visible part) at full size regardless of zoom, optionally with
+    /// a title strip on top. The brush draws ChartRoot as it appears on screen — already scaled by
+    /// the zoom (its LayoutTransform) — so the zoom is divided out.
+    /// </summary>
+    private BitmapSource? RenderChart(double maxScale, string? header)
+    {
+        ChartRoot.UpdateLayout();
+        var w = ChartRoot.ActualWidth;   // layout size before the zoom transform
+        var h = ChartRoot.ActualHeight;
+        if (w <= 0 || h <= 0) return null;
+        double headerH = header == null ? 0 : 56;
+        var scale = Math.Min(maxScale, 9000 / Math.Max(w, h + headerH));   // keep huge charts a sane size
+        var zoom  = Vm?.Zoom is > 0 and var z ? z : 1.0;
+        var visual = new DrawingVisual();
+        using (var dc = visual.RenderOpen())
+        {
+            dc.PushTransform(new ScaleTransform(scale, scale));
+            dc.DrawRectangle(Brushes.White, null, new Rect(0, 0, w, h + headerH));
+            if (header != null)
+            {
+                var dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
+                var text = new FormattedText(header, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
+                    new Typeface(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.SemiBold, FontStretches.Normal),
+                    20, new SolidColorBrush(Color.FromRgb(0x0F, 0x17, 0x2A)), dpi);
+                dc.DrawText(text, new Point(28, 16));
+                dc.DrawRectangle(new SolidColorBrush(Color.FromRgb(0xE2, 0xE8, 0xF0)), null, new Rect(0, headerH - 1, w, 1));
+            }
+            dc.PushTransform(new TranslateTransform(0, headerH));
+            dc.PushTransform(new ScaleTransform(1 / zoom, 1 / zoom));
+            dc.DrawRectangle(new VisualBrush(ChartRoot) { Stretch = Stretch.None, AlignmentX = AlignmentX.Left, AlignmentY = AlignmentY.Top },
+                             null, new Rect(0, 0, w * zoom, h * zoom));
+        }
+        var bmp = new RenderTargetBitmap((int)Math.Ceiling(w * scale), (int)Math.Ceiling((h + headerH) * scale), 96, 96, PixelFormats.Pbgra32);
+        bmp.Render(visual);
+        bmp.Freeze();
+        return bmp;
+    }
+
+    private string RegionLabel => Vm?.GeoFilter is { Length: > 0 } g ? g : "All";
+
+    /// <summary>Saves the whole chart as a PNG, at full size regardless of zoom.</summary>
     private void BtnExport_Click(object sender, RoutedEventArgs e)
     {
         var dlg = new SaveFileDialog
         {
-            Title = "Export Org Chart", FileName = $"Org_Chart_{DateTime.Now:yyyy-MM-dd}", DefaultExt = ".png",
+            Title = "Export Org Chart", FileName = $"Org_Chart_{RegionLabel}_{DateTime.Now:yyyy-MM-dd}", DefaultExt = ".png",
             Filter = "PNG image|*.png",
         };
         if (dlg.ShowDialog() != true) return;
         try
         {
-            ChartRoot.UpdateLayout();
-            var w = ChartRoot.ActualWidth;   // layout size before the zoom transform
-            var h = ChartRoot.ActualHeight;
-            if (w <= 0 || h <= 0) return;
-            // 1.5× for sharper text, capped so a very large chart stays a sane file size.
-            var scale = Math.Min(1.5, 9000 / Math.Max(w, h));
-            // The brush draws ChartRoot as it appears on screen — i.e. already scaled by the zoom
-            // (its LayoutTransform) — so undo the zoom here to export at full size.
-            var zoom = Vm?.Zoom is > 0 and var z ? z : 1.0;
-            var visual = new DrawingVisual();
-            using (var dc = visual.RenderOpen())
-            {
-                dc.PushTransform(new ScaleTransform(scale / zoom, scale / zoom));
-                var area = new Rect(0, 0, w * zoom, h * zoom);
-                dc.DrawRectangle(Brushes.White, null, area);
-                dc.DrawRectangle(new VisualBrush(ChartRoot) { Stretch = Stretch.None, AlignmentX = AlignmentX.Left, AlignmentY = AlignmentY.Top },
-                                 null, area);
-            }
-            var bmp = new RenderTargetBitmap((int)Math.Ceiling(w * scale), (int)Math.Ceiling(h * scale), 96, 96, PixelFormats.Pbgra32);
-            bmp.Render(visual);
+            if (RenderChart(1.5, null) is not { } bmp) return;
             var enc = new PngBitmapEncoder();
             enc.Frames.Add(BitmapFrame.Create(bmp));
-            using var fs = File.Create(dlg.FileName);
-            enc.Save(fs);
+            using (var fs = File.Create(dlg.FileName)) enc.Save(fs);
+            MessageBox.Show($"Org chart saved to:\n{dlg.FileName}", "Exported", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Could not export the chart:\n{ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    /// <summary>The PDF title for the region shown, e.g. "Org Chart — East · exported Oct 10, 2026".</summary>
+    public string PdfTitle => $"Org Chart — {(RegionLabel == "All" ? "All regions" : RegionLabel)}  ·  exported {DateTime.Now:MMM d, yyyy}";
+
+    /// <summary>Writes the chart as shown to a one-page PDF: natural size (as at 100% zoom, 96 px =
+    /// 72 pt), image rendered at 2× so it stays sharp when zoomed in the PDF viewer.</summary>
+    public void WritePdf(string path)
+    {
+        if (RenderChart(2.0, PdfTitle) is not { } bmp) return;
+        ImagePdfWriter.Write(path, bmp, ChartRoot.ActualWidth * 0.75, PdfTitle.Replace("—", "-").Replace("·", "-"));
+    }
+
+    /// <summary>Saves the chart as shown — All, or the sidebar's region — as a PDF.</summary>
+    private void BtnExportPdf_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new SaveFileDialog
+        {
+            Title = "Export Org Chart as PDF", FileName = $"Org_Chart_{RegionLabel}_{DateTime.Now:yyyy-MM-dd}", DefaultExt = ".pdf",
+            Filter = "PDF document|*.pdf",
+        };
+        if (dlg.ShowDialog() != true) return;
+        try
+        {
+            WritePdf(dlg.FileName);
             MessageBox.Show($"Org chart saved to:\n{dlg.FileName}", "Exported", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)

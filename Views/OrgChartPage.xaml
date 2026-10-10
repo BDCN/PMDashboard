@@ -51,7 +51,9 @@
                         Visibility="{Binding ShowEditButton, Converter={StaticResource BoolToVisibility}}"
                         ToolTipService.ToolTip="Drag PMs between sub-regions and PAs between PMs, then Save"/>
                 <Button Content="Edit Teams" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,0" Click="BtnEditTeams_Click"/>
-                <Button Content="Export PNG" Style="{StaticResource PrimaryButtonStyle}" Click="BtnExport_Click"/>
+                <Button Content="Export PNG" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,0" Click="BtnExport_Click"/>
+                <Button Content="Export PDF" Style="{StaticResource PrimaryButtonStyle}" Click="BtnExportPdf_Click"
+                        ToolTipService.ToolTip="Save the chart as shown (All, or the region picked in the sidebar) as a PDF"/>
             </StackPanel>
             <StackPanel>
                 <TextBlock Text="Org Chart" FontSize="22" FontWeight="Bold" Foreground="#0F172A" FontFamily="Segoe UI Semibold"/>

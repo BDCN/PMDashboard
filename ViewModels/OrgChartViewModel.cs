@@ -133,6 +133,8 @@ public partial class OrgChartViewModel : ObservableObject
 
     private string _geoFilter = "All";
     public void ApplyGeoFilter(string geo) { _geoFilter = geo; Rebuild(); }
+    /// <summary>The region shown (sidebar filter): All, East, Central or West — names exports.</summary>
+    public string GeoFilter => _geoFilter;
 
     // ── Snapshot ──
     private List<SubRegion>  _subs     = new();
