@@ -147,7 +147,7 @@
                         </TextBlock>
 
                         <!-- One tree per region, side by side -->
-                        <ItemsControl ItemsSource="{Binding Regions}">
+                        <ItemsControl x:Name="RegionsList" ItemsSource="{Binding Regions}">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate>
                             </ItemsControl.ItemsPanel>

@@ -360,14 +360,38 @@ public partial class OrgChartPage : UserControl
     }
 
     /// <summary>The PDF title for the region shown, e.g. "Org Chart — East · exported Oct 10, 2026".</summary>
-    public string PdfTitle => $"Org Chart — {(RegionLabel == "All" ? "All regions" : RegionLabel)}  ·  exported {DateTime.Now:MMM d, yyyy}";
+    public string PdfTitle => PageHeading(RegionLabel == "All" ? "All regions" : RegionLabel);
 
-    /// <summary>Writes the chart as shown to a one-page PDF: natural size (as at 100% zoom, 96 px =
-    /// 72 pt), image rendered at 2× so it stays sharp when zoomed in the PDF viewer.</summary>
+    private static string PageHeading(string region) => $"Org Chart — {region}  ·  exported {DateTime.Now:MMM d, yyyy}";
+
+    /// <summary>
+    /// Writes the chart as shown to a Letter-landscape PDF with <b>one page per region</b> (so "All"
+    /// gives East, Central and West on their own pages), each region scaled to fill its page. The
+    /// chart is rendered once at 2× and each region's block cropped out of it, so it stays sharp.
+    /// </summary>
     public void WritePdf(string path)
     {
-        if (RenderChart(2.0, PdfTitle) is not { } bmp) return;
-        ImagePdfWriter.Write(path, bmp, ChartRoot.ActualWidth * 0.75, PdfTitle.Replace("—", "-").Replace("·", "-"));
+        if (RenderChart(2.0, null) is not { } full) return;
+        var scale = full.PixelWidth / ChartRoot.ActualWidth;   // pixels per layout unit (≤ 2 for huge charts)
+        var pages = new List<ImagePdfWriter.Page>();
+        const double pad = 12;
+        for (int i = 0; i < RegionsList.Items.Count; i++)
+        {
+            if (RegionsList.ItemContainerGenerator.ContainerFromIndex(i) is not ContentPresenter cp ||
+                VisualTreeHelper.GetChildrenCount(cp) == 0 || VisualTreeHelper.GetChild(cp, 0) is not FrameworkElement block ||
+                RegionsList.Items[i] is not OrgChartRegion region) continue;
+            // Block bounds in ChartRoot's own (unzoomed) coordinates, plus a little white space.
+            var r = block.TransformToAncestor(ChartRoot).TransformBounds(new Rect(0, 0, block.ActualWidth, block.ActualHeight));
+            r.Inflate(pad, pad);
+            int x = Math.Max(0, (int)Math.Floor(r.X * scale)), y = Math.Max(0, (int)Math.Floor(r.Y * scale));
+            int w = Math.Min(full.PixelWidth - x, (int)Math.Ceiling(r.Width * scale));
+            int h = Math.Min(full.PixelHeight - y, (int)Math.Ceiling(r.Height * scale));
+            if (w <= 0 || h <= 0) continue;
+            pages.Add(new(new CroppedBitmap(full, new Int32Rect(x, y, w, h)), PageHeading(region.Region)));
+        }
+        // No region blocks (empty chart): fall back to the chart as a single page.
+        if (pages.Count == 0) pages.Add(new(full, PdfTitle));
+        ImagePdfWriter.Write(path, pages, title: PdfTitle);
     }
 
     /// <summary>Saves the chart as shown — All, or the sidebar's region — as a PDF.</summary>
