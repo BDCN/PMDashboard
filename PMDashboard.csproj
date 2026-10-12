@@ -24,7 +24,7 @@
            .\publish.ps1            → patch (1.0.0 → 1.0.1)  bug fixes
            .\publish.ps1 -Bump minor → 1.0.1 → 1.1.0         new features
            .\publish.ps1 -Bump major → 1.1.0 → 2.0.0         big/breaking changes -->
-    <Version>1.9.0</Version>
+    <Version>1.9.1</Version>
   </PropertyGroup>
 
   <!-- Build timestamp (UTC), read back by AppVersion.BuildDateUtc — distinguishes two builds
