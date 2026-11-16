@@ -1,6 +1,7 @@
 using System;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using PMDashboard.Services;
@@ -62,6 +63,7 @@ public partial class MainWindow : Window
         TxtAppVersion.Text    = AppVersion.Short;
         TxtAppVersion.ToolTip = AppVersion.Full;
         UpdateVersionBanner();
+        UpdateTravelPanel();
     }
 
     private void UpdateVersionBanner()
@@ -87,8 +89,48 @@ public partial class MainWindow : Window
             UpdateBanner.Visibility = Visibility.Collapsed;
     }
 
-    /// <summary>Re-evaluates the header banner — called after Travel Sync switches files.</summary>
-    public void RefreshBanner() => UpdateVersionBanner();
+    /// <summary>Re-evaluates the header banner and the sidebar Travel control — called after
+    /// Travel Sync switches files.</summary>
+    public void RefreshBanner()
+    {
+        UpdateVersionBanner();
+        UpdateTravelPanel();
+    }
+
+    /// <summary>Sidebar Travel control (Network mode only): where SAT's data is right now, and the
+    /// one action that makes sense from there.</summary>
+    private void UpdateTravelPanel()
+    {
+        if (!DatabaseConfig.IsNetwork)
+        {
+            TravelPanel.Visibility = Visibility.Collapsed;
+            return;
+        }
+        TravelPanel.Visibility = Visibility.Visible;
+        if (DatabaseConfig.IsTravelMode)
+        {
+            TxtTravelIcon.Foreground  = new SolidColorBrush(Color.FromRgb(0xFB, 0xBF, 0x24));
+            TxtTravelState.Text       = DatabaseConfig.TravelStartedUtc is { } since
+                ? $"Travel Mode — offline copy since {since.ToLocalTime():MMM d, h:mm tt}"
+                : "Travel Mode — offline copy";
+            BtnTravel.Content         = "⇅ Sync After Travel…";
+            BtnTravel.ToolTip         = "Back on the office network? Merge your changes into the network database.";
+        }
+        else
+        {
+            TxtTravelIcon.Foreground  = new SolidColorBrush(Color.FromRgb(0x4A, 0xDE, 0x80));
+            TxtTravelState.Text       = "Network database (shared)";
+            BtnTravel.Content         = "✈ Go Offline…";
+            BtnTravel.ToolTip         = "Leaving the office network? Take a copy of the database with you (Sync Before Travel).";
+        }
+    }
+
+    private void BtnTravel_Click(object sender, RoutedEventArgs e)
+    {
+        if (DatabaseConfig.IsTravelMode) Dialogs.TravelSyncFlow.SyncBack(this);
+        else                             Dialogs.TravelSyncFlow.GoOffline(this);
+        RefreshBanner();
+    }
 
     private void BtnDismissUpdateBanner_Click(object sender, RoutedEventArgs e) =>
         UpdateBanner.Visibility = Visibility.Collapsed;

@@ -454,28 +454,21 @@ public partial class ConfigPage : UserControl
     private void BtnSyncBefore_Click(object sender, RoutedEventArgs e)
     {
         if (Vm is not { } vm) return;
-        var result = vm.SyncBeforeTravel();
-        vm.DbStatusMessage = result;
-        MessageBox.Show(result, "Sync Before Travel", MessageBoxButton.OK,
-            vm.IsTravelMode ? MessageBoxImage.Information : MessageBoxImage.Warning);
+        if (!DatabaseConfig.IsNetwork)
+        {
+            MessageBox.Show("Travel Sync needs Network mode to be applied (and SAT restarted) first.",
+                "Sync Before Travel", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        Dialogs.TravelSyncFlow.GoOffline(Window.GetWindow(this));   // same flow as the sidebar control
+        vm.LoadDatabaseSettings();
     }
 
     private void BtnSyncAfter_Click(object sender, RoutedEventArgs e)
     {
         if (Vm is not { } vm) return;
-        var confirm = MessageBox.Show(
-            "This will merge both databases using LastModified timestamps.\n\n" +
-            "• Most recently modified version of each record wins.\n" +
-            "• New records from either side are added to both.\n" +
-            "• Record deletions made offline are not propagated.\n\n" +
-            "Continue?",
-            "Sync After Travel", MessageBoxButton.YesNo, MessageBoxImage.Question);
-        if (confirm != MessageBoxResult.Yes) return;
-
-        var result = vm.SyncAfterTravel();
-        vm.DbStatusMessage = result;
-        MessageBox.Show(result, "Sync After Travel", MessageBoxButton.OK,
-            result.StartsWith("Sync complete") ? MessageBoxImage.Information : MessageBoxImage.Warning);
+        Dialogs.TravelSyncFlow.SyncBack(Window.GetWindow(this));
+        vm.LoadDatabaseSettings();
     }
 
     private void CloudPassword_Changed(object sender, RoutedEventArgs e)

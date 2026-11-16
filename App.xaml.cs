@@ -779,6 +779,12 @@ public partial class App : Application
         // Uses the same keyword-matching logic the old WorkloadViewModel used to score on-the-fly.
         MigrateEquipmentTypesFromOrders(db);
 
+        // ── Network mode: deletion log (see Tombstones) ───────────────────────
+        // Installed into the shared file (and therefore every travel copy made from it) so
+        // Sync After Travel can carry deletions across. Never blocks startup.
+        if (DatabaseConfig.IsNetwork)
+            try { Tombstones.EnsureInstalled(db); } catch { /* retried next start and at every merge */ }
+
         // ── Load scoring caches ───────────────────────────────────────────────
         StatusConfig.Reload();
         ScoreConfig.Reload();

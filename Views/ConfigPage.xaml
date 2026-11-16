@@ -1181,9 +1181,7 @@
                     <Run Text="Local" FontWeight="SemiBold"/>
                     <Run Text=" is the default (one database per machine). "/>
                     <Run Text="Network" FontWeight="SemiBold"/>
-                    <Run Text=" shares a single SQLite file across machines. "/>
-                    <Run Text="Cloud" FontWeight="SemiBold"/>
-                    <Run Text=" connects to a MariaDB server for always-synced multi-user access."/>
+                    <Run Text=" shares a single SQLite file across machines — what the team uses."/>
                 </TextBlock>
 
                 <!-- ── Option 1: Local ── -->
@@ -1292,9 +1290,8 @@
                                         <Run Text="Before traveling:"/>
                                         <Run Text=" sync copies the network database to your local machine so you can work offline. "/>
                                         <Run Text="After traveling:"/>
-                                        <Run Text=" sync merges both databases using LastModified timestamps — the most recently changed version of each record wins. New records from either side are added to both. Note: record "/>
-                                        <Run Text="deletions" FontWeight="SemiBold"/>
-                                        <Run Text=" made while offline are not propagated (a tombstone table would be required for that)."/>
+                                        <Run Text=" sync merges both databases — additions, changes and deletions, both ways. When the same record changed in both places, the most recent change wins (a delete counts as a change). Both databases are backed up first. "/>
+                                        <Run Text="Every user can also do this from the bottom of the sidebar." FontWeight="SemiBold"/>
                                     </TextBlock>
                                     <StackPanel Orientation="Horizontal">
                                         <Button Content="Sync Before Travel  (Download)"
@@ -1329,14 +1326,20 @@
                     </StackPanel>
                 </Border>
 
-                <!-- ── Option 3: Cloud (MariaDB) ── -->
+                <!-- ── Option 3: Cloud (MariaDB) — RETIRED (2026-11-16, the team uses Network
+                     mode). Hidden unless this computer is still in Cloud mode, so it can be
+                     switched away; code and settings are kept. ── -->
                 <Border CornerRadius="8" Padding="16,14" Margin="0,0,0,10">
                     <Border.Style>
                         <Style TargetType="Border">
                             <Setter Property="Background" Value="White"/>
                             <Setter Property="BorderThickness" Value="1"/>
                             <Setter Property="BorderBrush" Value="#E2E8F0"/>
+                            <Setter Property="Visibility" Value="Collapsed"/>
                             <Style.Triggers>
+                                <DataTrigger Binding="{Binding ShowCloudOption}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
                                 <DataTrigger Binding="{Binding IsDbCloud}" Value="True">
                                     <Setter Property="Background" Value="#EFF6FF"/>
                                     <Setter Property="BorderThickness" Value="2"/>
@@ -1562,21 +1565,7 @@
                                     <TextBlock x:Name="TxtDeleteLocalStatus" FontSize="11" Foreground="#7F1D1D"
                                                TextWrapping="Wrap" Margin="0,8,0,0" Visibility="Collapsed"/>
 
-                                    <!-- Clear All Assignments — unassigns every PM everywhere; data stays -->
-                                    <Separator Background="#FECACA" Margin="0,14,0,12"/>
-                                    <TextBlock Text="Clear All Assignments" FontSize="13" FontWeight="SemiBold"
-                                               Foreground="#991B1B" Margin="0,0,0,4"/>
-                                    <TextBlock FontSize="11" Foreground="#7F1D1D" TextWrapping="Wrap"
-                                               Margin="0,0,0,10"
-                                               Text="Removes every PM assignment — from every site, campus, ROMP override and cluster — so you can start assigning again. PMs, teams, clusters, sites, ROMPs and assignment history are kept. In Cloud mode this syncs to every computer. Tip: on the Assignment page, Download Assignments Template first to keep a copy of the current assignments."/>
-                                    <Button Content="Clear All Assignments"
-                                            Click="BtnClearAssignments_Click"
-                                            Padding="12,6" FontSize="12"
-                                            HorizontalAlignment="Left"
-                                            Style="{StaticResource DangerButtonStyle}"
-                                            ToolTipService.ToolTip="Unassigns every PM from everything. Cannot be undone (except by re-importing assignments)."/>
-                                    <TextBlock x:Name="TxtClearAssignmentsStatus" FontSize="11" Foreground="#7F1D1D"
-                                               TextWrapping="Wrap" Margin="0,8,0,0" Visibility="Collapsed"/>
+                                    <!-- (Clear All Assignments moved out of the Cloud panel — below) -->
 
                                     <!-- Clear ALL Data — the one above only ever touches this machine and
                                          self-heals from the cloud on the next sync; this one does not.
@@ -1600,6 +1589,27 @@
                                 </StackPanel>
                             </Border>
                         </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Danger zone available in every mode. Clear All Assignments goes through
+                     SaveChanges, so in Network mode it changes the shared file for everyone. -->
+                <Border BorderBrush="#FECACA" BorderThickness="1" CornerRadius="8"
+                        Background="#FEF2F2" Padding="14,12" Margin="0,2,0,0">
+                    <StackPanel>
+                        <TextBlock Text="Clear All Assignments" FontSize="13" FontWeight="SemiBold"
+                                   Foreground="#991B1B" Margin="0,0,0,4"/>
+                        <TextBlock FontSize="11" Foreground="#7F1D1D" TextWrapping="Wrap"
+                                   Margin="0,0,0,10"
+                                   Text="Removes every PM assignment — from every site, campus, ROMP override and cluster — so you can start assigning again. PMs, teams, clusters, sites, ROMPs and assignment history are kept. In Network mode this applies to everyone using the shared database. Tip: on the Assignment page, Download Assignments Template first to keep a copy of the current assignments."/>
+                        <Button Content="Clear All Assignments"
+                                Click="BtnClearAssignments_Click"
+                                Padding="12,6" FontSize="12"
+                                HorizontalAlignment="Left"
+                                Style="{StaticResource DangerButtonStyle}"
+                                ToolTipService.ToolTip="Unassigns every PM from everything. Cannot be undone (except by re-importing assignments)."/>
+                        <TextBlock x:Name="TxtClearAssignmentsStatus" FontSize="11" Foreground="#7F1D1D"
+                                   TextWrapping="Wrap" Margin="0,8,0,0" Visibility="Collapsed"/>
                     </StackPanel>
                 </Border>
 

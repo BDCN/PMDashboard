@@ -24,19 +24,19 @@ public record SyncResult(bool Success, string Message, int Pushed = 0, int Pulle
 ///                         its cluster, …) takes that row's Id instead, so importing the same
 ///                         spreadsheet on both sides doesn't create duplicates. Foreign keys (and
 ///                         the few Id references that aren't real FKs) follow.
-///                      2. Last-writer-wins merge by LastModified, both directions, column by
+///                      2. Deletions both ways, from each file's DeletedRows log (see
+///                         <see cref="Tombstones"/>): a delete beats an older edit, a newer edit
+///                         beats the delete; children follow their parents.
+///                      3. Last-writer-wins merge by LastModified, both directions, column by
 ///                         column name (never SELECT *, so differing column order can't scramble
 ///                         data, and columns only one side has are left alone).
 ///                      Both files are backed up first (%LOCALAPPDATA%\PMDashboard\backups).
-///
-/// Limitation: record DELETIONS are not propagated. If a row is deleted on one side while the
-/// other is offline, the merge brings it back.
 /// </summary>
 public static class SyncService
 {
     // Integer-PK tables in FK-safe order (parents before children) — renumbering a parent must
     // rewrite its children's FK columns before the children's natural keys are compared.
-    private static readonly string[] _intPkTables =
+    internal static readonly string[] IntPkTables =
     [
         "SubRegions",
         "PMs",
@@ -103,7 +103,8 @@ public static class SyncService
             using (var conn = new SqliteConnection(NetworkDb.ConnectionString(localPath) + ";Pooling=False"))
             {
                 conn.Open();
-                foreach (var table in _intPkTables)
+                Tombstones.EnsureInstalled(conn);   // deletions made on the trip must be logged
+                foreach (var table in IntPkTables)
                     if (TableExists(conn, "main", table))
                         baseline[table] = Convert.ToInt64(Scalar(conn, $"SELECT COALESCE(MAX(Id), 0) FROM main.\"{table}\""));
             }
@@ -141,8 +142,11 @@ public static class SyncService
             BackupFile(localPath,   "local-before-merge");
             BackupFile(networkPath, "network-before-merge");
 
-            int pushed = 0, pulled = 0, renumbered = 0, matched = 0;
+            int pushed = 0, pulled = 0, renumbered = 0, matched = 0, deletedOnNet = 0, deletedHere = 0;
             var baseline = DatabaseConfig.TravelBaseline;
+            var started  = DatabaseConfig.TravelStartedUtc;
+            // A day of slack for clock differences between this computer and the office ones.
+            var since    = started?.AddDays(-1).ToString("yyyy-MM-dd HH:mm:ss");
 
             using (var conn = new SqliteConnection(NetworkDb.ConnectionString(localPath) + ";Pooling=False"))
             {
@@ -157,10 +161,23 @@ public static class SyncService
                     Execute(conn, "BEGIN IMMEDIATE");
                     try
                     {
+                        Tombstones.EnsureInstalled(conn, "main");
+                        Tombstones.EnsureInstalled(conn, "net");
+
                         if (baseline != null)
                             (renumbered, matched) = RenumberTravelRows(conn, baseline);
 
-                        foreach (var table in _intPkTables)
+                        // Office deletions → this copy (safe: after the renumbering they can only
+                        // match rows that really are shared).
+                        deletedHere  = Tombstones.Apply(conn, from: "net",  to: "main", since, maxIdPerTable: null);
+                        // Trip deletions → network, only for rows that existed before the trip: a
+                        // row created AND deleted on the trip had an Id the office may be using.
+                        // Without a baseline (trip started on an older build) that can't be told
+                        // apart, so trip deletions aren't sent.
+                        if (baseline != null)
+                            deletedOnNet = Tombstones.Apply(conn, from: "main", to: "net", since, maxIdPerTable: baseline);
+
+                        foreach (var table in IntPkTables)
                         {
                             if (!TableExists(conn, "main", table) || !TableExists(conn, "net", table)) continue;
                             var cols = SharedColumns(conn, table);
@@ -191,15 +208,19 @@ public static class SyncService
             SqliteConnection.ClearAllPools();
             DatabaseConfig.SetTravelMode(false);
 
-            var renumberNote = baseline == null
-                ? "\n\n(This trip started on an older version of SAT, so new records were matched by Id only.)"
-                : renumbered + matched > 0
-                    ? $"\n  New records from your trip: {renumbered} given new Ids, {matched} matched to existing records"
-                    : "";
+            var notes = "";
+            if (renumbered + matched > 0)
+                notes += $"\n  New records from your trip: {renumbered} given new Ids, {matched} matched to existing records";
+            if (baseline == null)
+                notes += "\n\nThis trip started on an older version of SAT: new records were matched by Id only, " +
+                         "and records you deleted on the trip were not deleted from the network.";
+            if (started is { } st && (DateTime.UtcNow - st).TotalDays > Tombstones.KeepDays)
+                notes += $"\n\nThis trip lasted over {Tombstones.KeepDays} days — deletions older than that are no longer " +
+                         "on record, so a few deleted records may have come back.";
             return new SyncResult(true,
                 $"Sync complete.\n" +
-                $"  Pushed to network : {pushed} row(s)\n" +
-                $"  Pulled from network: {pulled} row(s)" + renumberNote + "\n\n" +
+                $"  Sent to network      : {pushed} row(s) added/updated, {deletedOnNet} deleted\n" +
+                $"  Received from network: {pulled} row(s) added/updated, {deletedHere} deleted" + notes + "\n\n" +
                 "Travel Mode is OFF — SAT is using the network database again.",
                 Pushed: pushed, Pulled: pulled);
         }
@@ -244,7 +265,7 @@ public static class SyncService
         int renumbered = 0, matched = 0;
         Execute(conn, "CREATE TEMP TABLE IF NOT EXISTS idmap (OldId INTEGER PRIMARY KEY, NewId INTEGER NOT NULL)");
 
-        foreach (var table in _intPkTables)
+        foreach (var table in IntPkTables)
         {
             if (!TableExists(conn, "main", table) || !baseline.TryGetValue(table, out var b)) continue;
             if (Convert.ToInt64(Scalar(conn, $"SELECT COUNT(*) FROM main.\"{table}\" WHERE Id > {b}")) == 0) continue;
@@ -273,9 +294,18 @@ public static class SyncService
             }
 
             // Everything else created on the trip → fresh Ids above both files.
+            // Above every Id either file has EVER used — including deleted rows (their DeletedRows
+            // entry would otherwise delete the new row) and the AUTOINCREMENT counter.
             var maxNet = netHas ? Convert.ToInt64(Scalar(conn, $"SELECT COALESCE(MAX(Id), 0) FROM net.\"{table}\"")) : 0;
             var maxLoc = Convert.ToInt64(Scalar(conn, $"SELECT COALESCE(MAX(Id), 0) FROM main.\"{table}\""));
-            var start  = Math.Max(maxNet, maxLoc) + 1;
+            var start  = new[]
+            {
+                maxNet, maxLoc,
+                Tombstones.MaxDeletedId(conn, "main", table),
+                netHas ? Tombstones.MaxDeletedId(conn, "net", table) : 0,
+                SequenceValue(conn, "main", table),
+                netHas ? SequenceValue(conn, "net", table) : 0,
+            }.Max() + 1;
             renumbered += Execute(conn, $"""
                 INSERT INTO temp.idmap (OldId, NewId)
                 SELECT Id, {start} + ROW_NUMBER() OVER (ORDER BY Id) - 1
@@ -437,6 +467,13 @@ public static class SyncService
         foreach (var old in Directory.GetFiles(BackupDirectory, $"{kind}-*.db")
                                      .OrderByDescending(f => f).Skip(5))
             try { File.Delete(old); } catch { }
+    }
+
+    /// <summary>The AUTOINCREMENT high-water mark for a table (0 if none).</summary>
+    private static long SequenceValue(SqliteConnection conn, string schema, string table)
+    {
+        if (!TableExists(conn, schema, "sqlite_sequence")) return 0;
+        return Convert.ToInt64(Scalar(conn, $"SELECT COALESCE(MAX(seq), 0) FROM {schema}.sqlite_sequence WHERE name = '{Escape(table)}'"));
     }
 
     private static bool TableExists(SqliteConnection conn, string schema, string table) =>

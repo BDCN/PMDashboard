@@ -182,6 +182,24 @@
                         </StackPanel>
 
 
+                        <!-- ── Network mode: Travel Sync, for every signed-in user (Configuration is
+                             Super-Admin only). Same flow as Configuration → Database
+                             (Dialogs/TravelSyncFlow). Driven by MainWindow.UpdateTravelPanel. ── -->
+                        <StackPanel x:Name="TravelPanel" DockPanel.Dock="Bottom"
+                                    Margin="16,12,16,16" Visibility="Collapsed">
+                            <Separator Background="#334155" Margin="0,0,0,12"/>
+                            <DockPanel Margin="0,0,0,6">
+                                <TextBlock x:Name="TxtTravelIcon" Text="●" FontSize="10" Foreground="#4ADE80"
+                                           Margin="0,1,6,0" VerticalAlignment="Top"/>
+                                <TextBlock x:Name="TxtTravelState" Text="Network database" FontSize="11"
+                                           Foreground="#94A3B8" TextWrapping="Wrap"/>
+                            </DockPanel>
+                            <Button x:Name="BtnTravel" Content="✈ Go Offline…" HorizontalAlignment="Left"
+                                    FontSize="11" Foreground="#93C5FD" Background="Transparent"
+                                    BorderThickness="0" Padding="0" Cursor="Hand"
+                                    Click="BtnTravel_Click"/>
+                        </StackPanel>
+
                         <!-- Everything above the sync indicator scrolls, so short screens can still
                              reach every page and the region filter. The sync status stays pinned. -->
                         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"

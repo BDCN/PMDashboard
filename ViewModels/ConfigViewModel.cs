@@ -47,6 +47,10 @@ public partial class ConfigViewModel : ObservableObject
     public bool IsDbNetwork => DbMode == DatabaseMode.Network;
     public bool IsDbCloud   => DbMode == DatabaseMode.Cloud;
 
+    /// <summary>Cloud (MariaDB) is retired — the team uses Network mode. The option is only
+    /// shown on a computer that is still in Cloud mode, so it can switch away.</summary>
+    [ObservableProperty] private bool _showCloudOption;
+
     partial void OnDbModeChanged(DatabaseMode value)
     {
         OnPropertyChanged(nameof(IsDbLocal));
@@ -61,6 +65,7 @@ public partial class ConfigViewModel : ObservableObject
     public void LoadDatabaseSettings()
     {
         DbMode        = DatabaseConfig.Mode;
+        ShowCloudOption = DatabaseConfig.IsCloud;
         NetworkDbPath = DatabaseConfig.NetworkDbPath;
         IsTravelMode  = DatabaseConfig.IsTravelMode;
         DbStatusMessage = "";
@@ -119,33 +124,7 @@ public partial class ConfigViewModel : ObservableObject
         DbStatusMessage = "Cloud mode saved. Restart the app to activate local-first sync.";
     }
 
-    public string SyncBeforeTravel()
-    {
-        // The SAVED network path (what SAT is actually using), not whatever is typed in the box.
-        if (!DatabaseConfig.IsNetwork || string.IsNullOrWhiteSpace(DatabaseConfig.NetworkDbPath))
-            return "Travel Sync needs Network mode to be saved (and SAT restarted) first.";
-        var r = SyncService.SyncBeforeTravel(DatabaseConfig.NetworkDbPath);
-        if (r.Success) { IsTravelMode = true; ReloadAfterDatabaseSwitch(); }
-        return r.Message;
-    }
-
-    public string SyncAfterTravel()
-    {
-        if (!DatabaseConfig.IsNetwork || string.IsNullOrWhiteSpace(DatabaseConfig.NetworkDbPath))
-            return "Network database path is not set.";
-        var r = SyncService.SyncAfterTravel(DatabaseConfig.NetworkDbPath);
-        if (r.Success) { IsTravelMode = false; ReloadAfterDatabaseSwitch(); }
-        return r.Message;
-    }
-
-    /// <summary>Travel Sync just changed which file SAT reads (network ↔ local copy) — reload the
-    /// app-lifetime caches from it and start/stop watching the share for other people's changes.</summary>
-    private static void ReloadAfterDatabaseSwitch()
-    {
-        try { StatusConfig.Reload(); ScoreConfig.Reload(); } catch { /* next start reloads anyway */ }
-        App.NetworkWatcher.Restart();
-        App.ShowTravelBanner();
-    }
+    // Travel Sync itself lives in Dialogs/TravelSyncFlow (shared with the sidebar control).
 
     public string CreateNetworkDatabase(string path)
     {

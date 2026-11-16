@@ -31,6 +31,10 @@ public static class DatabaseConfig
     /// </summary>
     public static Dictionary<string, long>? TravelBaseline { get; private set; }
 
+    /// <summary>When this trip started (Sync Before Travel), UTC — Sync After Travel only looks at
+    /// deletions since then. Null when not traveling.</summary>
+    public static DateTime? TravelStartedUtc { get; private set; }
+
     /// <summary>
     /// True once this machine has ever completed one unconditional "send everything" push to
     /// the cloud. Deliberately stored here (per-machine, never synced) rather than as an
@@ -117,6 +121,7 @@ public static class DatabaseConfig
             CloudConnectionString = obj.CloudConnectionString ?? "";
             IsTravelMode          = obj.IsTravelMode;
             TravelBaseline        = obj.TravelBaseline;
+            TravelStartedUtc      = obj.TravelStartedUtc;
             CloudFirstPushDone    = obj.CloudFirstPushDone;
             CloudFullPushGeneration = obj.CloudFullPushGeneration;
             ForecastFirstSyncDone = obj.ForecastFirstSyncDone;
@@ -137,6 +142,7 @@ public static class DatabaseConfig
                 CloudConnectionString = CloudConnectionString,
                 IsTravelMode          = IsTravelMode,
                 TravelBaseline        = TravelBaseline,
+                TravelStartedUtc      = TravelStartedUtc,
                 CloudFirstPushDone    = CloudFirstPushDone,
                 CloudFullPushGeneration = CloudFullPushGeneration,
                 ForecastFirstSyncDone = ForecastFirstSyncDone,
@@ -202,8 +208,9 @@ public static class DatabaseConfig
     /// (see <see cref="TravelBaseline"/>). Ignored — and cleared — when coming back.</param>
     public static void SetTravelMode(bool traveling, Dictionary<string, long>? baseline = null)
     {
-        IsTravelMode   = traveling;
-        TravelBaseline = traveling ? baseline : null;
+        IsTravelMode     = traveling;
+        TravelBaseline   = traveling ? baseline : null;
+        TravelStartedUtc = traveling ? DateTime.UtcNow : null;
         Save();
     }
 
@@ -214,6 +221,7 @@ public static class DatabaseConfig
         public string?      CloudConnectionString { get; set; }
         public bool         IsTravelMode          { get; set; }
         public Dictionary<string, long>? TravelBaseline { get; set; }
+        public DateTime?    TravelStartedUtc      { get; set; }
         public bool         CloudFirstPushDone    { get; set; }
         public int          CloudFullPushGeneration { get; set; }
         public bool         ForecastFirstSyncDone { get; set; }
