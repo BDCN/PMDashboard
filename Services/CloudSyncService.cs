@@ -73,6 +73,14 @@ public sealed class CloudSyncService : IDisposable
     // and gating on attribution left pages silently stale in exactly those cases.
     public event Action<string>?  DataChanged;
 
+    /// <summary>Raises <see cref="DataChanged"/> for changes that arrived some other way than a
+    /// cloud pull — Network mode's NetworkChangeWatcher (another computer wrote to the shared
+    /// file). Lets every existing subscriber (toast, page reloads) work in Network mode too.</summary>
+    public void PublishExternalChange(string summary)
+    {
+        try { DataChanged?.Invoke(summary); } catch { /* a subscriber failing must not stop the watcher */ }
+    }
+
     public string                 LastStatus   { get; private set; } = "Not started";
     public DateTime?              LastSyncTime { get; private set; }
     public bool                   IsRunning    { get; private set; }

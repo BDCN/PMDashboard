@@ -26,6 +26,11 @@ public class AppDbContext : DbContext
     /// </summary>
     public static event Action? LocalSaved;
 
+    /// <summary>When this process last saved anything through EF (UTC). Network mode's
+    /// NetworkChangeWatcher uses it to tell its own writes apart from other computers'.</summary>
+    public static DateTime LastSaveUtc => new(Interlocked.Read(ref _lastSaveTicks), DateTimeKind.Utc);
+    private static long _lastSaveTicks;
+
     /// <param name="forceCloud">True → the MariaDB cloud database (see <see cref="ForceCloud"/>).</param>
     public AppDbContext(bool forceCloud = false)
     {
@@ -89,7 +94,10 @@ public class AppDbContext : DbContext
             var path = DatabaseConfig.ActiveSqlitePath;
             var dir  = Path.GetDirectoryName(path);
             if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-            options.UseSqlite($"Data Source={path}");
+            // NetworkDb.ConnectionString adds a long busy timeout: in Network mode another
+            // computer may be holding the shared file's write lock (e.g. during an import).
+            options.UseSqlite(NetworkDb.ConnectionString(path),
+                              o => o.CommandTimeout(NetworkDb.BusyTimeoutSeconds));
         }
     }
 
@@ -98,6 +106,7 @@ public class AppDbContext : DbContext
     public override int SaveChanges()
     {
         StampLastModified();
+        Interlocked.Exchange(ref _lastSaveTicks, DateTime.UtcNow.Ticks);
         var result = base.SaveChanges();
         // Notify CloudSyncService after a local (non-cloud) save
         if (!ForceCloud && DatabaseConfig.IsCloud)
@@ -108,6 +117,7 @@ public class AppDbContext : DbContext
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
         StampLastModified();
+        Interlocked.Exchange(ref _lastSaveTicks, DateTime.UtcNow.Ticks);
         var task = base.SaveChangesAsync(cancellationToken);
         if (!ForceCloud && DatabaseConfig.IsCloud)
             LocalSaved?.Invoke();

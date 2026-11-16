@@ -192,11 +192,14 @@ public partial class OrdersViewModel : ObservableObject
 
             try
             {
-                ImportingStatus = "Importing locally…";
+                ImportingStatus = NetworkDb.IsShared ? "Importing to the network database…" : "Importing locally…";
                 UpsertOrders(incoming);
 
-                ImportingStatus = "Uploading to the cloud…";
-                await App.CloudSync.PushNowAndWaitAsync();
+                if (CloudSyncService.IsAvailable)
+                {
+                    ImportingStatus = "Uploading to the cloud…";
+                    await App.CloudSync.PushNowAndWaitAsync();
+                }
                 return (true, null);
             }
             finally

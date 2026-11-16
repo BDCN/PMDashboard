@@ -82,8 +82,20 @@ public sealed class AutoImportService : IDisposable
         // Mark seen immediately so a failed move doesn't cause an infinite retry loop
         _seen.Add(Path.GetFileName(filePath));
 
+        // Network/Cloud mode: every computer running SAT may be watching the same folder. Only
+        // one imports at a time (same lock as a manual import); the others try again next poll,
+        // by which time the file has normally been moved to Processed by whoever imported it.
+        var (acquired, _) = ImportLockService.TryAcquire(CurrentUser.Email);
+        if (!acquired)
+        {
+            _seen.Remove(Path.GetFileName(filePath));
+            return;
+        }
+
         try
         {
+            if (!File.Exists(filePath)) return; // another computer imported it meanwhile
+
             // 1. Parse — route to the configured source type
             var parser     = new ExcelImportService();
             var sourceType = new ConfigService().Get(ConfigKeys.SourceDataType, "VADATA");
@@ -124,6 +136,10 @@ public sealed class AutoImportService : IDisposable
         {
             MoveToProcessed(filePath, "error");
             Notify($"Error processing \"{Path.GetFileName(filePath)}\": {ex.Message}");
+        }
+        finally
+        {
+            ImportLockService.Release(CurrentUser.Email);
         }
     }
 

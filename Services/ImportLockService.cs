@@ -5,16 +5,17 @@ using PMDashboard.Data.Models;
 namespace PMDashboard.Services;
 
 /// <summary>
-/// Best-effort import lock so only one person imports at a time. Cloud-mode-only: Local mode is
-/// single-machine, and Network mode's manual Sync Before/After Travel already serializes access
-/// by nature — locking only matters where multiple people have live concurrent access, which is
-/// Cloud mode alone. Checked directly against the cloud (via ForceCloud), not the local mirror,
-/// since a lock has to be read from the authoritative source, not something that might be stale
-/// by up to the sync interval.
+/// Best-effort import lock so only one person imports at a time. Applies wherever several people
+/// have live access to the same data: Cloud mode (lock row written straight to the cloud via
+/// ForceCloud, not the local mirror, which can be stale by up to the sync interval) and Network
+/// mode on the shared file (a normal context IS the shared file). Local mode and Network Travel
+/// Mode are single-machine — always granted.
 /// </summary>
 public static class ImportLockService
 {
     private static readonly TimeSpan StaleAfter = TimeSpan.FromMinutes(30);
+
+    private static bool IsShared => DatabaseConfig.IsCloud || NetworkDb.IsShared;
 
     private sealed record LockInfo(string HeldBy, string Machine, DateTime AcquiredUtc);
 
@@ -25,11 +26,11 @@ public static class ImportLockService
     /// </summary>
     public static (bool Acquired, string? HeldByMessage) TryAcquire(string userEmail)
     {
-        if (!DatabaseConfig.IsCloud) return (true, null);
+        if (!IsShared) return (true, null);
 
         try
         {
-            using var db = new AppDbContext(forceCloud: true);
+            using var db = new AppDbContext(forceCloud: DatabaseConfig.IsCloud);
             var row = db.AppConfigs.Find(ConfigKeys.ImportLock);
 
             if (row != null && !string.IsNullOrWhiteSpace(row.Value))
@@ -54,7 +55,7 @@ public static class ImportLockService
         }
         catch
         {
-            // Best-effort: if the cloud is unreachable right now, don't block a local import on it.
+            // Best-effort: if the lock row can't be read/written right now, don't block the import on it.
             return (true, null);
         }
     }
@@ -62,11 +63,11 @@ public static class ImportLockService
     /// <summary>Releases the lock, but only if this same user still holds it.</summary>
     public static void Release(string userEmail)
     {
-        if (!DatabaseConfig.IsCloud) return;
+        if (!IsShared) return;
 
         try
         {
-            using var db = new AppDbContext(forceCloud: true);
+            using var db = new AppDbContext(forceCloud: DatabaseConfig.IsCloud);
             var row = db.AppConfigs.Find(ConfigKeys.ImportLock);
             if (row == null) return;
 

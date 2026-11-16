@@ -73,9 +73,22 @@ public partial class MainWindow : Window
                 "please install the latest version so changes from other computers sync correctly.";
             UpdateBanner.Visibility = Visibility.Visible;
         }
+        else if (DatabaseConfig.IsNetwork && DatabaseConfig.IsTravelMode)
+        {
+            // Easy to forget you're on a laptop copy — and until it's merged back, nobody else
+            // sees anything changed here (and you don't see their changes).
+            TxtUpdateBanner.Text =
+                "✈ Travel Mode — you're working on this computer's own copy of the database. Other people won't see " +
+                "your changes (and you won't see theirs) until you're back on the office network and run " +
+                "Configuration → Database → Sync After Travel.";
+            UpdateBanner.Visibility = Visibility.Visible;
+        }
         else
             UpdateBanner.Visibility = Visibility.Collapsed;
     }
+
+    /// <summary>Re-evaluates the header banner — called after Travel Sync switches files.</summary>
+    public void RefreshBanner() => UpdateVersionBanner();
 
     private void BtnDismissUpdateBanner_Click(object sender, RoutedEventArgs e) =>
         UpdateBanner.Visibility = Visibility.Collapsed;

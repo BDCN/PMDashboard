@@ -23,6 +23,15 @@ public static class DatabaseConfig
     public static bool         IsTravelMode         { get; private set; } = false;
 
     /// <summary>
+    /// Network mode only: for each table, the highest Id the network database had when this
+    /// computer went into Travel Mode (Sync Before Travel). Rows above it in the local copy were
+    /// created while traveling, and Sync After Travel gives them fresh Ids so they can't collide
+    /// with rows the office created under the same Ids meanwhile. Null when not traveling, or for
+    /// a trip started by a build that didn't record it (merge then falls back to plain Id match).
+    /// </summary>
+    public static Dictionary<string, long>? TravelBaseline { get; private set; }
+
+    /// <summary>
     /// True once this machine has ever completed one unconditional "send everything" push to
     /// the cloud. Deliberately stored here (per-machine, never synced) rather than as an
     /// AppConfig row — AppConfigs sync between machines, and a flag meaning "has THIS machine
@@ -107,6 +116,7 @@ public static class DatabaseConfig
             NetworkDbPath         = obj.NetworkDbPath        ?? "";
             CloudConnectionString = obj.CloudConnectionString ?? "";
             IsTravelMode          = obj.IsTravelMode;
+            TravelBaseline        = obj.TravelBaseline;
             CloudFirstPushDone    = obj.CloudFirstPushDone;
             CloudFullPushGeneration = obj.CloudFullPushGeneration;
             ForecastFirstSyncDone = obj.ForecastFirstSyncDone;
@@ -126,6 +136,7 @@ public static class DatabaseConfig
                 NetworkDbPath         = NetworkDbPath,
                 CloudConnectionString = CloudConnectionString,
                 IsTravelMode          = IsTravelMode,
+                TravelBaseline        = TravelBaseline,
                 CloudFirstPushDone    = CloudFirstPushDone,
                 CloudFullPushGeneration = CloudFullPushGeneration,
                 ForecastFirstSyncDone = ForecastFirstSyncDone,
@@ -166,6 +177,7 @@ public static class DatabaseConfig
     {
         Mode         = DatabaseMode.Local;
         IsTravelMode = false;
+        TravelBaseline = null;
         Save();
     }
 
@@ -174,6 +186,7 @@ public static class DatabaseConfig
         Mode          = DatabaseMode.Network;
         NetworkDbPath = path;
         IsTravelMode  = false;
+        TravelBaseline = null;
         Save();
     }
 
@@ -185,9 +198,12 @@ public static class DatabaseConfig
         Save();
     }
 
-    public static void SetTravelMode(bool traveling)
+    /// <param name="baseline">Going into Travel Mode: the network database's max Id per table
+    /// (see <see cref="TravelBaseline"/>). Ignored — and cleared — when coming back.</param>
+    public static void SetTravelMode(bool traveling, Dictionary<string, long>? baseline = null)
     {
-        IsTravelMode = traveling;
+        IsTravelMode   = traveling;
+        TravelBaseline = traveling ? baseline : null;
         Save();
     }
 
@@ -197,6 +213,7 @@ public static class DatabaseConfig
         public string?      NetworkDbPath         { get; set; }
         public string?      CloudConnectionString { get; set; }
         public bool         IsTravelMode          { get; set; }
+        public Dictionary<string, long>? TravelBaseline { get; set; }
         public bool         CloudFirstPushDone    { get; set; }
         public int          CloudFullPushGeneration { get; set; }
         public bool         ForecastFirstSyncDone { get; set; }

@@ -91,10 +91,19 @@ public partial class ConfigViewModel : ObservableObject
             DbStatusMessage = "Please enter or browse to the network database path.";
             return;
         }
+        // Refuse a path that doesn't hold a database yet — otherwise the next start would
+        // quietly create a brand-new EMPTY database there and everyone would see no data.
+        if (NetworkDb.CheckReachable(path) is { } problem)
+        {
+            DbStatusMessage = problem + "\n\nUse \"Create Network Database\" first if this is a new location.";
+            return;
+        }
+        try { NetworkDb.EnsureRollbackJournal(path); } catch { /* re-checked at every startup */ }
         DatabaseConfig.ApplyNetwork(path);
         DbMode = DatabaseMode.Network;
         NetworkDbPath = path;
-        DbStatusMessage = $"Network mode active.\nPath: {path}\nAll reads/writes go to the network database.";
+        DbStatusMessage = $"Network mode saved.\nPath: {path}\n" +
+                          "Restart SAT to finish switching — after that all reads/writes go to the network database.";
     }
 
     public void ApplyCloudMode()
@@ -112,20 +121,30 @@ public partial class ConfigViewModel : ObservableObject
 
     public string SyncBeforeTravel()
     {
-        if (string.IsNullOrWhiteSpace(NetworkDbPath))
-            return "Network database path is not set.";
-        var r = SyncService.SyncBeforeTravel(NetworkDbPath);
-        if (r.Success) IsTravelMode = true;
+        // The SAVED network path (what SAT is actually using), not whatever is typed in the box.
+        if (!DatabaseConfig.IsNetwork || string.IsNullOrWhiteSpace(DatabaseConfig.NetworkDbPath))
+            return "Travel Sync needs Network mode to be saved (and SAT restarted) first.";
+        var r = SyncService.SyncBeforeTravel(DatabaseConfig.NetworkDbPath);
+        if (r.Success) { IsTravelMode = true; ReloadAfterDatabaseSwitch(); }
         return r.Message;
     }
 
     public string SyncAfterTravel()
     {
-        if (string.IsNullOrWhiteSpace(NetworkDbPath))
+        if (!DatabaseConfig.IsNetwork || string.IsNullOrWhiteSpace(DatabaseConfig.NetworkDbPath))
             return "Network database path is not set.";
-        var r = SyncService.SyncAfterTravel(NetworkDbPath);
-        if (r.Success) IsTravelMode = false;
+        var r = SyncService.SyncAfterTravel(DatabaseConfig.NetworkDbPath);
+        if (r.Success) { IsTravelMode = false; ReloadAfterDatabaseSwitch(); }
         return r.Message;
+    }
+
+    /// <summary>Travel Sync just changed which file SAT reads (network ↔ local copy) — reload the
+    /// app-lifetime caches from it and start/stop watching the share for other people's changes.</summary>
+    private static void ReloadAfterDatabaseSwitch()
+    {
+        try { StatusConfig.Reload(); ScoreConfig.Reload(); } catch { /* next start reloads anyway */ }
+        App.NetworkWatcher.Restart();
+        App.ShowTravelBanner();
     }
 
     public string CreateNetworkDatabase(string path)

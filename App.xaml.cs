@@ -10,6 +10,11 @@ public partial class App : Application
 {
     public static AutoImportService AutoImport   { get; } = new AutoImportService();
     public static CloudSyncService  CloudSync    { get; } = new CloudSyncService();
+    public static NetworkChangeWatcher NetworkWatcher { get; } = new NetworkChangeWatcher();
+
+    /// <summary>Re-evaluates the header banner (Travel Mode reminder / outdated-version warning).</summary>
+    public static void ShowTravelBanner() =>
+        (Current?.MainWindow as MainWindow)?.RefreshBanner();
 
     public App()
     {
@@ -73,6 +78,7 @@ public partial class App : Application
         }
         catch { /* the error dialog itself must never be what crashes the crash handler */ }
 
+        try { NetworkWatcher.Dispose(); } catch { }
         try { CloudSync.Dispose(); } catch { }
         try { AutoImport.Dispose(); } catch { }
         try { Shutdown(1); } catch { Environment.Exit(1); } // last resort if even a clean Shutdown can't run
@@ -95,6 +101,42 @@ public partial class App : Application
         e.SetObserved();
     }
 
+    /// <summary>
+    /// Network mode (not traveling): checks the shared database file can be opened before
+    /// anything touches it, offering Retry / switch this computer to Local mode / Exit; then
+    /// makes sure it uses the rollback journal, not WAL (see NetworkDb). False → close SAT.
+    /// </summary>
+    private static bool EnsureNetworkDatabaseReachable()
+    {
+        if (!NetworkDb.IsShared) return true;
+        var path = DatabaseConfig.NetworkDbPath;
+
+        while (NetworkDb.CheckReachable(path) is { } problem)
+        {
+            var choice = MessageBox.Show(
+                problem + "\n\n" +
+                "Yes — try again\n" +
+                "No — switch this computer to Local mode (its own separate database) so you can open Configuration and fix the path\n" +
+                "Cancel — close SAT",
+                "SAT — Network Database Unavailable", MessageBoxButton.YesNoCancel, MessageBoxImage.Warning);
+            if (choice == MessageBoxResult.Yes) continue;
+            if (choice == MessageBoxResult.No) { DatabaseConfig.ApplyLocal(); return true; }
+            return false;
+        }
+
+        try
+        {
+            if (NetworkDb.EnsureRollbackJournal(path) == "wal")
+                MessageBox.Show(
+                    "The network database is in WAL journal mode, which isn't safe when several computers share it " +
+                    "over the network, and it couldn't be switched because another computer has it open.\n\n" +
+                    "Close SAT on every other computer, then restart SAT here — it switches over automatically.",
+                    "SAT — Network Database", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        catch { /* checked again next start */ }
+        return true;
+    }
+
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
@@ -103,6 +145,11 @@ public partial class App : Application
         // knows which provider / path to use.
         DatabaseConfig.Load();
         IdAllocator.InitFromConfig(); // per-machine Id ranges in Cloud mode — see IdAllocator
+
+        // Network mode: make sure the shared file is really there BEFORE anything opens it —
+        // EnsureCreated below would otherwise quietly create a new, empty database at that path
+        // (share not mapped yet, VPN down, typo'd path) and this computer would show no data.
+        if (!EnsureNetworkDatabaseReachable()) { Shutdown(); return; }
 
         using var db = new AppDbContext();
         db.Database.EnsureCreated();
@@ -815,6 +862,9 @@ public partial class App : Application
             }
         }
 
+        // Network mode: notice other computers' saves to the shared file (toast + page refresh).
+        NetworkWatcher.Restart();
+
         // ── Show the main window ──────────────────────────────────────────────
         // Created here rather than via StartupUri so it appears only after a successful
         // sign-in, and so closing it is what ends the app from this point on.
@@ -826,6 +876,7 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        NetworkWatcher.Dispose();
         CloudSync.Dispose();
         AutoImport.Dispose();
         base.OnExit(e);
