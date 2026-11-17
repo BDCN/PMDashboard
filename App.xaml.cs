@@ -1,3 +1,4 @@
+﻿using System.IO;
 using System.Windows;
 using Microsoft.EntityFrameworkCore;
 using PMDashboard.Data;
@@ -106,6 +107,9 @@ public partial class App : Application
     /// anything touches it, offering Retry / switch this computer to Local mode / Exit; then
     /// makes sure it uses the rollback journal, not WAL (see NetworkDb). False → close SAT.
     /// </summary>
+    private static string? _newDatabasePath;   // set by --new-database
+    private static bool    _quietNewDatabase;
+
     private static bool EnsureNetworkDatabaseReachable()
     {
         if (!NetworkDb.IsShared) return true;
@@ -157,7 +161,29 @@ public partial class App : Application
         // Network mode: make sure the shared file is really there BEFORE anything opens it —
         // EnsureCreated below would otherwise quietly create a new, empty database at that path
         // (share not mapped yet, VPN down, typo'd path) and this computer would show no data.
-        if (!EnsureNetworkDatabaseReachable()) { Shutdown(); return; }
+        // ── PMDashboard.exe --new-database "<path>" [--quiet] ─────────────────
+        // Builds a blank SAT database (full schema + default statuses/categories/rules/config,
+        // no accounts, no data) to put on a network share, through the same startup code a real
+        // run uses, then exits before sign-in. This computer's own settings are not touched.
+        var newDbIndex = Array.FindIndex(e.Args, a => a.Equals("--new-database", StringComparison.OrdinalIgnoreCase));
+        if (newDbIndex >= 0)
+        {
+            _quietNewDatabase = e.Args.Any(a => a.Equals("--quiet", StringComparison.OrdinalIgnoreCase));
+            _newDatabasePath  = newDbIndex + 1 < e.Args.Length ? Path.GetFullPath(e.Args[newDbIndex + 1]) : "";
+            if (_newDatabasePath == "" || File.Exists(_newDatabasePath))
+            {
+                if (!_quietNewDatabase)
+                    MessageBox.Show(_newDatabasePath == ""
+                        ? "Usage: PMDashboard.exe --new-database \"<path to new .db file>\""
+                        : $"A file already exists at\n{_newDatabasePath}\n\nNothing was changed. Pick a new file name.",
+                        "SAT — New Database", MessageBoxButton.OK, MessageBoxImage.Warning);
+                Shutdown(2); return;
+            }
+            Directory.CreateDirectory(Path.GetDirectoryName(_newDatabasePath)!);
+            DatabaseConfig.UseForThisRunOnly(_newDatabasePath);
+        }
+
+        if (_newDatabasePath == null && !EnsureNetworkDatabaseReachable()) { Shutdown(); return; }
 
         using var db = new AppDbContext();
         db.Database.EnsureCreated();
@@ -814,6 +840,21 @@ public partial class App : Application
         {
             // Local/Network mode: place any site without a campus now (see CampusArrangementService).
             try { CampusArrangementService.Arrange(); } catch { /* never block startup over it */ }
+        }
+
+        // ── --new-database: schema + defaults are in place — finish the file and exit ──
+        if (_newDatabasePath != null)
+        {
+            db.Dispose();
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            NetworkDb.EnsureRollbackJournal(_newDatabasePath); // never WAL on a share
+            if (!_quietNewDatabase)
+                MessageBox.Show(
+                    $"Blank SAT database created:\n{_newDatabasePath}\n\n" +
+                    "Copy it to the network share. The first person to connect to it (\"Connect to network " +
+                    "database…\" on the sign-in screen) creates the first Super Admin account.",
+                    "SAT — New Database", MessageBoxButton.OK, MessageBoxImage.Information);
+            Shutdown(0); return;
         }
 
         // ── Authentication ─────────────────────────────────────────────────────

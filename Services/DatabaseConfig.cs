@@ -202,6 +202,18 @@ public static class DatabaseConfig
         Save();
     }
 
+    /// <summary>
+    /// Points this run (only — nothing is saved to dbconfig.json) at <paramref name="path"/> as if
+    /// it were the network database. Used by <c>PMDashboard.exe --new-database</c> to build a blank
+    /// shared database through the normal startup schema/seed code.
+    /// </summary>
+    public static void UseForThisRunOnly(string path)
+    {
+        Mode          = DatabaseMode.Network;
+        NetworkDbPath = path;
+        IsTravelMode  = false;
+    }
+
     public static void ApplyNetwork(string path)
     {
         Mode          = DatabaseMode.Network;
