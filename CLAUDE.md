@@ -668,7 +668,9 @@ The app version is `<Version>` in `PMDashboard.csproj` (plus a `BuildDateUtc` as
 .\publish.ps1 -Bump minor     # new features          1.0.1 -> 1.1.0
 .\publish.ps1 -Bump major     # big/breaking changes  1.1.0 -> 2.0.0
 .\publish.ps1 -Bump none      # rebuild same version
+.\publish.ps1 -Installer      # (with any -Bump) also builds installer\Output\SAT-Setup-<version>.exe
 ```
+**Installer**: `installer/SAT.iss` (Inno Setup 6; `installer/Output/` is gitignored). Version comes from `-DAppVersion` or, when compiled from the Inno IDE, from the published exe. Per-user install to `%LOCALAPPDATA%\Programs\SAT` by default (no admin; "all users" → Program Files if admin), fixed folder because `[InstallDelete]` wipes `{app}` on upgrade so stale DLLs don't linger. Closes a running SAT first. Uninstall leaves data in `%LOCALAPPDATA%`/`%APPDATA%\PMDashboard`. **Never change `AppId`** — it's what makes a new installer upgrade the old install.
 (wraps `dotnet publish -c Release -r win-x64 --self-contained true`; output in `bin\Release\net8.0-windows\win-x64\publish`. If PowerShell blocks scripts: `powershell -ExecutionPolicy Bypass -File .\publish.ps1`.) Commit the bump afterwards so source matches what's installed.
 
 Where the version shows up: header (under "Site Assignment Tracker", tooltip = build time), window title, login dialog, `sync-debug.log` "Connecting to cloud" line, every `crash.log` entry, and Login/AutoLogin audit details. In Cloud mode each machine writes `AppConfig` `ClientVersion.{MachineName}` (JSON: Version, BuildDateUtc, User, LastSeenUtc) straight to the cloud at startup; those rows sync to everyone, feeding Configuration → Database → **Versions in use** and an amber header banner on any machine whose version is older than another machine's (`CloudSyncService.NewerVersionInUse`, rechecked every ~10 min). An outdated build silently drops columns it doesn't know about when it syncs, so the banner matters.

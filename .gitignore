@@ -22,3 +22,6 @@ Site_Assignments_Template.xlsx
 # Runtime logs and database copies brought over from another machine for debugging — never source
 *.log
 work_data*.db
+
+# Inno Setup output (built by publish.ps1 -Installer)
+installer/Output/
