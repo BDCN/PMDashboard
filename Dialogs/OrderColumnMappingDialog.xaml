@@ -1,0 +1,90 @@
+<Window x:Class="PMDashboard.Dialogs.OrderColumnMappingDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Order Import — Column Mapping"
+        Width="760" Height="720" MinWidth="640" MinHeight="480"
+        WindowStartupLocation="CenterOwner"
+        Background="#F8FAFC"
+        FontFamily="Segoe UI">
+
+    <DockPanel Margin="24">
+        <!-- Header -->
+        <StackPanel DockPanel.Dock="Top">
+            <TextBlock Text="Order Import — Column Mapping" FontSize="18" FontWeight="SemiBold" Foreground="#0F172A"/>
+            <TextBlock FontSize="12" Foreground="#64748B" TextWrapping="Wrap" Margin="0,4,0,14"
+                       Text="Choose which spreadsheet column fills each field. Pick a column HEADING (recommended — keeps working when the export adds, removes or reorders columns) or a fixed column letter. Load a sample export to pick from its real headings. Applies to everyone using this database."/>
+
+            <DockPanel Margin="0,0,0,10" LastChildFill="False">
+                <TextBlock Text="Source type" FontSize="12" FontWeight="SemiBold" Foreground="#374151"
+                           VerticalAlignment="Center" Margin="0,0,10,0"/>
+                <ComboBox x:Name="CmbSource" Width="220" SelectionChanged="CmbSource_SelectionChanged"/>
+                <Button DockPanel.Dock="Right" Content="Reset to defaults" Style="{StaticResource SecondaryButtonStyle}"
+                        Click="BtnReset_Click"/>
+                <Button DockPanel.Dock="Right" Content="Load headings from a sample file…" Margin="0,0,8,0"
+                        Style="{StaticResource SecondaryButtonStyle}" Click="BtnLoadSample_Click"/>
+            </DockPanel>
+
+            <TextBlock x:Name="TxtSample" FontSize="12" Foreground="#475569" TextWrapping="Wrap" Margin="0,0,0,10"
+                       Text="No sample loaded — the dropdowns list column letters only."/>
+
+            <!-- Column headers -->
+            <Grid Margin="8,0,8,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="250"/>
+                    <ColumnDefinition Width="260"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="FIELD" FontSize="11" FontWeight="SemiBold" Foreground="#64748B"/>
+                <TextBlock Grid.Column="1" Text="COMES FROM" FontSize="11" FontWeight="SemiBold" Foreground="#64748B"/>
+                <TextBlock Grid.Column="2" Text="IN SAMPLE FILE" FontSize="11" FontWeight="SemiBold" Foreground="#64748B"/>
+            </Grid>
+        </StackPanel>
+
+        <!-- Footer -->
+        <DockPanel DockPanel.Dock="Bottom" Margin="0,14,0,0" LastChildFill="True">
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                <Button Content="Cancel" Style="{StaticResource SecondaryButtonStyle}" Click="BtnCancel_Click" Margin="0,0,10,0"/>
+                <Button Content="Save Mapping" Style="{StaticResource PrimaryButtonStyle}" Click="BtnSave_Click"/>
+            </StackPanel>
+            <TextBlock x:Name="TxtError" Foreground="#DC2626" FontSize="12" TextWrapping="Wrap"
+                       VerticalAlignment="Center" Margin="0,0,12,0"/>
+        </DockPanel>
+
+        <!-- Rows -->
+        <Border Background="White" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <ItemsControl x:Name="RowsList" Margin="8,4">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="0,3">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="250"/>
+                                    <ColumnDefinition Width="260"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{Binding DisplayLabel}" FontSize="12" VerticalAlignment="Center"
+                                           Foreground="#0F172A" TextTrimming="CharacterEllipsis" ToolTip="{Binding DisplayLabel}">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Required}" Value="True">
+                                                    <Setter Property="FontWeight" Value="SemiBold"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                                <ComboBox Grid.Column="1" IsEditable="True" Margin="0,0,12,0" FontSize="12"
+                                          ItemsSource="{Binding Choices}"
+                                          Text="{Binding SourceText, UpdateSourceTrigger=PropertyChanged}"/>
+                                <TextBlock Grid.Column="2" Text="{Binding Status}" FontSize="12" VerticalAlignment="Center"
+                                           Foreground="{Binding StatusBrush}" TextTrimming="CharacterEllipsis"
+                                           ToolTip="{Binding Status}"/>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </Border>
+    </DockPanel>
+</Window>

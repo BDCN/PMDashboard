@@ -235,6 +235,35 @@ public partial class OrdersViewModel : ObservableObject
 
     // ── Helpers ──
 
+    /// <summary>
+    /// Confirm-box preview of what Job Name will turn into: how many clusters/sites the file
+    /// names, how many rows don't give a site, and a few examples — makes a wrong column mapping
+    /// (e.g. Job Name pointed at the PM's office) obvious before anything is saved.
+    /// </summary>
+    public static string PreviewJobNames(IReadOnlyCollection<Order> orders)
+    {
+        var parsed = orders.Select(o => (o.JobName, P: ParseJobName(o.JobName))).ToList();
+        var good   = parsed.Where(x => x.P.siteName != null).ToList();
+        var clusters = good.Select(x => x.P.locationName!).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var sites    = good.Select(x => x.P.siteName!).Distinct(StringComparer.OrdinalIgnoreCase).Count();
+        var noSite   = parsed.Count - good.Count;
+
+        var lines = new List<string>
+        {
+            $"Job Name gives {clusters.Count:N0} cluster(s) and {sites:N0} site(s)" +
+            (clusters.Count is > 0 and <= 12 ? $": {string.Join(", ", clusters.OrderBy(c => c))}" : "") + ".",
+        };
+        if (noSite > 0) lines.Add($"{noSite:N0} row(s) have a Job Name that doesn't give a site (imported, no site created).");
+        lines.Add("Examples:");
+        foreach (var x in parsed.Where(x => !string.IsNullOrWhiteSpace(x.JobName))
+                                .DistinctBy(x => x.JobName, StringComparer.OrdinalIgnoreCase).Take(4))
+            lines.Add(x.P.siteName == null
+                ? $"  \"{x.JobName}\" → no site"
+                : $"  \"{x.JobName}\" → cluster {x.P.locationName} · site {x.P.siteName}" +
+                  (x.P.rompName != null ? $" · {x.P.rompName}" : ""));
+        return string.Join("\n", lines);
+    }
+
     private static readonly Regex JobNameWithRomp =
         new(@"^([A-Za-z]{2,6}\d+)(ROMP\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex SiteOnly =

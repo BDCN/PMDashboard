@@ -24,6 +24,7 @@ public partial class ConfigPage : UserControl
             // Populate DDL text area if Cloud mode was already active when the page opens
             if (vm.IsDbCloud)
                 TxtDdl.Text = vm.GetDdlScript();
+            try { UpdateColumnMappingStatus(); } catch { /* status line only */ }
 
             // Opened from Coverage Planner's "Model settings" button — jump to that card. Deferred
             // to after layout so the card has a position to scroll to.
@@ -101,6 +102,29 @@ public partial class ConfigPage : UserControl
 
         vm.SaveSourceDataType(newType);
         vm.StatusMessage = $"Source data type changed to {newType}.";
+        UpdateColumnMappingStatus();
+    }
+
+    // ── Column mapping (Dialogs/OrderColumnMappingDialog) ──
+
+    private void BtnColumnMapping_Click(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm) return;
+        var dlg = new Dialogs.OrderColumnMappingDialog(vm.SourceDataType) { Owner = Window.GetWindow(this) };
+        if (dlg.ShowDialog() == true) vm.StatusMessage = "Column mapping saved.";
+        UpdateColumnMappingStatus();
+    }
+
+    private void UpdateColumnMappingStatus()
+    {
+        if (Vm is not { } vm) return;
+        var type = vm.SourceDataType;
+        var map  = OrderColumnMapping.Load(type);
+        TxtColumnMappingStatus.Text =
+            (OrderColumnMapping.IsCustomised(type)
+                ? $"{OrderColumnMapping.SourceLabel(type)}: custom mapping. "
+                : $"{OrderColumnMapping.SourceLabel(type)}: built-in column positions. ") +
+            $"Job Name ← {map["JobName"]}, Customer Order ← {map["CustomerOrder"]}, Order Line ← {map["OrdLine"]}.";
     }
 
     // ── Upload method ──

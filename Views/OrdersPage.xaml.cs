@@ -31,27 +31,31 @@ public partial class OrdersPage : UserControl
             // Reading a large workbook takes a while — keep the window responsive.
             var sourceType = new ConfigService().Get(ConfigKeys.SourceDataType, "VADATA");
             var file       = dlg.FileName;
-            List<PMDashboard.Data.Models.Order> orders;
+            OrderSheetParse parse;
             vm.IsImporting     = true;
             vm.ImportingStatus = "Reading the Excel file…";
             try
             {
-                orders = await Task.Run(() =>
-                {
-                    var service = new ExcelImportService();
-                    return sourceType switch
-                    {
-                        "Tableau"   => service.ImportTableauOrders(file),
-                        "OpenLines" => service.ImportOpenLinesOrders(file),
-                        _           => service.ImportOrders(file),
-                    };
-                });
+                // Columns come from Configuration → Source Data → Edit Column Mapping.
+                parse = await Task.Run(() => new ExcelImportService().Import(file, sourceType));
             }
             finally
             {
                 vm.IsImporting     = false;
                 vm.ImportingStatus = "";
             }
+
+            var mappingHint = "\n\nCheck the column mapping in Configuration → Source Data → Edit Column Mapping " +
+                              $"(source type: {OrderColumnMapping.SourceLabel(sourceType)}).";
+            if (!parse.CanImport)
+            {
+                MessageBox.Show(
+                    "This file can't be imported — required columns weren't found:\n\n• " +
+                    string.Join("\n• ", parse.MissingRequired) + mappingHint,
+                    "Import — Columns Not Found", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            var orders = parse.Orders;
             if (orders.Count == 0)
             {
                 MessageBox.Show("No data rows found in the file.", "Import",
@@ -59,8 +63,20 @@ public partial class OrdersPage : UserControl
                 return;
             }
 
+            // Show where the key fields came from and what Job Name turns into, so a wrong
+            // mapping is obvious BEFORE anything is saved.
             var confirm = MessageBox.Show(
-                $"Found {orders.Count} rows. New rows will be added; changed rows will be updated; unchanged rows will be skipped.\n\nClusters, Sites, and ROMPs will be created automatically from Job Name.",
+                $"Found {orders.Count:N0} rows ({OrderColumnMapping.SourceLabel(sourceType)}).\n\n" +
+                $"Job Name:  column {parse.Describe("JobName")}\n" +
+                $"Customer Order:  column {parse.Describe("CustomerOrder")}\n" +
+                $"Order Line:  column {parse.Describe("OrdLine")}\n\n" +
+                OrdersViewModel.PreviewJobNames(orders) +
+                (parse.MissingOptional.Count > 0
+                    ? "\n\nNot in this file (left empty):\n• " + string.Join("\n• ", parse.MissingOptional.Take(8)) +
+                      (parse.MissingOptional.Count > 8 ? $"\n• …and {parse.MissingOptional.Count - 8} more" : "")
+                    : "") +
+                "\n\nNew rows will be added, changed rows updated, unchanged rows skipped. Import now?" +
+                "\n(If the clusters/sites above look wrong, choose No and fix the column mapping.)",
                 "Confirm Import", MessageBoxButton.YesNo, MessageBoxImage.Question);
             if (confirm != MessageBoxResult.Yes) return;
 

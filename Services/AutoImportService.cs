@@ -96,15 +96,17 @@ public sealed class AutoImportService : IDisposable
         {
             if (!File.Exists(filePath)) return; // another computer imported it meanwhile
 
-            // 1. Parse — route to the configured source type
-            var parser     = new ExcelImportService();
+            // 1. Parse — configured source type + its column mapping (Configuration → Source Data)
             var sourceType = new ConfigService().Get(ConfigKeys.SourceDataType, "VADATA");
-            var orders = sourceType switch
+            var parse      = new ExcelImportService().Import(filePath, sourceType);
+            if (!parse.CanImport)
             {
-                "Tableau"   => parser.ImportTableauOrders(filePath),
-                "OpenLines" => parser.ImportOpenLinesOrders(filePath),
-                _           => parser.ImportOrders(filePath),
-            };
+                MoveToProcessed(filePath, "invalid");
+                Notify($"Skipped \"{Path.GetFileName(filePath)}\" — required columns not found: " +
+                       string.Join("; ", parse.MissingRequired) + ". Check the column mapping in Configuration.");
+                return;
+            }
+            var orders = parse.Orders;
 
             if (orders.Count == 0)
             {
