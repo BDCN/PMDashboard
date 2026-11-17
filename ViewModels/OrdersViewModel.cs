@@ -77,11 +77,17 @@ public partial class OrdersViewModel : ObservableObject
     }
 
     // Upserts orders by (CustomerOrder, OrdLine) key, auto-creates Locations/Sites/ROMPs from JobName.
-    public ImportResult UpsertOrders(IEnumerable<Order> incoming)
+    // Database work only — touches no UI-bound property, so ImportWithLockAsync runs it on a
+    // background thread (in Network mode it reads the whole Orders table over the share and the
+    // window would otherwise freeze as "Not responding" for minutes). The caller updates the page.
+    public ImportResult UpsertOrders(IReadOnlyCollection<Order> incoming, IProgress<string>? progress = null)
     {
         var uploadTime = DateTime.Now;
         int added = 0, updated = 0, skipped = 0, locationsCreated = 0, sitesCreated = 0, rompsCreated = 0;
 
+        progress?.Report(NetworkDb.IsShared
+            ? "Reading existing orders from the network database…"
+            : "Reading existing orders…");
         using var db = new AppDbContext();
 
         // Existing orders — AsNoTracking, filtered in SQL before materialising.
@@ -107,6 +113,7 @@ public partial class OrdersViewModel : ObservableObject
 
         var batchRompSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+        progress?.Report($"Comparing {incoming.Count:N0} rows with {existingOrders.Count:N0} existing orders…");
         foreach (var row in incoming)
         {
             row.UploadDate = uploadTime;
@@ -162,16 +169,22 @@ public partial class OrdersViewModel : ObservableObject
             }
         }
 
+        progress?.Report(added + updated == 0 && locationsCreated + sitesCreated + rompsCreated == 0
+            ? "Nothing changed — finishing…"
+            : $"Saving {added:N0} new and {updated:N0} changed orders" +
+              (NetworkDb.IsShared ? " to the network database… (other people's saves wait until this finishes)" : "…"));
         db.SaveChanges();
 
         var result = new ImportResult(added, updated, skipped, locationsCreated, sitesCreated, rompsCreated);
-        SetLastImportResult(result, CurrentUser.DisplayName);
         AuditService.Log("Import", "Orders", details:
             $"Imported orders: {added} added, {updated} updated, {skipped} unchanged, " +
             $"{locationsCreated} cluster(s), {sitesCreated} site(s), {rompsCreated} ROMP(s) created");
-        Load();
         // New sites go into campuses — the forecast campus if known, else one of their own name.
-        if (sitesCreated > 0) try { CampusArrangementService.Arrange(); } catch { /* best-effort; runs again at next startup/sync */ }
+        if (sitesCreated > 0)
+        {
+            progress?.Report("Placing new sites into campuses…");
+            try { CampusArrangementService.Arrange(); } catch { /* best-effort; runs again at next startup/sync */ }
+        }
         return result;
     }
 
@@ -185,27 +198,33 @@ public partial class OrdersViewModel : ObservableObject
     {
         IsImporting     = true;
         ImportingStatus = "Checking import lock…";
+        var email    = CurrentUser.Email;
+        var progress = new Progress<string>(s => ImportingStatus = s); // created here → reports on the UI thread
         try
         {
-            var (acquired, heldByMessage) = ImportLockService.TryAcquire(CurrentUser.Email);
+            // Everything that touches the database runs off the UI thread (see UpsertOrders).
+            var (acquired, heldByMessage) = await Task.Run(() => ImportLockService.TryAcquire(email));
             if (!acquired) return (false, heldByMessage);
 
+            ImportResult result;
             try
             {
-                ImportingStatus = NetworkDb.IsShared ? "Importing to the network database…" : "Importing locally…";
-                UpsertOrders(incoming);
+                result = await Task.Run(() => UpsertOrders(incoming, progress));
 
                 if (CloudSyncService.IsAvailable)
                 {
                     ImportingStatus = "Uploading to the cloud…";
                     await App.CloudSync.PushNowAndWaitAsync();
                 }
-                return (true, null);
             }
             finally
             {
-                ImportLockService.Release(CurrentUser.Email);
+                await Task.Run(() => ImportLockService.Release(email));
             }
+
+            SetLastImportResult(result, CurrentUser.DisplayName);
+            Load();
+            return (true, null);
         }
         finally
         {

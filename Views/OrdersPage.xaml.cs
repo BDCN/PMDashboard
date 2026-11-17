@@ -28,14 +28,30 @@ public partial class OrdersPage : UserControl
 
         try
         {
-            var service    = new ExcelImportService();
+            // Reading a large workbook takes a while — keep the window responsive.
             var sourceType = new ConfigService().Get(ConfigKeys.SourceDataType, "VADATA");
-            var orders = sourceType switch
+            var file       = dlg.FileName;
+            List<PMDashboard.Data.Models.Order> orders;
+            vm.IsImporting     = true;
+            vm.ImportingStatus = "Reading the Excel file…";
+            try
             {
-                "Tableau"   => service.ImportTableauOrders(dlg.FileName),
-                "OpenLines" => service.ImportOpenLinesOrders(dlg.FileName),
-                _           => service.ImportOrders(dlg.FileName),
-            };
+                orders = await Task.Run(() =>
+                {
+                    var service = new ExcelImportService();
+                    return sourceType switch
+                    {
+                        "Tableau"   => service.ImportTableauOrders(file),
+                        "OpenLines" => service.ImportOpenLinesOrders(file),
+                        _           => service.ImportOrders(file),
+                    };
+                });
+            }
+            finally
+            {
+                vm.IsImporting     = false;
+                vm.ImportingStatus = "";
+            }
             if (orders.Count == 0)
             {
                 MessageBox.Show("No data rows found in the file.", "Import",
