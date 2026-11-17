@@ -85,6 +85,10 @@ public static class DatabaseConnectFlow
             return false;
         }
 
+        if (NetworkDb.CheckWritable(path) is { } readOnly &&
+            Ask(owner, readOnly + "\n\nConnect anyway (view only until the permission is fixed)?") != MessageBoxResult.Yes)
+            return false;
+
         var onShare = IsOnNetworkShare(path);
         if (Ask(owner,
                 $"Connect this computer to the shared database?\n\n{path}\n\n" +

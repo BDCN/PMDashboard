@@ -60,6 +60,57 @@ public static class NetworkDb
     }
 
     /// <summary>
+    /// Null when this Windows account can SAVE to the database at <paramref name="path"/>, otherwise
+    /// a message saying what's wrong. Reading working is not enough — verified 2026-11-17:
+    ///  • file read-only for this account (read-only attribute / read-only share or NTFS access) →
+    ///    opens fine, every save fails "attempt to write a readonly database" (SQLite 8) — seen on a
+    ///    new user's first save (their password change);
+    ///  • can't create files in the folder → every save fails "unable to open database file"
+    ///    (SQLite 14), since the rollback journal (SAT.db-journal) is created next to the database.
+    /// Tested by a real page write inside a transaction that is rolled back, so nothing changes.
+    /// (A no-op UPDATE is NOT a valid test: SQLite writes nothing and needs no journal for it.)
+    /// </summary>
+    public static string? CheckWritable(string path)
+    {
+        try
+        {
+            if (File.Exists(path) && new FileInfo(path).IsReadOnly)
+                return ReadOnlyHelp(path, "The database file is marked read-only.");
+        }
+        catch { /* can't read attributes — the write test below decides */ }
+
+        try
+        {
+            using var conn = new SqliteConnection(ConnectionString(path, SqliteOpenMode.ReadWrite) + ";Pooling=False");
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "PRAGMA user_version";
+            var version = Convert.ToInt64(cmd.ExecuteScalar());
+            // Rewriting the header's user_version with its own value is a real page write;
+            // the rollback undoes it.
+            cmd.CommandText = $"BEGIN IMMEDIATE; PRAGMA user_version = {version}; ROLLBACK;";
+            cmd.ExecuteNonQuery();
+            return null;
+        }
+        catch (SqliteException ex) when (ex.SqliteErrorCode is 5 or 6) { return null; } // busy/locked: someone else is saving — that's fine
+        catch (SqliteException ex) when (IsNoWriteAccess(ex))
+        {
+            return ReadOnlyHelp(path, $"Test save failed: {ex.Message}");
+        }
+        catch { return null; } // anything else is not a permissions problem — don't block on it
+    }
+
+    /// <summary>SQLITE_READONLY (8) / SQLITE_CANTOPEN (14) / SQLITE_PERM (3) — this account can't write the file or its folder.</summary>
+    public static bool IsNoWriteAccess(SqliteException ex) => ex.SqliteErrorCode is 3 or 8 or 14;
+
+    public static string ReadOnlyHelp(string path, string? detail = null) =>
+        $"SAT can read the shared database but can't save to it:\n{path}\n\n" +
+        (detail != null ? detail + "\n\n" : "") +
+        "Ask IT / the share's owner to give your Windows account \"Modify\" permission on the database " +
+        "file and its folder (both the share permission and the folder's Security tab), and to make sure " +
+        "the file isn't marked read-only. Until then you can look at data, but changes can't be saved.";
+
+    /// <summary>
     /// Switches the file to the rollback journal if it's in WAL mode. Returns the journal mode
     /// now in effect ("delete" on success). Leaving WAL needs nobody else to have the file open,
     /// so on a busy share this can return "wal" — the caller warns and it's retried next start.

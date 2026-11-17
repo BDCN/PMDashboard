@@ -67,6 +67,25 @@ public partial class App : Application
             return;
         }
 
+        // A save the database refused (no write permission on the share, or another computer
+        // held the write lock past the busy timeout) — nothing was saved, nothing is half-done
+        // (each save is one transaction), so explain it and keep SAT open instead of closing.
+        for (var ex = e.Exception; ex != null; ex = ex.InnerException)
+        {
+            if (ex is not Microsoft.Data.Sqlite.SqliteException sq) continue;
+            string? msg = NetworkDb.IsNoWriteAccess(sq)
+                ? NetworkDb.ReadOnlyHelp(DatabaseConfig.ActiveSqlitePath)
+                : sq.SqliteErrorCode is 5 or 6
+                    ? "The database is busy — another computer is saving a large change (e.g. an import).\n\n" +
+                      "Nothing was saved. Wait a minute and try again."
+                    : null;
+            if (msg == null) break;
+            LogFatalException("DispatcherUnhandledException (handled — save refused)", e.Exception);
+            e.Handled = true;
+            try { MessageBox.Show(msg, "SAT — Couldn't Save", MessageBoxButton.OK, MessageBoxImage.Warning); } catch { }
+            return;
+        }
+
         LogFatalException("DispatcherUnhandledException", e.Exception);
         e.Handled = true; // we're taking over the shutdown ourselves, not letting WPF's default crash path run
 
@@ -138,6 +157,11 @@ public partial class App : Application
                     "SAT — Network Database", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
         catch { /* checked again next start */ }
+
+        // Reading works — can this Windows account also save? Say so now, not on the first save.
+        if (NetworkDb.CheckWritable(path) is { } readOnly)
+            MessageBox.Show(readOnly, "SAT — Network Database Is Read-Only for You",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
         return true;
     }
 
