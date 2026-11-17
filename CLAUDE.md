@@ -536,7 +536,7 @@ PM status thresholds: utilization > OverloadThreshold → "Overloaded"; ≥ Near
 | **Network** | UNC path e.g. `\\server\share\PMDashboard\data.db` | Small office team |
 | **Cloud** | MariaDB (via Pomelo) | Multi-user, always synced |
 
-**The team uses Network mode (decided 2026-11-16) — the MariaDB cloud database is not used.** Cloud code is still in place but dormant, and the Cloud option is **hidden** in Configuration → Database (`ConfigViewModel.ShowCloudOption`, only true on a machine still in Cloud mode so it can switch away). The Cloud panel's Danger Zone items "Delete Local Data" and "Clear ALL Data" are hidden with it (in Network mode they would wipe the shared file); "Clear All Assignments" was moved out into its own always-visible block.
+**The team uses Network mode (decided 2026-11-16) — the MariaDB cloud database is not used.** Cloud code is still in place but dormant: **`DatabaseConfig.Load()` converts a saved Cloud mode to Local** (v1.10.1, 2026-11-17 — the machine keeps its local SQLite copy, the connection string stays in `dbconfig.json` unused, `RetiredFromCloud` makes `App.OnStartup` show a one-time notice), so `DatabaseConfig.IsCloud` is never true and `CloudSyncService` never starts. The Cloud option is **hidden** in Configuration → Database (`ConfigViewModel.ShowCloudOption` is always false). The Cloud panel's Danger Zone items "Delete Local Data" and "Clear ALL Data" are hidden with it (in Network mode they would wipe the shared file); "Clear All Assignments" was moved out into its own always-visible block.
 
 ### AppDbContext Connection Logic
 - `new AppDbContext()` — ALWAYS uses local SQLite, even in Cloud mode (speed)

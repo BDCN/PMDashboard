@@ -65,7 +65,7 @@ public partial class ConfigViewModel : ObservableObject
     public void LoadDatabaseSettings()
     {
         DbMode        = DatabaseConfig.Mode;
-        ShowCloudOption = DatabaseConfig.IsCloud;
+        ShowCloudOption = false; // cloud retired — DatabaseConfig.Load moves any Cloud machine to Local
         NetworkDbPath = DatabaseConfig.NetworkDbPath;
         IsTravelMode  = DatabaseConfig.IsTravelMode;
         DbStatusMessage = "";

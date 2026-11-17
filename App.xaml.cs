@@ -146,6 +146,14 @@ public partial class App : Application
         DatabaseConfig.Load();
         IdAllocator.InitFromConfig(); // per-machine Id ranges in Cloud mode — see IdAllocator
 
+        if (DatabaseConfig.RetiredFromCloud)
+            MessageBox.Show(
+                "The cloud database is no longer used, so this computer has been switched off it.\n\n" +
+                "SAT is now using this computer's own copy of the data (everything already synced is kept).\n\n" +
+                "To share data with the team, a Super Admin can point this computer at the shared network " +
+                "database in Configuration → Database → Network.",
+                "SAT — Cloud database retired", MessageBoxButton.OK, MessageBoxImage.Information);
+
         // Network mode: make sure the shared file is really there BEFORE anything opens it —
         // EnsureCreated below would otherwise quietly create a new, empty database at that path
         // (share not mapped yet, VPN down, typo'd path) and this computer would show no data.

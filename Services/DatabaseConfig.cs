@@ -127,9 +127,24 @@ public static class DatabaseConfig
             ForecastFirstSyncDone = obj.ForecastFirstSyncDone;
             IdSlot                = obj.IdSlot;
             IdSlotCloud           = obj.IdSlotCloud ?? "";
+
+            // The MariaDB cloud database is retired (2026-11-17 — the team uses Network mode).
+            // A machine still set to Cloud switches to Local: its local SQLite file already holds
+            // everything it synced, so nothing is lost, and CloudSyncService never starts
+            // (IsCloud is false from here on). The connection string is left in the file untouched.
+            if (Mode == DatabaseMode.Cloud)
+            {
+                Mode = DatabaseMode.Local;
+                RetiredFromCloud = true;
+                Save();
+            }
         }
         catch { /* corrupt file — fall back to Local */ }
     }
+
+    /// <summary>True for the one run in which <see cref="Load"/> switched this machine off the
+    /// retired cloud database — App startup tells the user once.</summary>
+    public static bool RetiredFromCloud { get; private set; }
 
     public static void Save()
     {
@@ -196,6 +211,7 @@ public static class DatabaseConfig
         Save();
     }
 
+    // Unreachable from the UI (Cloud option hidden); even if called, the next Load() reverts to Local.
     public static void ApplyCloud(string connectionString)
     {
         Mode                  = DatabaseMode.Cloud;
