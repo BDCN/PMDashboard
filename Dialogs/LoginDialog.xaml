@@ -33,7 +33,20 @@
             <TextBlock Text="Anyone using this Windows account on this PC will sign in as you automatically — only enable this on your own development machine."
                        FontSize="10" Foreground="#94A3B8" TextWrapping="Wrap" Margin="0,0,0,4"/>
 
-            <DockPanel Margin="0,8,0,0" LastChildFill="False">
+            <!-- Which database this computer uses; anyone can connect it to the shared one
+                 (Dialogs/DatabaseConnectFlow) — no admin rights needed. -->
+            <Border Background="#F1F5F9" CornerRadius="6" Padding="10,8" Margin="0,12,0,0">
+                <StackPanel>
+                    <TextBlock x:Name="TxtDatabase" FontSize="11" Foreground="#475569" TextWrapping="Wrap"/>
+                    <Button x:Name="BtnConnectDb" Content="Connect to network database…"
+                            HorizontalAlignment="Left" Margin="0,4,0,0"
+                            FontSize="11" Foreground="#2563EB" Background="Transparent"
+                            BorderThickness="0" Padding="0" Cursor="Hand"
+                            Click="BtnConnectDb_Click"/>
+                </StackPanel>
+            </Border>
+
+            <DockPanel Margin="0,12,0,0" LastChildFill="False">
                 <TextBlock x:Name="TxtVersion" DockPanel.Dock="Left" FontSize="10" Foreground="#94A3B8"
                            VerticalAlignment="Center"/>
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">

@@ -182,9 +182,10 @@
                         </StackPanel>
 
 
-                        <!-- ── Network mode: Travel Sync, for every signed-in user (Configuration is
-                             Super-Admin only). Same flow as Configuration → Database
-                             (Dialogs/TravelSyncFlow). Driven by MainWindow.UpdateTravelPanel. ── -->
+                        <!-- ── Database control, for every signed-in user (Configuration is Super-Admin
+                             only): Network → Go Offline / Sync After Travel (Dialogs/TravelSyncFlow);
+                             Local → Connect to network database (Dialogs/DatabaseConnectFlow).
+                             Driven by MainWindow.UpdateTravelPanel. ── -->
                         <StackPanel x:Name="TravelPanel" DockPanel.Dock="Bottom"
                                     Margin="16,12,16,16" Visibility="Collapsed">
                             <Separator Background="#334155" Margin="0,0,0,12"/>
@@ -198,6 +199,10 @@
                                     FontSize="11" Foreground="#93C5FD" Background="Transparent"
                                     BorderThickness="0" Padding="0" Cursor="Hand"
                                     Click="BtnTravel_Click"/>
+                            <Button x:Name="BtnConnectDb" Content="⇄ Change network database…" HorizontalAlignment="Left"
+                                    FontSize="11" Foreground="#93C5FD" Background="Transparent"
+                                    BorderThickness="0" Padding="0" Cursor="Hand" Margin="0,4,0,0"
+                                    Click="BtnConnectDb_Click"/>
                         </StackPanel>
 
                         <!-- Everything above the sync indicator scrolls, so short screens can still

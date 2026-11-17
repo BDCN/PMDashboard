@@ -97,18 +97,27 @@ public partial class MainWindow : Window
         UpdateTravelPanel();
     }
 
-    /// <summary>Sidebar Travel control (Network mode only): where SAT's data is right now, and the
-    /// one action that makes sense from there.</summary>
+    /// <summary>Sidebar database control (every user): where SAT's data is right now, and the
+    /// actions that make sense from there.</summary>
     private void UpdateTravelPanel()
     {
-        if (!DatabaseConfig.IsNetwork)
+        TravelPanel.Visibility = Visibility.Visible;
+        BtnConnectDb.Visibility = Visibility.Visible;
+        BtnTravel.Visibility    = Visibility.Visible;
+        if (!DatabaseConfig.IsNetwork || string.IsNullOrWhiteSpace(DatabaseConfig.NetworkDbPath))
         {
-            TravelPanel.Visibility = Visibility.Collapsed;
+            TxtTravelIcon.Foreground = new SolidColorBrush(Color.FromRgb(0x94, 0xA3, 0xB8));
+            TxtTravelState.Text      = "This computer only (not shared)";
+            BtnTravel.Visibility     = Visibility.Collapsed;
+            BtnConnectDb.Content     = "⇄ Connect to network database…";
+            BtnConnectDb.ToolTip     = "Use the team's shared SAT database on the network.";
             return;
         }
-        TravelPanel.Visibility = Visibility.Visible;
+        BtnConnectDb.Content = "⇄ Change network database…";
+        BtnConnectDb.ToolTip = DatabaseConfig.NetworkDbPath;
         if (DatabaseConfig.IsTravelMode)
         {
+            BtnConnectDb.Visibility = Visibility.Collapsed; // sync back first
             TxtTravelIcon.Foreground  = new SolidColorBrush(Color.FromRgb(0xFB, 0xBF, 0x24));
             TxtTravelState.Text       = DatabaseConfig.TravelStartedUtc is { } since
                 ? $"Travel Mode — offline copy since {since.ToLocalTime():MMM d, h:mm tt}"
@@ -130,6 +139,13 @@ public partial class MainWindow : Window
         if (DatabaseConfig.IsTravelMode) Dialogs.TravelSyncFlow.SyncBack(this);
         else                             Dialogs.TravelSyncFlow.GoOffline(this);
         RefreshBanner();
+    }
+
+    private void BtnConnectDb_Click(object sender, RoutedEventArgs e)
+    {
+        // True → a new SAT is already starting on the chosen database; this one closes.
+        if (Dialogs.DatabaseConnectFlow.ConnectToNetwork(this))
+            Application.Current.Shutdown();
     }
 
     private void BtnDismissUpdateBanner_Click(object sender, RoutedEventArgs e) =>

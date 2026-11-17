@@ -14,6 +14,10 @@ public partial class LoginDialog : Window
         InitializeComponent();
         TxtVersion.Text = AppVersion.Short;
         TxtVersion.ToolTip = AppVersion.Full;
+        TxtDatabase.Text = "Data: " + DatabaseConnectFlow.Describe();
+        if (NetworkDb.IsShared) TxtDatabase.ToolTip = DatabaseConfig.NetworkDbPath;
+        BtnConnectDb.Content = NetworkDb.IsShared ? "Change network database…" : "Connect to network database…";
+        BtnConnectDb.Visibility = DatabaseConfig.IsTravelMode ? Visibility.Collapsed : Visibility.Visible;
         Loaded += (_, _) =>
         {
             // Pre-fill from a saved-but-currently-inert auto-login (e.g. it's enabled but the
@@ -34,6 +38,12 @@ public partial class LoginDialog : Window
 
     private void BtnSignIn_Click(object sender, RoutedEventArgs e) => TrySignIn();
     private void BtnCancel_Click(object sender, RoutedEventArgs e) => DialogResult = false;
+
+    // A new SAT is starting on the chosen database — closing this dialog unsigned-in ends this one.
+    private void BtnConnectDb_Click(object sender, RoutedEventArgs e)
+    {
+        if (DatabaseConnectFlow.ConnectToNetwork(this)) DialogResult = false;
+    }
 
     private void Field_KeyDown(object sender, KeyEventArgs e)
     {

@@ -116,7 +116,7 @@ public partial class App : Application
             var choice = MessageBox.Show(
                 problem + "\n\n" +
                 "Yes — try again\n" +
-                "No — switch this computer to Local mode (its own separate database) so you can open Configuration and fix the path\n" +
+                "No — use this computer's own separate data for now (reconnect any time with \"Connect to network database…\" on the sign-in screen or in the sidebar)\n" +
                 "Cancel — close SAT",
                 "SAT — Network Database Unavailable", MessageBoxButton.YesNoCancel, MessageBoxImage.Warning);
             if (choice == MessageBoxResult.Yes) continue;

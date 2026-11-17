@@ -11,7 +11,17 @@ public partial class CreateAdminAccountDialog : Window
 {
     private readonly UserService _users = new();
 
-    public CreateAdminAccountDialog() => InitializeComponent();
+    public CreateAdminAccountDialog()
+    {
+        InitializeComponent();
+        if (NetworkDb.IsShared) JoinTeamPanel.Visibility = Visibility.Collapsed;
+    }
+
+    // A new SAT is starting on the chosen database — closing this dialog ends this one.
+    private void BtnConnectDb_Click(object sender, RoutedEventArgs e)
+    {
+        if (DatabaseConnectFlow.ConnectToNetwork(this)) DialogResult = false;
+    }
 
     private void BtnCreate_Click(object sender, RoutedEventArgs e)
     {
