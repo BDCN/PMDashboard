@@ -96,6 +96,14 @@ public sealed class AutoImportService : IDisposable
         {
             if (!File.Exists(filePath)) return; // another computer imported it meanwhile
 
+            // Network mode: import against the latest shared data, under the lock (see
+            // OrdersViewModel.ImportWithLockAsync). Can't get it → try again next poll.
+            if (NetworkSync.IsEnabled && !NetworkSync.SyncNow().Ok)
+            {
+                _seen.Remove(Path.GetFileName(filePath));
+                return;
+            }
+
             // 1. Parse — configured source type + its column mapping (Configuration → Source Data)
             var sourceType = new ConfigService().Get(ConfigKeys.SourceDataType, "VADATA");
             var parse      = new ExcelImportService().Import(filePath, sourceType);
@@ -128,6 +136,7 @@ public sealed class AutoImportService : IDisposable
             if (result.SitesCreated > 0)
                 try { CampusArrangementService.Arrange(); } catch { /* best-effort; runs again at next startup/sync */ }
 
+            if (NetworkSync.IsEnabled) NetworkSync.SyncNow();   // send it now, still under the lock
             MoveToProcessed(filePath, "imported");
             Notify($"Auto-imported \"{Path.GetFileName(filePath)}\": " +
                    $"{result.Added} added, {result.Updated} updated, {result.Skipped} unchanged, " +

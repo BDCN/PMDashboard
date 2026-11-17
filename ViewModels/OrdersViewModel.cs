@@ -1,4 +1,4 @@
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.EntityFrameworkCore;
 using PMDashboard.Data;
@@ -85,9 +85,7 @@ public partial class OrdersViewModel : ObservableObject
         var uploadTime = DateTime.Now;
         int added = 0, updated = 0, skipped = 0, locationsCreated = 0, sitesCreated = 0, rompsCreated = 0;
 
-        progress?.Report(NetworkDb.IsShared
-            ? "Reading existing orders from the network database…"
-            : "Reading existing orders…");
+        progress?.Report("Reading existing orders…");
         using var db = new AppDbContext();
 
         // Existing orders — AsNoTracking, filtered in SQL before materialising.
@@ -172,7 +170,7 @@ public partial class OrdersViewModel : ObservableObject
         progress?.Report(added + updated == 0 && locationsCreated + sitesCreated + rompsCreated == 0
             ? "Nothing changed — finishing…"
             : $"Saving {added:N0} new and {updated:N0} changed orders" +
-              (NetworkDb.IsShared ? " to the network database… (other people's saves wait until this finishes)" : "…"));
+              "…");
         db.SaveChanges();
 
         var result = new ImportResult(added, updated, skipped, locationsCreated, sitesCreated, rompsCreated);
@@ -209,7 +207,26 @@ public partial class OrdersViewModel : ObservableObject
             ImportResult result;
             try
             {
+                // Network mode: import against the latest shared data (so clusters/sites someone
+                // else just created are reused, not duplicated), then send it straight away —
+                // both while holding the lock, so imports can't overlap.
+                if (NetworkSync.IsEnabled)
+                {
+                    ImportingStatus = "Getting the latest data from the shared database…";
+                    var before = await NetworkSync.SyncNowAsync();
+                    if (!before.Ok)
+                        return (false, "Couldn't get the latest data from the shared database, so the import didn't start:\n\n" + before.Error);
+                }
+
                 result = await Task.Run(() => UpsertOrders(incoming, progress));
+
+                if (NetworkSync.IsEnabled)
+                {
+                    ImportingStatus = "Sending the import to the shared database…";
+                    var after = await NetworkSync.SyncNowAsync();
+                    if (!after.Ok)
+                        ImportingStatus = "Imported on this computer — it will reach the shared database on the next sync.";
+                }
 
                 if (CloudSyncService.IsAvailable)
                 {

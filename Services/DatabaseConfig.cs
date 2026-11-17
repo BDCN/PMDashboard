@@ -86,10 +86,27 @@ public static class DatabaseConfig
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "PMDashboard", "data.db");
 
+    /// <summary>Network mode's working copy of the shared database on this computer — every page
+    /// reads and writes it; <see cref="NetworkSync"/> keeps it in step with the network file.
+    /// Separate from <see cref="LocalDbPath"/> so switching to Network mode never overwrites this
+    /// computer's own Local-mode data.</summary>
+    public static string NetworkCachePath => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "PMDashboard", "network-cache.db");
+
+    /// <summary>True only for <c>PMDashboard.exe --new-database</c>: that run opens the given file
+    /// directly instead of through the local working copy.</summary>
+    public static bool DirectNetworkFile { get; private set; }
+
+    /// <summary>Network mode (not a legacy travel trip): the app works on <see cref="NetworkCachePath"/>
+    /// and NetworkSync syncs it with the network file in the background (v1.13.0).</summary>
+    public static bool UsesLocalCache =>
+        Mode == DatabaseMode.Network && !IsTravelMode && !DirectNetworkFile && !string.IsNullOrWhiteSpace(NetworkDbPath);
+
     /// <summary>
     /// The SQLite file path the app should use right now.
-    /// Network mode while NOT traveling → network file.
-    /// Network mode while traveling OR Local mode → local file.
+    /// Network mode → this computer's working copy (synced in the background), or the network file
+    /// itself for --new-database. A legacy Travel Mode trip / Local mode → local file.
     /// Cloud mode → unused (MySQL connection string is used instead).
     /// </summary>
     public static string ActiveSqlitePath
@@ -97,7 +114,7 @@ public static class DatabaseConfig
         get
         {
             if (Mode == DatabaseMode.Network && !IsTravelMode && !string.IsNullOrWhiteSpace(NetworkDbPath))
-                return NetworkDbPath;
+                return DirectNetworkFile ? NetworkDbPath : NetworkCachePath;
             return LocalDbPath;
         }
     }
@@ -209,9 +226,10 @@ public static class DatabaseConfig
     /// </summary>
     public static void UseForThisRunOnly(string path)
     {
-        Mode          = DatabaseMode.Network;
-        NetworkDbPath = path;
-        IsTravelMode  = false;
+        Mode              = DatabaseMode.Network;
+        NetworkDbPath     = path;
+        IsTravelMode      = false;
+        DirectNetworkFile = true;
     }
 
     public static void ApplyNetwork(string path)

@@ -1,4 +1,4 @@
-<UserControl x:Class="PMDashboard.Views.ConfigPage"
+﻿<UserControl x:Class="PMDashboard.Views.ConfigPage"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              Background="#F1F5F9">
@@ -1295,22 +1295,16 @@
                                            FontSize="11" Foreground="#94A3B8" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="320"/>
                             </StackPanel>
 
-                            <!-- Travel sync -->
+                            <!-- Background sync (Services/NetworkSync) -->
                             <Border Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1"
                                     CornerRadius="8" Padding="16,12">
                                 <StackPanel>
-                                    <TextBlock Text="✈  Travel Sync" FontSize="13" FontWeight="SemiBold"
+                                    <TextBlock Text="⇅  Background sync" FontSize="13" FontWeight="SemiBold"
                                                Foreground="#0F172A" Margin="0,0,0,6"/>
-                                    <TextBlock FontSize="12" Foreground="#64748B" TextWrapping="Wrap" Margin="0,0,0,14">
-                                        <Run Text="Before traveling:"/>
-                                        <Run Text=" sync copies the network database to your local machine so you can work offline. "/>
-                                        <Run Text="After traveling:"/>
-                                        <Run Text=" sync merges both databases — additions, changes and deletions, both ways. When the same record changed in both places, the most recent change wins (a delete counts as a change). Both databases are backed up first. "/>
-                                        <Run Text="Every user can also do this from the bottom of the sidebar." FontWeight="SemiBold"/>
-                                    </TextBlock>
+                                    <TextBlock FontSize="12" Foreground="#64748B" TextWrapping="Wrap" Margin="0,0,0,14"
+                                               Text="Each computer works on its own copy of the shared database, so pages open at local speed. Changes are sent and fetched in the background — every 30 seconds, a few seconds after each save, and when SAT starts and closes. Without the network SAT keeps working on its copy and catches up automatically when the network is back. When the same record is changed on two computers between syncs, the later change wins. The sync status is at the bottom of the sidebar."/>
                                     <StackPanel Orientation="Horizontal">
-                                        <Button Content="Sync Before Travel  (Download)"
-                                                Click="BtnSyncBefore_Click" Padding="12,8" Margin="0,0,10,0">
+                                        <Button Content="Sync Now" Click="BtnSyncNow_Click" Padding="12,8" Margin="0,0,10,0">
                                             <Button.Style>
                                                 <Style TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
                                                     <Style.Triggers>

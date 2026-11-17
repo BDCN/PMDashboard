@@ -57,6 +57,12 @@ public static class IdAllocator
     {
         Slot = null;
         ResetCounters();
+        // Network mode: a slot claimed in this same shared file (EnsureNetworkSlotClaimed, under
+        // its write lock) is trusted straight away, so a computer that starts offline still
+        // creates rows in its own range. Re-verified on the first sync.
+        if (DatabaseConfig.UsesLocalCache && DatabaseConfig.IdSlot is { } s
+            && DatabaseConfig.IdSlotCloud == "net:" + DatabaseConfig.NetworkDbPath.Trim().ToLowerInvariant())
+            Slot = s;
     }
 
     /// <summary>
@@ -129,6 +135,48 @@ public static class IdAllocator
             return;
         }
         throw new InvalidOperationException("No free Id slot left in the cloud database.");
+    }
+
+    /// <summary>
+    /// Network mode (NetworkSync): the same claim, made in the shared SQLite file attached as
+    /// <paramref name="netSchema"/> on <paramref name="conn"/> — called inside NetworkSync's locked
+    /// transaction, so the "is N free → insert IdSlot.N" check can't race another computer.
+    /// </summary>
+    public static void EnsureNetworkSlotClaimed(Microsoft.Data.Sqlite.SqliteConnection conn, string netSchema, string networkPath)
+    {
+        var identity = "net:" + networkPath.Trim().ToLowerInvariant();
+        int? saved = DatabaseConfig.IdSlotCloud == identity ? DatabaseConfig.IdSlot : null;
+
+        var taken = new Dictionary<int, string>();
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = $"SELECT \"Key\", Value FROM {netSchema}.AppConfigs WHERE \"Key\" LIKE '{SlotKeyPrefix}%'";
+            using var rd = cmd.ExecuteReader();
+            while (rd.Read())
+                if (int.TryParse(rd.GetString(0)[SlotKeyPrefix.Length..], out var n)) taken[n] = rd.IsDBNull(1) ? "" : rd.GetString(1);
+        }
+
+        if (saved is { } s && taken.TryGetValue(s, out var owner)
+            && owner.StartsWith(Environment.MachineName + " ", StringComparison.OrdinalIgnoreCase))
+        {
+            Slot = s;
+            ResetCounters();
+            return;
+        }
+
+        var n2 = (saved is { } sv && !taken.ContainsKey(sv) ? new[] { sv } : Array.Empty<int>())
+            .Concat(Enumerable.Range(1, MaxSlot)).First(x => !taken.ContainsKey(x));
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = $"INSERT INTO {netSchema}.AppConfigs (\"Key\", Value, LastModified) VALUES (@k, @v, @t)";
+            cmd.Parameters.AddWithValue("@k", SlotKeyPrefix + n2);
+            cmd.Parameters.AddWithValue("@v", $"{Environment.MachineName} ({CurrentUser.Email}) claimed {DateTime.UtcNow:yyyy-MM-dd HH:mm} UTC");
+            cmd.Parameters.AddWithValue("@t", DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss.FFFFFFF"));
+            cmd.ExecuteNonQuery();
+        }
+        DatabaseConfig.SetIdSlot(n2, identity);
+        Slot = n2;
+        ResetCounters();
     }
 
     /// <summary>
@@ -267,13 +315,16 @@ public static class IdAllocator
         // out "highest Id + 1", which lands inside another machine's range once any of its rows
         // have been pulled. Local/Network modes keep plain autoincrement — Network mode shares
         // one SQLite file between machines, where an in-memory counter would be the bug.
+        // Network mode works on a local copy synced by Id too (NetworkSync), so it needs ranges
+        // exactly like Cloud mode did.
         int slot;
         if (Slot is { } claimed) slot = claimed;
-        else if (DatabaseConfig.IsCloud) slot = 0;
+        else if (DatabaseConfig.IsCloud || DatabaseConfig.UsesLocalCache) slot = 0;
         else return;
 
         var type = e.Entry.Metadata.ClrType;
-        if (Excluded.Contains(type)) return;
+        // NetworkSync matches every table by Id (no natural-key path), so nothing is excluded there.
+        if (DatabaseConfig.IsCloud && Excluded.Contains(type)) return;
 
         var key = e.Entry.Metadata.FindPrimaryKey();
         if (key is not { Properties.Count: 1 } || key.Properties[0].ClrType != typeof(int)) return;

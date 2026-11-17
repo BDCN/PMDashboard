@@ -11,7 +11,6 @@ public partial class App : Application
 {
     public static AutoImportService AutoImport   { get; } = new AutoImportService();
     public static CloudSyncService  CloudSync    { get; } = new CloudSyncService();
-    public static NetworkChangeWatcher NetworkWatcher { get; } = new NetworkChangeWatcher();
 
     /// <summary>Re-evaluates the header banner (Travel Mode reminder / outdated-version warning).</summary>
     public static void ShowTravelBanner() =>
@@ -98,7 +97,7 @@ public partial class App : Application
         }
         catch { /* the error dialog itself must never be what crashes the crash handler */ }
 
-        try { NetworkWatcher.Dispose(); } catch { }
+        try { NetworkSync.Stop(); } catch { }
         try { CloudSync.Dispose(); } catch { }
         try { AutoImport.Dispose(); } catch { }
         try { Shutdown(1); } catch { Environment.Exit(1); } // last resort if even a clean Shutdown can't run
@@ -121,29 +120,34 @@ public partial class App : Application
         e.SetObserved();
     }
 
-    /// <summary>
-    /// Network mode (not traveling): checks the shared database file can be opened before
-    /// anything touches it, offering Retry / switch this computer to Local mode / Exit; then
-    /// makes sure it uses the rollback journal, not WAL (see NetworkDb). False → close SAT.
-    /// </summary>
     private static string? _newDatabasePath;   // set by --new-database
     private static bool    _quietNewDatabase;
 
-    private static bool EnsureNetworkDatabaseReachable()
+    /// <summary>
+    /// Network mode: before anything opens a database, make sure this computer has a working copy
+    /// of the shared file (first run / different file → copy it, behind a progress window), and
+    /// warn about a WAL-mode or read-only shared file. Can't reach the share: with a working copy,
+    /// carry on offline (the sidebar says so; sync catches up later); without one, offer Retry /
+    /// this computer's own data / Exit. False → close SAT.
+    /// </summary>
+    private static bool PrepareNetworkMode()
     {
-        if (!NetworkDb.IsShared) return true;
+        if (!NetworkSync.IsEnabled) return true;
         var path = DatabaseConfig.NetworkDbPath;
+        var haveCopy = NetworkSync.CacheReady();
 
         while (NetworkDb.CheckReachable(path) is { } problem)
         {
+            if (haveCopy) return true;   // work offline on the copy
             var choice = MessageBox.Show(
                 problem + "\n\n" +
+                "This computer doesn't have a copy of the shared database yet, so it needs the network once.\n\n" +
                 "Yes — try again\n" +
                 "No — use this computer's own separate data for now (reconnect any time with \"Connect to network database…\" on the sign-in screen or in the sidebar)\n" +
                 "Cancel — close SAT",
                 "SAT — Network Database Unavailable", MessageBoxButton.YesNoCancel, MessageBoxImage.Warning);
             if (choice == MessageBoxResult.Yes) continue;
-            if (choice == MessageBoxResult.No) { DatabaseConfig.ApplyLocal(); return true; }
+            if (choice == MessageBoxResult.No) { DatabaseConfig.ApplyLocal(); IdAllocator.InitFromConfig(); return true; }
             return false;
         }
 
@@ -158,10 +162,22 @@ public partial class App : Application
         }
         catch { /* checked again next start */ }
 
-        // Reading works — can this Windows account also save? Say so now, not on the first save.
         if (NetworkDb.CheckWritable(path) is { } readOnly)
-            MessageBox.Show(readOnly, "SAT — Network Database Is Read-Only for You",
-                MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(readOnly + "\n\nYou can still work: changes are kept on this computer and sent once the permission is fixed.",
+                "SAT — Network Database Is Read-Only for You", MessageBoxButton.OK, MessageBoxImage.Warning);
+
+        if (!haveCopy)
+        {
+            var r = Dialogs.TravelSyncFlow.RunWithProgress(null,
+                "Setting up this computer's copy of the shared database…",
+                () => { NetworkSync.SeedCache(path, DatabaseConfig.NetworkCachePath); return new SyncResult(true, ""); });
+            if (!r.Success)
+            {
+                MessageBox.Show("Couldn't copy the shared database to this computer:\n\n" + r.Message,
+                    "SAT — Network Database", MessageBoxButton.OK, MessageBoxImage.Error);
+                return false;
+            }
+        }
         return true;
     }
 
@@ -207,9 +223,140 @@ public partial class App : Application
             DatabaseConfig.UseForThisRunOnly(_newDatabasePath);
         }
 
-        if (_newDatabasePath == null && !EnsureNetworkDatabaseReachable()) { Shutdown(); return; }
+        // ── Network mode: local working copy + background sync (Services/NetworkSync) ──
+        // Before anything opens a database: make sure this computer has its working copy of the
+        // shared file, then sync once (claims this computer's Id range, fetches the latest).
+        if (_newDatabasePath == null && !PrepareNetworkMode()) { Shutdown(); return; }
+        if (NetworkSync.IsEnabled) NetworkSync.SyncNow();
 
         using var db = new AppDbContext();
+        PrepareDatabase(db);
+
+        // Startup's own migrations/defaults go to the shared file too (and any table/column this
+        // version added is created there) — re-check the sync plumbing after the schema upgrade.
+        if (NetworkSync.IsEnabled)
+        {
+            NetworkSync.ResetInfra();
+            NetworkSync.SyncNow();
+        }
+
+        // ── Load scoring caches ───────────────────────────────────────────────
+        StatusConfig.Reload();
+        ScoreConfig.Reload();
+
+        // ── Start cloud background sync (Cloud mode only) — BEFORE auth ────────
+        // Started here (not fire-and-forget-later) so it's already running while the
+        // Create-Admin/Login dialogs are up, but NOT awaited by default — most launches are an
+        // already-known user on a machine that already has a local Users table, and blocking
+        // every single startup on a cloud round-trip just to show the Sign In screen cost ~10
+        // seconds for no benefit in that common case. Login.xaml.cs's TrySignIn awaits the same
+        // pull, but only if a login actually fails locally (see WaitForInitialPullAsync's doc).
+        if (CloudSyncService.IsAvailable)
+        {
+            var intervalStr = new ConfigService().Get(ConfigKeys.CloudSyncInterval, "30");
+            int.TryParse(intervalStr, out var interval);
+            CloudSync.Start(interval > 0 ? interval : 30); // runs CampusArrangementService after its initial pull
+        }
+        else
+        {
+            // Local/Network mode: place any site without a campus now (see CampusArrangementService).
+            try { CampusArrangementService.Arrange(); } catch { /* never block startup over it */ }
+        }
+
+        // ── --new-database: schema + defaults are in place — finish the file and exit ──
+        if (_newDatabasePath != null)
+        {
+            db.Dispose();
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            NetworkDb.EnsureRollbackJournal(_newDatabasePath); // never WAL on a share
+            if (!_quietNewDatabase)
+                MessageBox.Show(
+                    $"Blank SAT database created:\n{_newDatabasePath}\n\n" +
+                    "Copy it to the network share. The first person to connect to it (\"Connect to network " +
+                    "database…\" on the sign-in screen) creates the first Super Admin account.",
+                    "SAT — New Database", MessageBoxButton.OK, MessageBoxImage.Information);
+            Shutdown(0); return;
+        }
+
+        // ── Authentication ─────────────────────────────────────────────────────
+        // No user exists yet (fresh install) → the first real person creates the admin
+        // account directly, choosing their own email and password. Unlike a seeded
+        // placeholder password, nothing here is ever a literal in source, so there is
+        // nothing to leak into git history.
+        // This IS one of the two cases that's worth waiting on the cloud pull for: an empty
+        // local Users table could mean a genuinely fresh install, or it could mean a fresh
+        // install on a machine whose cloud account data just hasn't arrived yet — without
+        // waiting here, the latter would incorrectly show "create a new admin account" instead
+        // of recognizing the accounts that already exist in the cloud.
+        if (!db.Users.Any())
+        {
+            if (CloudSyncService.IsAvailable)
+                await CloudSync.WaitForInitialPullAsync(TimeSpan.FromSeconds(15));
+
+            if (!db.Users.Any())
+            {
+                var create = new Dialogs.CreateAdminAccountDialog();
+                if (create.ShowDialog() != true) { Shutdown(); return; }
+            }
+        }
+
+        // ── Dev auto-login (this machine only) ─────────────────────────────────
+        // Opted into via LoginDialog's "Skip login on this computer" checkbox — see
+        // DevAutoLogin's doc for the security tradeoff. Falls through to the normal login screen
+        // whenever the saved account can't be auto-signed-in as-is (missing, deactivated, or a
+        // pending forced password change), rather than erroring.
+        var autoLoginUser = DevAutoLogin.TryGetSavedEmail() is { } savedEmail
+            ? new UserService().FindByEmail(savedEmail)
+            : null;
+
+        if (autoLoginUser is { IsActive: true, MustChangePassword: false })
+        {
+            CurrentUser.SignIn(autoLoginUser);
+            new UserService().RecordLogin(autoLoginUser.Id);
+            AuditService.Log("AutoLogin", "User", autoLoginUser.Id,
+                $"Auto-signed in as {autoLoginUser.Email} (dev auto-login on this machine) — SAT {AppVersion.Short}");
+        }
+        else
+        {
+            // ShutdownMode is OnExplicitShutdown (App.xaml) for exactly this: the login/create-
+            // account dialog is the only window open, and under the default OnLastWindowClose its
+            // closing would end the application before the main window was ever created.
+            var login = new Dialogs.LoginDialog();
+            if (login.ShowDialog() != true) { Shutdown(); return; }
+        }
+
+        // ── Resume semi-automatic import ──────────────────────────────────────
+        var cs = new ConfigService();
+        if (cs.Get(ConfigKeys.UploadMethod) == "SemiAutomatic")
+        {
+            var folder  = cs.Get(ConfigKeys.ImportFolder);
+            var pollStr = cs.Get(ConfigKeys.PollTimeSeconds, "60");
+            if (!string.IsNullOrEmpty(folder) && int.TryParse(pollStr, out var poll))
+            {
+                AutoImport.Configure(folder, poll);
+                AutoImport.Start();
+            }
+        }
+
+        // Network mode: background sync of the working copy (toast + page refresh on others' changes).
+        NetworkSync.Start();
+
+        // ── Show the main window ──────────────────────────────────────────────
+        // Created here rather than via StartupUri so it appears only after a successful
+        // sign-in, and so closing it is what ends the app from this point on.
+        var main = new MainWindow();
+        MainWindow   = main;
+        ShutdownMode = ShutdownMode.OnMainWindowClose;
+        main.Show();
+    }
+
+    /// <summary>
+    /// Creates/upgrades the schema and seeds defaults in whatever file <paramref name="db"/> opens
+    /// (Local: data.db; Network: this computer's working copy — NetworkSync then carries changes
+    /// and new columns to the shared file; --new-database: that file).
+    /// </summary>
+    internal static void PrepareDatabase(AppDbContext db)
+    {
         db.Database.EnsureCreated();
 
         // ── Schema migrations for existing databases ──────────────────────────
@@ -842,120 +989,13 @@ public partial class App : Application
         // Sync After Travel can carry deletions across. Never blocks startup.
         if (DatabaseConfig.IsNetwork)
             try { Tombstones.EnsureInstalled(db); } catch { /* retried next start and at every merge */ }
-
-        // ── Load scoring caches ───────────────────────────────────────────────
-        StatusConfig.Reload();
-        ScoreConfig.Reload();
-
-        // ── Start cloud background sync (Cloud mode only) — BEFORE auth ────────
-        // Started here (not fire-and-forget-later) so it's already running while the
-        // Create-Admin/Login dialogs are up, but NOT awaited by default — most launches are an
-        // already-known user on a machine that already has a local Users table, and blocking
-        // every single startup on a cloud round-trip just to show the Sign In screen cost ~10
-        // seconds for no benefit in that common case. Login.xaml.cs's TrySignIn awaits the same
-        // pull, but only if a login actually fails locally (see WaitForInitialPullAsync's doc).
-        if (CloudSyncService.IsAvailable)
-        {
-            var intervalStr = new ConfigService().Get(ConfigKeys.CloudSyncInterval, "30");
-            int.TryParse(intervalStr, out var interval);
-            CloudSync.Start(interval > 0 ? interval : 30); // runs CampusArrangementService after its initial pull
-        }
-        else
-        {
-            // Local/Network mode: place any site without a campus now (see CampusArrangementService).
-            try { CampusArrangementService.Arrange(); } catch { /* never block startup over it */ }
-        }
-
-        // ── --new-database: schema + defaults are in place — finish the file and exit ──
-        if (_newDatabasePath != null)
-        {
-            db.Dispose();
-            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-            NetworkDb.EnsureRollbackJournal(_newDatabasePath); // never WAL on a share
-            if (!_quietNewDatabase)
-                MessageBox.Show(
-                    $"Blank SAT database created:\n{_newDatabasePath}\n\n" +
-                    "Copy it to the network share. The first person to connect to it (\"Connect to network " +
-                    "database…\" on the sign-in screen) creates the first Super Admin account.",
-                    "SAT — New Database", MessageBoxButton.OK, MessageBoxImage.Information);
-            Shutdown(0); return;
-        }
-
-        // ── Authentication ─────────────────────────────────────────────────────
-        // No user exists yet (fresh install) → the first real person creates the admin
-        // account directly, choosing their own email and password. Unlike a seeded
-        // placeholder password, nothing here is ever a literal in source, so there is
-        // nothing to leak into git history.
-        // This IS one of the two cases that's worth waiting on the cloud pull for: an empty
-        // local Users table could mean a genuinely fresh install, or it could mean a fresh
-        // install on a machine whose cloud account data just hasn't arrived yet — without
-        // waiting here, the latter would incorrectly show "create a new admin account" instead
-        // of recognizing the accounts that already exist in the cloud.
-        if (!db.Users.Any())
-        {
-            if (CloudSyncService.IsAvailable)
-                await CloudSync.WaitForInitialPullAsync(TimeSpan.FromSeconds(15));
-
-            if (!db.Users.Any())
-            {
-                var create = new Dialogs.CreateAdminAccountDialog();
-                if (create.ShowDialog() != true) { Shutdown(); return; }
-            }
-        }
-
-        // ── Dev auto-login (this machine only) ─────────────────────────────────
-        // Opted into via LoginDialog's "Skip login on this computer" checkbox — see
-        // DevAutoLogin's doc for the security tradeoff. Falls through to the normal login screen
-        // whenever the saved account can't be auto-signed-in as-is (missing, deactivated, or a
-        // pending forced password change), rather than erroring.
-        var autoLoginUser = DevAutoLogin.TryGetSavedEmail() is { } savedEmail
-            ? new UserService().FindByEmail(savedEmail)
-            : null;
-
-        if (autoLoginUser is { IsActive: true, MustChangePassword: false })
-        {
-            CurrentUser.SignIn(autoLoginUser);
-            new UserService().RecordLogin(autoLoginUser.Id);
-            AuditService.Log("AutoLogin", "User", autoLoginUser.Id,
-                $"Auto-signed in as {autoLoginUser.Email} (dev auto-login on this machine) — SAT {AppVersion.Short}");
-        }
-        else
-        {
-            // ShutdownMode is OnExplicitShutdown (App.xaml) for exactly this: the login/create-
-            // account dialog is the only window open, and under the default OnLastWindowClose its
-            // closing would end the application before the main window was ever created.
-            var login = new Dialogs.LoginDialog();
-            if (login.ShowDialog() != true) { Shutdown(); return; }
-        }
-
-        // ── Resume semi-automatic import ──────────────────────────────────────
-        var cs = new ConfigService();
-        if (cs.Get(ConfigKeys.UploadMethod) == "SemiAutomatic")
-        {
-            var folder  = cs.Get(ConfigKeys.ImportFolder);
-            var pollStr = cs.Get(ConfigKeys.PollTimeSeconds, "60");
-            if (!string.IsNullOrEmpty(folder) && int.TryParse(pollStr, out var poll))
-            {
-                AutoImport.Configure(folder, poll);
-                AutoImport.Start();
-            }
-        }
-
-        // Network mode: notice other computers' saves to the shared file (toast + page refresh).
-        NetworkWatcher.Restart();
-
-        // ── Show the main window ──────────────────────────────────────────────
-        // Created here rather than via StartupUri so it appears only after a successful
-        // sign-in, and so closing it is what ends the app from this point on.
-        var main = new MainWindow();
-        MainWindow   = main;
-        ShutdownMode = ShutdownMode.OnMainWindowClose;
-        main.Show();
     }
 
     protected override void OnExit(ExitEventArgs e)
     {
-        NetworkWatcher.Dispose();
+        // Network mode: send what's still waiting before closing (bounded — never hang the exit).
+        NetworkSync.Stop();
+        try { if (NetworkSync.IsEnabled) Task.Run(() => NetworkSync.SyncNow(waitMs: 5000)).Wait(TimeSpan.FromSeconds(20)); } catch { }
         CloudSync.Dispose();
         AutoImport.Dispose();
         base.OnExit(e);

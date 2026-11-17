@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using PMDashboard.Data;
 using PMDashboard.Data.Models;
 
@@ -17,6 +17,12 @@ public static class ImportLockService
 
     private static bool IsShared => DatabaseConfig.IsCloud || NetworkDb.IsShared;
 
+    /// <summary>The lock lives in the SHARED copy: the cloud, or in Network mode the network file
+    /// itself (normal contexts open this computer's working copy, which other computers never see).</summary>
+    private static AppDbContext LockContext() =>
+        DatabaseConfig.UsesLocalCache ? new AppDbContext(sqlitePath: DatabaseConfig.NetworkDbPath)
+                                      : new AppDbContext(forceCloud: DatabaseConfig.IsCloud);
+
     private sealed record LockInfo(string HeldBy, string Machine, DateTime AcquiredUtc);
 
     /// <summary>
@@ -28,9 +34,14 @@ public static class ImportLockService
     {
         if (!IsShared) return (true, null);
 
+        // Network mode: an import needs the shared file — both for this lock and to fetch/send
+        // the data around it (NetworkSync). Offline → refuse rather than risk two imports at once.
+        if (DatabaseConfig.UsesLocalCache && NetworkDb.CheckReachable(DatabaseConfig.NetworkDbPath) is { } problem)
+            return (false, "Imports need the shared network database, and it can't be reached right now.\n\n" + problem);
+
         try
         {
-            using var db = new AppDbContext(forceCloud: DatabaseConfig.IsCloud);
+            using var db = LockContext();
             var row = db.AppConfigs.Find(ConfigKeys.ImportLock);
 
             if (row != null && !string.IsNullOrWhiteSpace(row.Value))
@@ -67,7 +78,7 @@ public static class ImportLockService
 
         try
         {
-            using var db = new AppDbContext(forceCloud: DatabaseConfig.IsCloud);
+            using var db = LockContext();
             var row = db.AppConfigs.Find(ConfigKeys.ImportLock);
             if (row == null) return;
 

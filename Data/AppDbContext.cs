@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using Microsoft.EntityFrameworkCore;
 using PMDashboard.Data.Models;
 using PMDashboard.Services;
@@ -31,9 +31,17 @@ public class AppDbContext : DbContext
     public static DateTime LastSaveUtc => new(Interlocked.Read(ref _lastSaveTicks), DateTimeKind.Utc);
     private static long _lastSaveTicks;
 
+    /// <summary>A specific SQLite file instead of <see cref="DatabaseConfig.ActiveSqlitePath"/> —
+    /// used to reach the shared network file directly in Network mode (import lock, startup schema
+    /// upgrade), since normal contexts open this computer's working copy. Constructor-only, like
+    /// ForceCloud. No Id allocation on these contexts.</summary>
+    public string? ExplicitSqlitePath { get; }
+
     /// <param name="forceCloud">True → the MariaDB cloud database (see <see cref="ForceCloud"/>).</param>
-    public AppDbContext(bool forceCloud = false)
+    /// <param name="sqlitePath">See <see cref="ExplicitSqlitePath"/>.</param>
+    public AppDbContext(bool forceCloud = false, string? sqlitePath = null)
     {
+        ExplicitSqlitePath = sqlitePath;
         // ForceCloud MUST be assigned before anything below touches ChangeTracker: that access
         // initializes the context, which runs OnConfiguring and permanently picks the database
         // right then. It used to be an `init` property (set by `new AppDbContext { ForceCloud =
@@ -44,7 +52,7 @@ public class AppDbContext : DbContext
 
         // Per-machine Id ranges for new rows in Cloud mode — see IdAllocator. Local contexts
         // only: rows written to the cloud by CloudSyncService always carry their own Ids.
-        if (!ForceCloud)
+        if (!ForceCloud && ExplicitSqlitePath == null)
             ChangeTracker.Tracked += (_, e) => IdAllocator.OnTracked(this, e);
     }
 
@@ -91,7 +99,7 @@ public class AppDbContext : DbContext
             // Local SQLite — used by ALL regular app operations regardless of mode.
             // Cloud mode reads/writes local SQLite for speed; CloudSyncService syncs
             // those changes to MariaDB in the background.
-            var path = DatabaseConfig.ActiveSqlitePath;
+            var path = ExplicitSqlitePath ?? DatabaseConfig.ActiveSqlitePath;
             var dir  = Path.GetDirectoryName(path);
             if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
             // NetworkDb.ConnectionString adds a long busy timeout: in Network mode another
@@ -109,7 +117,7 @@ public class AppDbContext : DbContext
         Interlocked.Exchange(ref _lastSaveTicks, DateTime.UtcNow.Ticks);
         var result = base.SaveChanges();
         // Notify CloudSyncService after a local (non-cloud) save
-        if (!ForceCloud && DatabaseConfig.IsCloud)
+        if (!ForceCloud && ExplicitSqlitePath == null && (DatabaseConfig.IsCloud || DatabaseConfig.UsesLocalCache))
             LocalSaved?.Invoke();
         return result;
     }
@@ -119,7 +127,7 @@ public class AppDbContext : DbContext
         StampLastModified();
         Interlocked.Exchange(ref _lastSaveTicks, DateTime.UtcNow.Ticks);
         var task = base.SaveChangesAsync(cancellationToken);
-        if (!ForceCloud && DatabaseConfig.IsCloud)
+        if (!ForceCloud && ExplicitSqlitePath == null && (DatabaseConfig.IsCloud || DatabaseConfig.UsesLocalCache))
             LocalSaved?.Invoke();
         return task;
     }

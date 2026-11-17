@@ -21,7 +21,7 @@ public static class DatabaseConnectFlow
     /// <summary>Short description of where this computer's data is right now.</summary>
     public static string Describe() =>
         DatabaseConfig.IsTravelMode ? "Travel Mode (offline copy of the network database)"
-        : NetworkDb.IsShared        ? "Shared network database"
+        : NetworkDb.IsShared        ? "Shared network database (synced to this computer)"
         :                             "This computer only (not shared)";
 
     /// <summary>
@@ -97,6 +97,17 @@ public static class DatabaseConnectFlow
                 "SAT will restart, then you sign in with your account on the shared database. " +
                 "This computer's own local data is kept but no longer used.") != MessageBoxResult.Yes)
             return false;
+
+        // Moving to a different shared file: send this computer's unsent changes to the current one
+        // first — the working copy is rebuilt from the new file at the restart.
+        if (NetworkSync.IsEnabled)
+        {
+            var last = NetworkSync.SyncNow();
+            if (!last.Ok && Ask(owner,
+                    "Some changes made on this computer couldn't be sent to the current shared database:\n" +
+                    $"{last.Error}\n\nSwitch anyway? Those changes won't reach the current shared database.") != MessageBoxResult.Yes)
+                return false;
+        }
 
         try { NetworkDb.EnsureRollbackJournal(path); } catch { /* re-checked at every startup */ }
         DatabaseConfig.ApplyNetwork(path);

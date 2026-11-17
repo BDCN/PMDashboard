@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -64,6 +64,7 @@ public partial class MainWindow : Window
         TxtAppVersion.ToolTip = AppVersion.Full;
         UpdateVersionBanner();
         UpdateTravelPanel();
+        NetworkSync.StatusChanged += () => Dispatcher.InvokeAsync(UpdateTravelPanel);
     }
 
     private void UpdateVersionBanner()
@@ -127,18 +128,42 @@ public partial class MainWindow : Window
         }
         else
         {
-            TxtTravelIcon.Foreground  = new SolidColorBrush(Color.FromRgb(0x4A, 0xDE, 0x80));
-            TxtTravelState.Text       = "Network database (shared)";
-            BtnTravel.Content         = "✈ Go Offline…";
-            BtnTravel.ToolTip         = "Leaving the office network? Take a copy of the database with you (Sync Before Travel).";
+            // Background sync (Services/NetworkSync) — this computer works on its own copy.
+            var last = NetworkSync.LastSyncUtc is { } t ? $" · synced {t.ToLocalTime():h:mm tt}" : "";
+            if (NetworkSync.IsSyncing && NetworkSync.LastSyncUtc == null)
+            {
+                TxtTravelIcon.Foreground = new SolidColorBrush(Color.FromRgb(0x93, 0xC5, 0xFD));
+                TxtTravelState.Text      = "Shared database · syncing…";
+            }
+            else if (NetworkSync.IsOffline)
+            {
+                TxtTravelIcon.Foreground = new SolidColorBrush(Color.FromRgb(0xFB, 0xBF, 0x24));
+                TxtTravelState.Text      = "Offline — saving on this computer; sends when the network is back" + last;
+            }
+            else if (NetworkSync.LastError is { } err)
+            {
+                TxtTravelIcon.Foreground = new SolidColorBrush(Color.FromRgb(0xF8, 0x71, 0x71));
+                TxtTravelState.Text      = err + last;
+            }
+            else
+            {
+                TxtTravelIcon.Foreground = new SolidColorBrush(Color.FromRgb(0x4A, 0xDE, 0x80));
+                TxtTravelState.Text      = "Shared database" + last;
+            }
+            TxtTravelState.ToolTip = DatabaseConfig.NetworkDbPath;
+            BtnTravel.Content      = NetworkSync.IsSyncing ? "⇅ Syncing…" : "⇅ Sync now";
+            BtnTravel.IsEnabled    = !NetworkSync.IsSyncing;
+            BtnTravel.ToolTip      = "Send this computer's changes and fetch everyone else's now (it also happens every 30 seconds).";
         }
     }
 
-    private void BtnTravel_Click(object sender, RoutedEventArgs e)
+    private async void BtnTravel_Click(object sender, RoutedEventArgs e)
     {
-        if (DatabaseConfig.IsTravelMode) Dialogs.TravelSyncFlow.SyncBack(this);
-        else                             Dialogs.TravelSyncFlow.GoOffline(this);
-        RefreshBanner();
+        if (DatabaseConfig.IsTravelMode) { Dialogs.TravelSyncFlow.SyncBack(this); RefreshBanner(); return; }
+        BtnTravel.IsEnabled = false;
+        BtnTravel.Content   = "⇅ Syncing…";
+        await NetworkSync.SyncNowAsync();
+        UpdateTravelPanel();
     }
 
     private void BtnConnectDb_Click(object sender, RoutedEventArgs e)

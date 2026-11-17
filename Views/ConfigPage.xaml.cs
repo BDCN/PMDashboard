@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using PMDashboard.Data.Models;
@@ -475,19 +475,20 @@ public partial class ConfigPage : UserControl
             result.StartsWith("Network database created") ? MessageBoxImage.Information : MessageBoxImage.Warning);
     }
 
-    private void BtnSyncBefore_Click(object sender, RoutedEventArgs e)
+    private async void BtnSyncNow_Click(object sender, RoutedEventArgs e)
     {
         if (Vm is not { } vm) return;
-        if (!DatabaseConfig.IsNetwork)
+        if (!NetworkSync.IsEnabled)
         {
-            MessageBox.Show("Travel Sync needs Network mode to be applied (and SAT restarted) first.",
-                "Sync Before Travel", MessageBoxButton.OK, MessageBoxImage.Information);
+            vm.DbStatusMessage = "Background sync runs in Network mode only (apply Network mode and restart SAT first).";
             return;
         }
-        Dialogs.TravelSyncFlow.GoOffline(Window.GetWindow(this));   // same flow as the sidebar control
-        vm.LoadDatabaseSettings();
+        vm.DbStatusMessage = "Syncing…";
+        var r = await NetworkSync.SyncNowAsync();
+        vm.DbStatusMessage = r.Ok
+            ? $"Synced — sent {r.Pushed + r.DeletedThere:N0}, received {r.Pulled + r.DeletedHere:N0} change(s)."
+            : (r.Offline ? "The shared database can't be reached — working on this computer's copy. " : "Sync didn't complete: ") + r.Error;
     }
-
     private void BtnSyncAfter_Click(object sender, RoutedEventArgs e)
     {
         if (Vm is not { } vm) return;
@@ -654,6 +655,7 @@ public partial class ConfigPage : UserControl
             var summary = await Task.Run(() => ConfigViewModel.ClearImportedData(out backup));
             ShowClearImportedStatus($"{summary}\nBackup: {backup}");
             App.CloudSync.PublishExternalChange("Imported data was cleared"); // refresh open pages
+            NetworkSync.RequestSync(0);   // Network mode: send the deletions now
         }
         catch (Exception ex)
         {

@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using PMDashboard.Services;
@@ -16,26 +16,6 @@ namespace PMDashboard.Dialogs;
 /// </summary>
 public static class TravelSyncFlow
 {
-    /// <summary>Sync Before Travel. True when SAT is now in Travel Mode.</summary>
-    public static bool GoOffline(Window? owner)
-    {
-        if (!DatabaseConfig.IsNetwork || DatabaseConfig.IsTravelMode) return false;
-
-        var confirm = Box(owner,
-            "Copy the network database to this computer so you can keep working without the office network?\n\n" +
-            "• Until you sync back, other people won't see your changes, and you won't see theirs.\n" +
-            "• When you're back on the network, click \"Sync After Travel\" (bottom of the sidebar).",
-            "Go Offline (Sync Before Travel)", MessageBoxButton.OKCancel, MessageBoxImage.Question);
-        if (confirm != MessageBoxResult.OK) return false;
-
-        var path = DatabaseConfig.NetworkDbPath;
-        var r = RunWithProgress(owner, "Copying the network database to this computer…",
-                                () => SyncService.SyncBeforeTravel(path));
-        Show(owner, r, "Sync Before Travel");
-        if (r.Success) AfterSwitch("✈ Travel Mode on — you're working on this computer's copy.");
-        return r.Success;
-    }
-
     /// <summary>Sync After Travel. True when SAT is back on the network database.</summary>
     public static bool SyncBack(Window? owner)
     {
@@ -54,19 +34,19 @@ public static class TravelSyncFlow
         var r = RunWithProgress(owner, "Merging your changes with the network database…",
                                 () => SyncService.SyncAfterTravel(path));
         Show(owner, r, "Sync After Travel");
-        if (r.Success) AfterSwitch("Back on the network database — your trip's changes are merged.");
+        if (r.Success) AfterSwitch(owner);
         return r.Success;
     }
 
-    /// <summary>SAT now reads a different file: reload the app-lifetime caches, start/stop
-    /// watching the share, update the banner/sidebar, and make open pages reload (the
-    /// DataChanged path — it also shows <paramref name="toast"/>).</summary>
-    private static void AfterSwitch(string toast)
+    /// <summary>Back from the trip: SAT now works on its synced working copy of the network file
+    /// (NetworkSync), which is set up at startup — so restart into it.</summary>
+    private static void AfterSwitch(Window? owner)
     {
-        try { StatusConfig.Reload(); ScoreConfig.Reload(); } catch { /* next start reloads anyway */ }
-        App.NetworkWatcher.Restart();
-        App.ShowTravelBanner();
-        App.CloudSync.PublishExternalChange(toast);
+        Box(owner, "SAT will now restart to finish switching back to the shared database.", "Sync After Travel",
+            MessageBoxButton.OK, MessageBoxImage.Information);
+        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Environment.ProcessPath!) { UseShellExecute = true }); }
+        catch { /* the user can start it again themselves */ }
+        Application.Current.Shutdown();
     }
 
     private static MessageBoxResult Box(Window? owner, string text, string title, MessageBoxButton b, MessageBoxImage i) =>
@@ -76,7 +56,7 @@ public static class TravelSyncFlow
         Box(owner, r.Message, title, MessageBoxButton.OK,
             r.Success ? MessageBoxImage.Information : MessageBoxImage.Warning);
 
-    private static SyncResult RunWithProgress(Window? owner, string message, Func<SyncResult> work)
+    internal static SyncResult RunWithProgress(Window? owner, string message, Func<SyncResult> work)
     {
         var done = false;
         var dlg = new Window
