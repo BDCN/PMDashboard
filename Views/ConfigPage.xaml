@@ -1628,6 +1628,24 @@
                     </StackPanel>
                 </Border>
 
+                <!-- Clear imported data, keep PMs (ConfigViewModel.ClearImportedData) — every mode;
+                     in Network mode it clears the shared file for everyone. -->
+                <Border BorderBrush="#FECACA" BorderThickness="1" CornerRadius="8"
+                        Background="#FEF2F2" Padding="14,12" Margin="0,10,0,0">
+                    <StackPanel>
+                        <TextBlock Text="Clear Imported Data (keep PMs)" FontSize="13" FontWeight="SemiBold"
+                                   Foreground="#991B1B" Margin="0,0,0,4"/>
+                        <TextBlock FontSize="11" Foreground="#7F1D1D" TextWrapping="Wrap" Margin="0,0,0,10"
+                                   Text="Deletes all orders, clusters, campuses, sites and ROMPs (with their assignments, assignment history and Custom Data values) so you can import again from scratch. Kept: PMs, teams, user accounts, all settings including the column mapping, forecast data, saved reports. Cluster → sub-region settings are lost with the clusters. The database is backed up to this computer first. In Network mode this applies to everyone using the shared database."/>
+                        <Button x:Name="BtnClearImportedData" Content="Clear Imported Data…"
+                                Click="BtnClearImportedData_Click"
+                                Padding="12,6" FontSize="12" HorizontalAlignment="Left"
+                                Style="{StaticResource DangerButtonStyle}"/>
+                        <TextBlock x:Name="TxtClearImportedStatus" FontSize="11" Foreground="#7F1D1D"
+                                   TextWrapping="Wrap" Margin="0,8,0,0" Visibility="Collapsed"/>
+                    </StackPanel>
+                </Border>
+
                 <!-- Status message (always visible — outside locked zone) -->
                 <TextBlock Text="{Binding DbStatusMessage}" FontSize="12" Foreground="#2563EB"
                            Margin="0,10,0,0" TextWrapping="Wrap"/>

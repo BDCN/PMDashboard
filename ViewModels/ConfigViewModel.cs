@@ -333,6 +333,82 @@ public partial class ConfigViewModel : ObservableObject
         return summary;
     }
 
+    // ── Clear imported data (keeps PMs) ──────────────────────────────────────
+
+    /// <summary>What Clear Imported Data deletes, children first. Everything else is kept: PMs,
+    /// teams/sub-regions, users, every setting (incl. the order column mapping), forecast data
+    /// (its rows are only unlinked from the deleted sites), saved reports and Custom Data columns.</summary>
+    private static readonly string[] ImportedDataTables =
+    {
+        "RompEquipmentTypes", "AssignmentHistories", "Romps", "Sites", "Campuses", "Locations",
+        "CustomRows", "Orders",
+    };
+
+    public static readonly Dictionary<string, string> ImportedDataLabels = new()
+    {
+        ["Orders"] = "Orders", ["Locations"] = "Clusters", ["Campuses"] = "Campuses", ["Sites"] = "Sites",
+        ["Romps"] = "ROMPs", ["RompEquipmentTypes"] = "ROMP equipment links",
+        ["AssignmentHistories"] = "Assignment history rows", ["CustomRows"] = "Custom Data values on orders/ROMPs",
+    };
+
+    public Dictionary<string, int> GetImportedDataCounts()
+    {
+        using var db = new AppDbContext();
+        var counts = new Dictionary<string, int>();
+#pragma warning disable EF1002 // table names come from the hardcoded list above
+        foreach (var table in ImportedDataTables)
+            try { counts[table] = db.Database.SqlQueryRaw<int>($"SELECT COUNT(*) AS Value FROM {table}").AsEnumerable().First(); }
+            catch { counts[table] = 0; }
+#pragma warning restore EF1002
+        return counts;
+    }
+
+    /// <summary>
+    /// Deletes orders, clusters, campuses, sites and ROMPs (and what hangs off them) from the
+    /// database in use — in Network mode the SHARED file, so for everyone — keeping PMs and all
+    /// setup. For starting the import over (e.g. after a wrong column mapping filed every order
+    /// under the wrong sites, 2026-11-17). Backs the database up first; one transaction, so a
+    /// failure changes nothing. Autoincrement counters are deliberately NOT reset: a travel copy
+    /// could still hold rows with the old Ids (see SyncService.RenumberTravelRows).
+    /// Runs on a background thread (raw SQL, no tracked entities); returns the summary.
+    /// </summary>
+    public static string ClearImportedData(out string backupPath)
+    {
+        var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                               "PMDashboard", "backups");
+        Directory.CreateDirectory(dir);
+        backupPath = Path.Combine(dir, $"before-clear-imported-data-{DateTime.Now:yyyyMMdd-HHmmss}.db");
+        NetworkDb.CopyDatabase(DatabaseConfig.ActiveSqlitePath, backupPath, forNetwork: false);
+
+        using var db = new AppDbContext();
+        var cleared = new List<string>();
+        int total = 0;
+        using (var tx = db.Database.BeginTransaction())
+        {
+            // Forecast rows stay — just no longer point at a site that's about to go.
+            try { db.Database.ExecuteSqlRaw("UPDATE ForecastRows SET SiteId = NULL WHERE SiteId IS NOT NULL"); } catch { }
+#pragma warning disable EF1002
+            foreach (var table in ImportedDataTables)
+            {
+                int n;
+                try { n = db.Database.SqlQueryRaw<int>($"SELECT COUNT(*) AS Value FROM {table}").AsEnumerable().First(); }
+                catch { continue; } // table absent on this schema
+                if (n == 0) continue;
+                db.Database.ExecuteSqlRaw($"DELETE FROM {table}");
+                total += n;
+                cleared.Add($"{ImportedDataLabels.GetValueOrDefault(table, table)}: {n:N0}");
+            }
+#pragma warning restore EF1002
+            tx.Commit();
+        }
+
+        var summary = total == 0
+            ? "There was no imported data to clear."
+            : "Cleared — " + string.Join(", ", cleared) + ". PMs and settings kept.";
+        AuditService.Log("Delete", "ImportedData", details: summary + $" Backup: {backupPath}");
+        return summary;
+    }
+
     public string DeleteLocalData()
     {
         using var db = new AppDbContext();

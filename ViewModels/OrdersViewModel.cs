@@ -269,7 +269,7 @@ public partial class OrdersViewModel : ObservableObject
     private static readonly Regex SiteOnly =
         new(@"^([A-Za-z]{2,6}\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-    private static (string? locationName, string? siteName, string? rompName) ParseJobName(string? jobName)
+    internal static (string? locationName, string? siteName, string? rompName) ParseJobName(string? jobName)
     {
         if (string.IsNullOrWhiteSpace(jobName)) return (null, null, null);
 

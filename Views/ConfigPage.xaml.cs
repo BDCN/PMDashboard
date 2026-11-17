@@ -615,6 +615,62 @@ public partial class ConfigPage : UserControl
         ShowClearAssignmentsStatus(vm.ClearAllAssignments());
     }
 
+    private async void BtnClearImportedData_Click(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm) return;
+        if (!CurrentUser.IsSuperAdmin)
+        {
+            MessageBox.Show("Only a Super Admin can clear imported data.", "Not Allowed", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var counts = vm.GetImportedDataCounts();
+        if (counts.Values.Sum() == 0) { ShowClearImportedStatus("There is no imported data to clear."); return; }
+
+        var lines = string.Join("\n", counts.Where(kv => kv.Value > 0).Select(kv =>
+            $"    {ConfigViewModel.ImportedDataLabels.GetValueOrDefault(kv.Key, kv.Key)}: {kv.Value:N0}"));
+        var where = NetworkDb.IsShared
+            ? $"This is the SHARED network database — it's cleared for everyone:\n{DatabaseConfig.NetworkDbPath}"
+            : "This is this computer's own database.";
+        if (MessageBox.Show(
+                $"Delete all imported data?\n\n{lines}\n\nKept: PMs, teams, user accounts, all settings (including the column " +
+                $"mapping), forecast data and saved reports.\n\n{where}\n\nA backup is saved to this computer first.",
+                "Clear Imported Data", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+
+        var dlg = new TextInputDialog("Confirm Clear Imported Data",
+            "This deletes every order, cluster, campus, site and ROMP.\n\nType DELETE to confirm:") { Owner = Window.GetWindow(this) };
+        if (dlg.ShowDialog() != true) return;
+        if (!string.Equals(dlg.Value, "DELETE", StringComparison.Ordinal))
+        {
+            ShowClearImportedStatus("Cancelled — confirmation text did not match.");
+            return;
+        }
+
+        BtnClearImportedData.IsEnabled = false;
+        ShowClearImportedStatus("Backing up and clearing… (other people's saves wait until this finishes)");
+        try
+        {
+            string backup = "";
+            var summary = await Task.Run(() => ConfigViewModel.ClearImportedData(out backup));
+            ShowClearImportedStatus($"{summary}\nBackup: {backup}");
+            App.CloudSync.PublishExternalChange("Imported data was cleared"); // refresh open pages
+        }
+        catch (Exception ex)
+        {
+            ShowClearImportedStatus("Nothing was deleted — " + ex.Message);
+        }
+        finally
+        {
+            BtnClearImportedData.IsEnabled = true;
+        }
+    }
+
+    private void ShowClearImportedStatus(string message)
+    {
+        TxtClearImportedStatus.Text       = message;
+        TxtClearImportedStatus.Visibility = Visibility.Visible;
+    }
+
     private void ShowClearAssignmentsStatus(string message)
     {
         TxtClearAssignmentsStatus.Text       = message;
